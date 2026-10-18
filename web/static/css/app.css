@@ -1,0 +1,231 @@
+/* Errgotrack - hand-written, no build step. CSS custom properties carry the
+   theme; a small utility layer covers spacing/flex so templates stay terse
+   without pulling in a Tailwind toolchain. */
+
+:root {
+  --bg: #ffffff;
+  --bg-subtle: #f6f7f9;
+  --bg-raised: #ffffff;
+  --border: #e3e5e8;
+  --text: #1a1d21;
+  --text-muted: #6b7280;
+  --text-faint: #9aa1ab;
+  --accent: #4f46e5;
+  --accent-text: #ffffff;
+  --danger: #dc2626;
+  --danger-bg: #fef2f2;
+  --warning: #d97706;
+  --warning-bg: #fffbeb;
+  --success: #16a34a;
+  --success-bg: #f0fdf4;
+  --sidebar-bg: #15171c;
+  --sidebar-text: #c7cbd4;
+  --sidebar-text-active: #ffffff;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --radius: 8px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+:root[data-theme="dark"] {
+  --bg: #121316;
+  --bg-subtle: #191b1f;
+  --bg-raised: #1c1e23;
+  --border: #2a2d33;
+  --text: #e8e9ec;
+  --text-muted: #9aa1ab;
+  --text-faint: #6b7280;
+  --accent: #818cf8;
+  --accent-text: #0f1115;
+  --danger: #f87171;
+  --danger-bg: #2a1616;
+  --warning: #fbbf24;
+  --warning-bg: #2a2114;
+  --success: #4ade80;
+  --success-bg: #142a1b;
+  --sidebar-bg: #0c0d10;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121316;
+    --bg-subtle: #191b1f;
+    --bg-raised: #1c1e23;
+    --border: #2a2d33;
+    --text: #e8e9ec;
+    --text-muted: #9aa1ab;
+    --text-faint: #6b7280;
+    --accent: #818cf8;
+    --accent-text: #0f1115;
+    --danger: #f87171;
+    --danger-bg: #2a1616;
+    --warning: #fbbf24;
+    --warning-bg: #2a2114;
+    --success: #4ade80;
+    --success-bg: #142a1b;
+    --sidebar-bg: #0c0d10;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+}
+a { color: inherit; text-decoration: none; }
+code, pre { font-family: var(--mono); }
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+h1 { font-size: 20px; }
+h2 { font-size: 16px; }
+h3 { font-size: 13px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+.app-shell { display: flex; min-height: 100vh; }
+
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* .app-shell only has min-height: 100vh, so on a page taller than the
+     viewport (long issue list, dashboard with many charts) a plain flex
+     child would stretch to match that height, pushing Log out - pinned to
+     the bottom via the flex:1 spacer below - off-screen. Pinning the
+     sidebar itself to the viewport keeps it reachable regardless of how
+     tall the main content gets. */
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.sidebar-brand { display: flex; align-items: center; gap: 8px; padding: 8px 10px 20px; color: #fff; font-weight: 700; font-size: 15px; }
+.sidebar a.nav-item, .sidebar button.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 6px; color: var(--sidebar-text); font-size: 13.5px;
+  font-family: inherit;
+}
+.sidebar a.nav-item:hover, .sidebar button.nav-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
+.sidebar a.nav-item.active { background: var(--accent); color: var(--accent-text); }
+.sidebar .icon { width: 16px; height: 16px; flex-shrink: 0; }
+
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--bg);
+  position: sticky; top: 0; z-index: 10;
+}
+.content { padding: 24px; max-width: 1280px; width: 100%; margin: 0 auto; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg-raised); color: var(--text); font-size: 13px; font-weight: 500;
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--text-faint); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.btn-primary:hover { opacity: 0.92; }
+.btn-danger { color: var(--danger); }
+.btn-success { background: var(--success-bg); border-color: var(--success); color: var(--success); }
+.btn-success:hover { opacity: 0.9; }
+.btn-muted-active { background: var(--bg-subtle); border-color: var(--text-faint); color: var(--text); }
+.btn-sm { padding: 4px 8px; font-size: 12px; }
+.icon { width: 15px; height: 15px; }
+.icon-btn { padding: 6px; border-radius: 6px; border: 1px solid transparent; background: none; cursor: pointer; color: var(--text-muted); }
+.icon-btn:hover { background: var(--bg-subtle); color: var(--text); }
+.sparkline rect { fill: var(--text-faint); }
+
+.card {
+  background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.card-pad { padding: 16px 18px; }
+
+.grid { display: grid; gap: 14px; }
+.grid-stats { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.grid-charts { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+
+.stat-tile .stat-label { font-size: 12px; color: var(--text-muted); }
+.stat-tile .stat-value { font-size: 24px; font-weight: 650; margin-top: 4px; }
+.stat-tile .stat-delta { font-size: 11.5px; margin-top: 4px; }
+.delta-up { color: var(--danger); }
+.delta-down { color: var(--success); }
+
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 11.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tr.row-link:hover { background: var(--bg-subtle); cursor: pointer; }
+
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.badge-error { background: var(--danger-bg); color: var(--danger); }
+.badge-warning { background: var(--warning-bg); color: var(--warning); }
+.badge-success { background: var(--success-bg); color: var(--success); }
+.badge-muted { background: var(--bg-subtle); color: var(--text-muted); }
+
+.level-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.level-error, .level-fatal { background: var(--danger); }
+.level-warning { background: var(--warning); }
+.level-info, .level-debug { background: var(--text-faint); }
+
+input[type=text], input[type=search], input[type=password], input[type=number], select, textarea {
+  background: var(--bg-raised); border: 1px solid var(--border); border-radius: 6px;
+  padding: 7px 10px; font-size: 13px; color: var(--text); font-family: inherit;
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+label { font-size: 12.5px; color: var(--text-muted); display: block; margin-bottom: 4px; }
+.field { margin-bottom: 14px; }
+
+.flex { display: flex; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-1 { gap: 4px; } .gap-2 { gap: 8px; } .gap-3 { gap: 12px; } .gap-4 { gap: 16px; }
+.mt-1 { margin-top: 4px; } .mt-2 { margin-top: 8px; } .mt-3 { margin-top: 12px; } .mt-4 { margin-top: 16px; } .mt-6 { margin-top: 24px; }
+.mb-2 { margin-bottom: 8px; } .mb-3 { margin-bottom: 12px; } .mb-4 { margin-bottom: 16px; }
+.text-muted { color: var(--text-muted); }
+.text-faint { color: var(--text-faint); }
+.text-sm { font-size: 12.5px; }
+.text-mono { font-family: var(--mono); }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.w-full { width: 100%; }
+
+.empty-state { padding: 48px 20px; text-align: center; color: var(--text-muted); }
+.empty-state .icon { width: 32px; height: 32px; margin-bottom: 10px; color: var(--text-faint); }
+
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 13px; box-shadow: var(--shadow); }
+
+.pill-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill { border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; font-size: 12px; color: var(--text-muted); }
+.pill.active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+.stacktrace { background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; overflow-x: auto; font-size: 12.5px; }
+.frame { padding: 6px 0; border-bottom: 1px dashed var(--border); }
+.frame:last-child { border-bottom: none; }
+.frame.in-app .frame-loc { color: var(--accent); }
+.frame-loc { font-family: var(--mono); font-size: 12px; }
+.frame-code { margin-top: 4px; border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
+.frame-code-line { display: flex; font-family: var(--mono); font-size: 12px; white-space: pre; }
+.frame-code-line.current { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.frame-code-num { flex-shrink: 0; width: 42px; text-align: right; padding: 1px 10px 1px 0; color: var(--text-faint); user-select: none; }
+.frame-code-line.current .frame-code-num { color: var(--danger); font-weight: 600; }
+.frame-code-text { white-space: pre-wrap; word-break: break-all; }
+.frame-vars { margin-top: 6px; font-size: 12px; }
+.frame-vars summary { cursor: pointer; color: var(--text-muted); }
+.frame-var { font-family: var(--mono); padding: 2px 0 2px 14px; word-break: break-all; }
+.frame-var-name { color: var(--accent); }
+
+@media (max-width: 860px) {
+  .sidebar { position: fixed; inset: 0 auto 0 0; transform: translateX(-100%); transition: transform 0.15s ease; z-index: 30; }
+  .sidebar.open { transform: translateX(0); }
+  .content { padding: 16px; }
+  .grid-stats { grid-template-columns: repeat(2, 1fr); }
+}

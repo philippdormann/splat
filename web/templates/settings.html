@@ -1,0 +1,147 @@
+{{define "pagetitle"}}Settings{{end}}
+{{define "content"}}
+
+<h3 class="mb-3">Notification channels</h3>
+<div class="grid grid-charts mb-4">
+
+<div class="card card-pad">
+  <h3 class="mb-3">Telegram</h3>
+  {{if .TelegramSaved}}<div class="badge badge-success mb-3">Saved.</div>{{end}}
+  <form method="post" action="/settings/telegram">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <div class="field">
+      <label>Bot token</label>
+      <input class="w-full" type="password" name="bot_token" value="{{.BotTokenMasked}}" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Chat ID</label>
+      <input class="w-full" type="text" name="chat_id" value="{{.Telegram.ChatID}}">
+    </div>
+    <label class="flex items-center gap-2 mb-3"><input type="checkbox" name="enabled" {{if .Telegram.Enabled}}checked{{end}}> Enabled</label>
+    <div class="flex gap-2">
+      <button class="btn btn-primary btn-sm" type="submit">Save</button>
+      <button class="btn btn-sm" type="submit" formaction="/settings/telegram/test">Send test</button>
+    </div>
+  </form>
+  {{if .TelegramTest}}<div class="mt-3 text-sm {{if .TelegramTestOK}}text-muted{{else}}badge badge-error{{end}}">{{.TelegramTest}}</div>{{end}}
+  <div class="text-sm text-muted mt-3">
+    Create a bot via <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a>, message it once, then fetch the chat id from
+    <code>https://api.telegram.org/bot&lt;token&gt;/getUpdates</code>.
+  </div>
+</div>
+
+{{with index .Webhooks "slack"}}
+<div class="card card-pad">
+  <h3 class="mb-3">Slack</h3>
+  <form method="post" action="/settings/webhook/slack">
+    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+    <div class="field">
+      <label>Webhook URL</label>
+      <input class="w-full" type="password" name="webhook_url" value="{{.URLMasked}}" autocomplete="off" placeholder="https://hooks.slack.com/services/...">
+    </div>
+    <label class="flex items-center gap-2 mb-3"><input type="checkbox" name="enabled" {{if .Enabled}}checked{{end}}> Enabled</label>
+    <div class="flex gap-2">
+      <button class="btn btn-primary btn-sm" type="submit">Save</button>
+      <button class="btn btn-sm" type="submit" formaction="/settings/webhook/slack/test">Send test</button>
+    </div>
+  </form>
+  {{if .TestResult}}<div class="mt-3 text-sm {{if .TestOK}}text-muted{{else}}badge badge-error{{end}}">{{.TestResult}}</div>{{end}}
+  <div class="text-sm text-muted mt-3">Create one under Slack → Settings → Incoming Webhooks.</div>
+</div>
+{{end}}
+
+{{with index .Webhooks "discord"}}
+<div class="card card-pad">
+  <h3 class="mb-3">Discord</h3>
+  <form method="post" action="/settings/webhook/discord">
+    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+    <div class="field">
+      <label>Webhook URL</label>
+      <input class="w-full" type="password" name="webhook_url" value="{{.URLMasked}}" autocomplete="off" placeholder="https://discord.com/api/webhooks/...">
+    </div>
+    <label class="flex items-center gap-2 mb-3"><input type="checkbox" name="enabled" {{if .Enabled}}checked{{end}}> Enabled</label>
+    <div class="flex gap-2">
+      <button class="btn btn-primary btn-sm" type="submit">Save</button>
+      <button class="btn btn-sm" type="submit" formaction="/settings/webhook/discord/test">Send test</button>
+    </div>
+  </form>
+  {{if .TestResult}}<div class="mt-3 text-sm {{if .TestOK}}text-muted{{else}}badge badge-error{{end}}">{{.TestResult}}</div>{{end}}
+  <div class="text-sm text-muted mt-3">Server Settings → Integrations → Webhooks → New Webhook.</div>
+</div>
+{{end}}
+
+{{with index .Webhooks "teams"}}
+<div class="card card-pad">
+  <h3 class="mb-3">Microsoft Teams</h3>
+  <form method="post" action="/settings/webhook/teams">
+    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+    <div class="field">
+      <label>Webhook URL</label>
+      <input class="w-full" type="password" name="webhook_url" value="{{.URLMasked}}" autocomplete="off" placeholder="https://....webhook.office.com/...">
+    </div>
+    <label class="flex items-center gap-2 mb-3"><input type="checkbox" name="enabled" {{if .Enabled}}checked{{end}}> Enabled</label>
+    <div class="flex gap-2">
+      <button class="btn btn-primary btn-sm" type="submit">Save</button>
+      <button class="btn btn-sm" type="submit" formaction="/settings/webhook/teams/test">Send test</button>
+    </div>
+  </form>
+  {{if .TestResult}}<div class="mt-3 text-sm {{if .TestOK}}text-muted{{else}}badge badge-error{{end}}">{{.TestResult}}</div>{{end}}
+  <div class="text-sm text-muted mt-3">Add an "Incoming Webhook" connector to the target channel.</div>
+</div>
+{{end}}
+
+{{with index .Webhooks "sheets"}}
+<div class="card card-pad">
+  <h3 class="mb-3">Google Sheets</h3>
+  <form method="post" action="/settings/webhook/sheets">
+    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+    <div class="field">
+      <label>Apps Script Web App URL</label>
+      <input class="w-full" type="password" name="webhook_url" value="{{.URLMasked}}" autocomplete="off" placeholder="https://script.google.com/macros/s/.../exec">
+    </div>
+    <label class="flex items-center gap-2 mb-3"><input type="checkbox" name="enabled" {{if .Enabled}}checked{{end}}> Enabled</label>
+    <div class="flex gap-2">
+      <button class="btn btn-primary btn-sm" type="submit">Save</button>
+      <button class="btn btn-sm" type="submit" formaction="/settings/webhook/sheets/test">Send test</button>
+    </div>
+  </form>
+  {{if .TestResult}}<div class="mt-3 text-sm {{if .TestOK}}text-muted{{else}}badge badge-error{{end}}">{{.TestResult}}</div>{{end}}
+  <details class="text-sm text-muted mt-3">
+    <summary style="cursor:pointer">How to set this up</summary>
+    <p class="mt-2">In your target Google Sheet: Extensions &rarr; Apps Script, replace the content with this, then Deploy &rarr; New deployment &rarr; Web app, execute as <b>Me</b>, access <b>Anyone</b>, and paste the resulting <code>/exec</code> URL above.</p>
+    <pre style="white-space:pre-wrap;background:var(--bg-subtle);padding:10px;border-radius:6px;font-size:12px">function doPost(e) {
+  var data = JSON.parse(e.postData.contents);
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  sheet.appendRow([data.timestamp, data.kind, data.project, data.environment,
+    data.exception, data.message, data.occurrences, data.issue_url]);
+  return ContentService.createTextOutput("ok");
+}</pre>
+  </details>
+</div>
+{{end}}
+
+</div>
+
+<div class="text-sm text-muted mb-4" style="max-width:700px">
+  By default new issues and reopened issues notify with a 5 minute cooldown per issue, across every enabled channel at once; configure per-project thresholds in notification rules.
+</div>
+
+<div class="card card-pad mt-4" style="max-width:520px">
+  <h3 class="mb-3">Trace viewer</h3>
+  {{if .TraceSaved}}<div class="badge badge-success mb-3">Saved.</div>{{end}}
+  <div class="text-sm text-muted mb-3">
+    errgotrack doesn't store spans/traces itself - it's an error tracker, not an APM. But when an event carries a trace_id
+    (from an SDK configured with distributed tracing), it'll link out to whatever tracing backend you already run.
+  </div>
+  <form method="post" action="/settings/tracing">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <div class="field">
+      <label>Trace viewer URL template</label>
+      <input class="w-full text-mono" type="text" name="trace_url_template" value="{{.TraceURLTemplate}}"
+        placeholder="https://tempo.example.com/explore?traceID={trace_id}">
+    </div>
+    <div class="text-sm text-muted mb-3"><code>{trace_id}</code> is replaced with the captured trace id. Leave empty to just show a copyable id with no link.</div>
+    <button class="btn btn-primary" type="submit">Save</button>
+  </form>
+</div>
+{{end}}

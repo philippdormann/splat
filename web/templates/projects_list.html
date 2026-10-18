@@ -1,0 +1,34 @@
+{{define "pagetitle"}}Projects{{end}}
+{{define "content"}}
+<div class="flex justify-between items-center mb-4">
+  <div></div>
+  <a class="btn btn-primary" href="/projects/new">+ New project</a>
+</div>
+{{if .Projects}}
+<div class="card">
+  <table>
+    <thead><tr><th>Name</th><th>Slug</th><th>Platform</th><th>Default env</th><th>Status</th><th>Retention</th><th>Created</th><th></th></tr></thead>
+    <tbody>
+    {{range .Projects}}
+      <tr class="row-link" onclick="window.location='/projects/{{.ID}}'">
+        <td style="font-weight:500">{{.Name}}</td>
+        <td class="text-mono text-sm">{{.Slug}}</td>
+        <td><span class="badge badge-muted">{{.PlatformLabel}}</span></td>
+        <td>{{.DefaultEnvironment}}</td>
+        <td>{{if .Enabled}}<span class="badge badge-success">enabled</span>{{else}}<span class="badge badge-muted">disabled</span>{{end}}</td>
+        <td>{{.RetentionDays}} days</td>
+        <td class="text-sm text-muted">{{.CreatedAt}}</td>
+        <td></td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}
+<div class="card empty-state">
+  {{icon "folder" "icon"}}
+  <div>No projects yet.</div>
+  <a class="btn btn-primary mt-3" href="/projects/new">Create your first project</a>
+</div>
+{{end}}
+{{end}}

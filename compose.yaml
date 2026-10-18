@@ -1,0 +1,22 @@
+services:
+  errgotrack:
+    build: .
+    image: errgotrack:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - errgotrack-data:/data
+    environment:
+      ERRGOTRACK_PUBLIC_URL: ${ERRGOTRACK_PUBLIC_URL:-https://errors.example.com}
+      ERRGOTRACK_ADMIN_USERNAME: ${ERRGOTRACK_ADMIN_USERNAME}
+      ERRGOTRACK_ADMIN_PASSWORD: ${ERRGOTRACK_ADMIN_PASSWORD}
+      ERRGOTRACK_SESSION_SECRET: ${ERRGOTRACK_SESSION_SECRET}
+    healthcheck:
+      test: ["CMD", "/app/errgotrack", "-healthcheck"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  errgotrack-data:
