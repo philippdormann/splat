@@ -168,6 +168,13 @@ func (e *Event) ParsedTimestamp() time.Time {
 	return time.Now().UTC()
 }
 
+// ParseFlexibleTimestamp is the exported form of parseFlexibleTimestamp
+// for sibling packages (transactions, spans) that share the identical
+// wire format: Unix epoch float or ISO8601 string.
+func ParseFlexibleTimestamp(raw json.RawMessage) (time.Time, bool) {
+	return parseFlexibleTimestamp(raw)
+}
+
 // ParsedTimestamp returns the breadcrumb's timestamp, and false if it was
 // missing or in a shape this collector doesn't recognize - callers should
 // show an empty state rather than fabricate a time for display.

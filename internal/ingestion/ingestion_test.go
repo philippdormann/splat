@@ -14,9 +14,11 @@ import (
 	"errgotrack/internal/database"
 	"errgotrack/internal/events"
 	"errgotrack/internal/issues"
+	"errgotrack/internal/logs"
 	"errgotrack/internal/notifications"
 	"errgotrack/internal/projects"
 	"errgotrack/internal/sessions"
+	"errgotrack/internal/traces"
 )
 
 func newTestHandler(t testing.TB) (*Handler, *projects.Project) {
@@ -40,6 +42,8 @@ func newTestHandler(t testing.TB) (*Handler, *projects.Project) {
 		Events:        events.NewStore(db),
 		Notifications: notifications.NewStore(db, logger),
 		Sessions:      sessions.NewStore(db),
+		Logs:          logs.NewStore(db),
+		Traces:        traces.NewStore(db),
 		Logger:        logger,
 		PublicURL:     "http://localhost:8080",
 	}
@@ -393,5 +397,59 @@ func TestEnvelopeStoresSessionItems(t *testing.T) {
 	}
 	if sum.TotalUsers != 1 || sum.CrashFreeUsers != 0 {
 		t.Fatalf("users = %d crash-free = %v", sum.TotalUsers, sum.CrashFreeUsers)
+	}
+}
+
+func TestEnvelopeIngestsLogsAndTransactions(t *testing.T) {
+	h, p := newTestHandler(t)
+	srv := httptest.NewServer(mux(h))
+	defer srv.Close()
+
+	header, _ := json.Marshal(map[string]any{"event_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"})
+	logPayload := `{"items": [
+		{"timestamp": 1719398400, "severity_number": 9, "body": "user signed in", "trace_id": "t9"},
+		{"timestamp": 1719398401, "severity_number": 17, "body": "payment failed"}
+	]}`
+	txnPayload := `{"event_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "transaction": "GET /checkout",
+		"release": "2.0.0", "start_timestamp": 1719398400.0, "timestamp": 1719398400.5,
+		"contexts": {"trace": {"trace_id": "t9", "span_id": "s9", "op": "http.server"}},
+		"spans": [{"trace_id": "t9", "span_id": "s10", "parent_span_id": "s9", "op": "db",
+			"start_timestamp": 1719398400.1, "timestamp": 1719398400.2}]}`
+	logItem, _ := json.Marshal(map[string]any{"type": "log", "item_count": 2, "length": len(logPayload)})
+	txnItem, _ := json.Marshal(map[string]any{"type": "transaction", "length": len(txnPayload)})
+
+	body := strings.Join([]string{
+		string(header), string(logItem), logPayload,
+		string(txnItem), txnPayload, "",
+	}, "\n")
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/"+strconv.FormatInt(p.ID, 10)+"/envelope/", strings.NewReader(body))
+	req.Header.Set("X-Sentry-Auth", "Sentry sentry_version=7, sentry_key="+p.PublicKey)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("post envelope: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+
+	entries, err := h.Logs.List(p.ID, logs.Filter{})
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("logs = %v, %v", entries, err)
+	}
+	if entries[0].Level != "error" || entries[1].TraceID != "t9" {
+		t.Fatalf("entries = %+v", entries)
+	}
+
+	recent, err := h.Traces.Recent(p.ID, 10)
+	if err != nil || len(recent) != 1 {
+		t.Fatalf("transactions = %v, %v", recent, err)
+	}
+	if recent[0].Name != "GET /checkout" || recent[0].Release != "2.0.0" || recent[0].SpanCount != 1 {
+		t.Fatalf("txn = %+v", recent[0])
+	}
+	txns, spans, err := h.Traces.Trace(p.ID, "t9")
+	if err != nil || len(txns) != 1 || len(spans) != 1 {
+		t.Fatalf("trace = %d/%d, %v", len(txns), len(spans), err)
 	}
 }

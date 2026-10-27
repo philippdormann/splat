@@ -20,11 +20,13 @@ import (
 	"errgotrack/internal/apikeys"
 	"errgotrack/internal/events"
 	"errgotrack/internal/issues"
+	"errgotrack/internal/logs"
 	"errgotrack/internal/metrics"
 	"errgotrack/internal/notifications"
 	"errgotrack/internal/projects"
 	"errgotrack/internal/sentryprotocol"
 	"errgotrack/internal/sessions"
+	"errgotrack/internal/traces"
 )
 
 const maxBodyBytes = 2 << 20 // 2MiB: generous for a Django traceback + breadcrumbs, small enough to bound memory per request
@@ -36,6 +38,8 @@ type Handler struct {
 	Events        *events.Store
 	Notifications *notifications.Store
 	Sessions      *sessions.Store // optional: nil disables session tracking
+	Logs          *logs.Store     // optional: nil drops log items
+	Traces        *traces.Store   // optional: nil drops transaction items
 	Metrics       *metrics.Registry
 	Logger        *slog.Logger
 	PublicURL     string
@@ -52,6 +56,26 @@ func (h *Handler) ingested() {
 	if h.Metrics != nil {
 		h.Metrics.Inc("errgotrack_events_ingested_total")
 	}
+}
+
+// counted increments an ingestion counter when metrics are enabled.
+func (h *Handler) counted(name string) {
+	if h.Metrics != nil {
+		h.Metrics.Inc(name)
+	}
+}
+
+// skipped counts an accepted-but-unstored envelope item type (profiles,
+// replays, attachments, ...) so operators can observe what their SDKs
+// send that this collector deliberately does not persist.
+func (h *Handler) skipped(itemType string) {
+	if h.Metrics == nil {
+		return
+	}
+	if itemType == "" {
+		itemType = "unknown"
+	}
+	h.Metrics.Inc("errgotrack_envelope_items_skipped_total", itemType)
 }
 
 // Envelope handles POST /api/{project}/envelope/.
@@ -93,9 +117,42 @@ func (h *Handler) Envelope(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			continue
+		case "log":
+			if h.Logs != nil {
+				batch, err := sentryprotocol.ParseLogBatch(item.Payload)
+				if err != nil {
+					h.Logger.Warn("log batch parse failed", "project", project.Slug, "error", err)
+				} else if err := h.Logs.InsertBatch(project.ID, project.DefaultEnvironment, batch); err != nil {
+					h.Logger.Error("log batch insert failed", "error", err, "project", project.Slug)
+				} else {
+					h.counted("errgotrack_logs_ingested_total")
+				}
+			}
+			continue
+		case "transaction":
+			if h.Traces != nil {
+				txn, err := sentryprotocol.ParseTransaction(item.Payload)
+				if err != nil {
+					h.Logger.Warn("transaction parse failed", "project", project.Slug, "error", err)
+				} else {
+					if txn.EventID == "" {
+						txn.EventID = eventID
+					}
+					if err := h.Traces.Insert(project.ID, project.DefaultEnvironment, txn); err != nil {
+						h.Logger.Error("transaction insert failed", "error", err, "project", project.Slug)
+					} else {
+						h.counted("errgotrack_transactions_ingested_total")
+					}
+				}
+			}
+			continue
 		case "event", "":
 		default:
-			continue // transactions, attachments, client_reports, etc: accepted, not stored
+			// Accepted but not stored: attachments, profiles, replays,
+			// client reports, check-ins, feedback, metrics, minidumps.
+			// Counted so operators can see what their SDKs are sending.
+			h.skipped(item.Header.Type)
+			continue
 		}
 		ev, err := sentryprotocol.ParseEventPayload(item.Payload)
 		if err != nil {

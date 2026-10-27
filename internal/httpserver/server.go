@@ -19,6 +19,7 @@ import (
 	"errgotrack/internal/events"
 	"errgotrack/internal/ingestion"
 	"errgotrack/internal/issues"
+	"errgotrack/internal/logs"
 	"errgotrack/internal/metrics"
 	"errgotrack/internal/notifications"
 	"errgotrack/internal/projects"
@@ -27,6 +28,7 @@ import (
 	"errgotrack/internal/sourcemaps"
 	"errgotrack/internal/storage"
 	"errgotrack/internal/teams"
+	"errgotrack/internal/traces"
 	"errgotrack/internal/tracing"
 	"errgotrack/web"
 )
@@ -45,6 +47,8 @@ type Server struct {
 	APIKeys       *apikeys.Store
 	Sessions      *sessions.Store
 	Teams         *teams.Store
+	Logs          *logs.Store
+	Traces        *traces.Store
 	Metrics       *metrics.Registry // nil disables /metrics
 	DB            *database.DB
 	Logger        *slog.Logger
@@ -80,6 +84,8 @@ func (s *Server) routes() {
 		Issues:        s.Issues,
 		Events:        s.Events,
 		Notifications: s.Notifications,
+		Logs:          s.Logs,
+		Traces:        s.Traces,
 		Metrics:       s.Metrics,
 		Logger:        s.Logger,
 		PublicURL:     s.PublicURL,
@@ -102,6 +108,9 @@ func (s *Server) routes() {
 		m.CounterVec("errgotrack_http_requests_total", "HTTP requests by route and status.", []string{"route", "code"})
 		m.Counter("errgotrack_events_ingested_total", "Events stored via ingestion.")
 		m.CounterVec("errgotrack_events_rejected_total", "Events rejected before storage, by reason.", []string{"reason"})
+		m.Counter("errgotrack_logs_ingested_total", "Log batches stored via ingestion.")
+		m.Counter("errgotrack_transactions_ingested_total", "Transactions stored via ingestion.")
+		m.CounterVec("errgotrack_envelope_items_skipped_total", "Envelope items accepted but not stored, by item type.", []string{"type"})
 		m.GaugeFunc("errgotrack_db_events_total", "Rows in events.", func() float64 {
 			return countOr(s.DB, `SELECT COUNT(*) FROM events`)
 		})

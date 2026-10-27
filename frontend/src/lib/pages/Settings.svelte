@@ -159,7 +159,7 @@
     storageBusy = "sweep";
     try {
       const r = await api.storageSweep();
-      toast.success(`Retention sweep deleted ${r.deleted} event(s).`);
+      toast.success(`Retention sweep cleaned ${r.deleted} row(s) (events, logs, traces).`);
       await loadStorage();
     } catch (e) {
       toast.error(`Sweep failed: ${e instanceof Error ? e.message : e}`);

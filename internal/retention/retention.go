@@ -100,6 +100,25 @@ func (s *Sweeper) SweepNow(ctx context.Context) (deleted int64, byProject map[in
 			default:
 			}
 		}
+		// Logs and traces honor the same per-project window: they are
+		// telemetry, not history, and would otherwise grow unbounded while
+		// events age out. Spans cascade from their transaction's FK.
+		// Failures here are logged but never fail the sweep: events are
+		// the load-bearing table.
+		if res, err := s.db.ExecContext(ctx,
+			`DELETE FROM logs WHERE project_id = ? AND timestamp < ?`, p.id, cutoff); err != nil {
+			s.logger.Error("retention: delete logs", "error", err, "project_id", p.id)
+		} else if n, _ := res.RowsAffected(); n > 0 {
+			deleted += n
+			byProject[p.id] += n
+		}
+		if res, err := s.db.ExecContext(ctx,
+			`DELETE FROM transactions WHERE project_id = ? AND timestamp < ?`, p.id, cutoff); err != nil {
+			s.logger.Error("retention: delete transactions", "error", err, "project_id", p.id)
+		} else if n, _ := res.RowsAffected(); n > 0 {
+			deleted += n
+			byProject[p.id] += n
+		}
 	}
 	return deleted, byProject, firstErr
 }

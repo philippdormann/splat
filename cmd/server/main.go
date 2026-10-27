@@ -20,6 +20,7 @@ import (
 	"errgotrack/internal/events"
 	"errgotrack/internal/httpserver"
 	"errgotrack/internal/issues"
+	"errgotrack/internal/logs"
 	"errgotrack/internal/metrics"
 	"errgotrack/internal/notifications"
 	"errgotrack/internal/projects"
@@ -28,6 +29,7 @@ import (
 	"errgotrack/internal/sourcemaps"
 	"errgotrack/internal/storage"
 	"errgotrack/internal/teams"
+	"errgotrack/internal/traces"
 	"errgotrack/internal/tracing"
 )
 
@@ -146,6 +148,8 @@ func main() {
 		Sessions:      sessions.NewStore(db),
 		APIKeys:       apikeys.NewStore(db),
 		Teams:         teams.NewStore(db),
+		Logs:          logs.NewStore(db),
+		Traces:        traces.NewStore(db),
 		Metrics:       reg,
 		DB:            db,
 		Logger:        logger,
