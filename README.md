@@ -212,7 +212,7 @@ Chart.js for charts, lucide-svelte icons. For local UI iteration,
 
 ## Notifications
 
-Five channels, any combination:
+Six channels, any combination:
 
 - **Telegram** - bot token + chat id.
 - **Slack**, **Discord**, **Microsoft Teams** - a single incoming-webhook
@@ -220,12 +220,16 @@ Five channels, any combination:
 - **Google Sheets** - paste the URL of a Google Apps Script Web App you
   deploy yourself (snippet provided on the Settings page); it appends one
   row per alert. No Google credentials are ever stored on the server.
+- **Email** - plain-text alerts over SMTP (STARTTLS, optional auth) to the
+  on-call address in Settings.
 
-Configure under Settings and use "Send test" to confirm delivery. Alerts
-fire for new issues and reopened issues by default (5 minute cooldown per
-issue, shared across every enabled channel so one trigger doesn't spam
-through all four); per-project/environment rules and occurrence thresholds
-live in the `notification_rules` table.
+Configure under Settings and use "Send test" to confirm delivery. Alert
+**rules** decide which events notify and where: each rule matches a project
+(blank = all), environment, and trigger (new issue, reopened issue,
+event-count threshold), with its own cooldown; a rule with no channels uses
+every enabled channel, while picking channels routes e.g. production to
+email and staging to chat. Rules are managed in Settings and via
+`/api/v1/rules`.
 
 Delivery goes through a durable SQLite queue, one row per channel per
 alert, drained by a background worker with exponential backoff. This means:
@@ -279,6 +283,30 @@ instead of `BEGIN IMMEDIATE`, free-text search uses `ILIKE` (+ a GIN
 tsvector index) instead of FTS5, and time bucketing uses `to_char` instead
 of `strftime`. The `?`-placeholder queries in every store work on both
 backends untouched thanks to the `database.DB` wrapper.
+
+Settings shows live disk usage (database size + per-table row counts) with
+one-click **retention sweep now** and **vacuum** (`GET /api/v1/storage`,
+`POST /api/v1/storage/sweep`, `POST /api/v1/storage/vacuum`).
+
+## Source maps
+
+Upload a `.map` file per project + release + bundle URL (project page, or
+`POST /api/v1/projects/{id}/sourcemaps` as JSON or multipart) and minified
+JS frames in issue detail resolve to the original file/line, function name,
+and surrounding source (from `sourcesContent`). Matching is exact-then-
+suffix on the bundle URL, so `/static/app.min.js` matches a frame from
+`https://cdn.example.com/static/app.min.js?v=2`; maps uploaded without a
+release act as fallback. Re-uploading replaces; deleting returns frames to
+minified. The mappings consumer is hand-rolled (base64-VLQ, no dependency).
+
+## API
+
+Everything the SPA does goes through `GET/POST /api/v1/...` (session
+cookie auth, `401` JSON when missing), documented by the embedded OpenAPI
+3.1 spec at `GET /api/v1/openapi.json` - the TypeScript client in
+`frontend/src/lib/api.ts` mirrors it. Press `⌘K`/`Ctrl+K` anywhere for the
+command palette (navigation, actions, project search); `Shift+I/P/S` jump
+to Issues/Projects/Settings.
 
 ## Benchmark
 

@@ -1094,6 +1094,14 @@ func (s *Server) apiSourceMapsDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// apiOpenAPI serves the embedded OpenAPI document. Public (no auth): it
+// describes the API surface without exposing any data.
+func (s *Server) apiOpenAPI(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(openAPIDoc)
+}
+
 // resolveIssueEvent returns the requested event (?event=id) or the latest
 // event for the issue when no explicit id is given.
 func (s *Server) resolveIssueEvent(issueID int64, eventID string) (*events.Event, error) {

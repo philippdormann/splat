@@ -111,6 +111,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/projects/{id}/sourcemaps", s.requireAPIAuth(s.apiSourceMapsUpload))
 	s.mux.HandleFunc("DELETE /api/v1/projects/{id}/sourcemaps/{mapId}", s.requireAPIAuth(s.apiSourceMapsDelete))
 
+	s.mux.HandleFunc("GET /api/v1/openapi.json", s.apiOpenAPI)
+
 	// Built Svelte assets (fingerprinted files under /assets/).
 	dist := web.Sub()
 	assets, _ := fs.Sub(dist, "assets")

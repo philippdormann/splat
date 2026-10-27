@@ -1,0 +1,85 @@
+package httpserver
+
+import (
+	"encoding/json"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+// The OpenAPI doc is hand-maintained; this pins the paths the router
+// actually serves so the two can't drift apart silently.
+func TestOpenAPICoversRoutes(t *testing.T) {
+	var doc struct {
+		OpenAPI string                    `json:"openapi"`
+		Paths   map[string]map[string]any `json:"paths"`
+	}
+	if err := json.Unmarshal(openAPIDoc, &doc); err != nil {
+		t.Fatalf("openapi.json does not parse: %v", err)
+	}
+	if !strings.HasPrefix(doc.OpenAPI, "3.") {
+		t.Fatalf("openapi version = %q", doc.OpenAPI)
+	}
+	for _, tc := range []struct{ method, path string }{
+		{"post", "/api/v1/login"},
+		{"get", "/api/v1/me"},
+		{"get", "/api/v1/dashboard"},
+		{"get", "/api/v1/issues"},
+		{"post", "/api/v1/issues/bulk"},
+		{"get", "/api/v1/issues/{id}"},
+		{"post", "/api/v1/issues/{id}/status"},
+		{"get", "/api/v1/projects"},
+		{"post", "/api/v1/projects"},
+		{"get", "/api/v1/projects/{id}"},
+		{"patch", "/api/v1/projects/{id}"},
+		{"delete", "/api/v1/projects/{id}"},
+		{"post", "/api/v1/projects/{id}/rotate"},
+		{"get", "/api/v1/platforms"},
+		{"get", "/api/v1/projects/{id}/sourcemaps"},
+		{"post", "/api/v1/projects/{id}/sourcemaps"},
+		{"delete", "/api/v1/projects/{id}/sourcemaps/{mapId}"},
+		{"get", "/api/v1/settings"},
+		{"put", "/api/v1/settings/telegram"},
+		{"post", "/api/v1/settings/telegram/test"},
+		{"put", "/api/v1/settings/webhooks/{channel}"},
+		{"post", "/api/v1/settings/webhooks/{channel}/test"},
+		{"put", "/api/v1/settings/tracing"},
+		{"put", "/api/v1/settings/smtp"},
+		{"post", "/api/v1/settings/smtp/test"},
+		{"get", "/api/v1/rules"},
+		{"post", "/api/v1/rules"},
+		{"put", "/api/v1/rules/{id}"},
+		{"delete", "/api/v1/rules/{id}"},
+		{"get", "/api/v1/storage"},
+		{"post", "/api/v1/storage/sweep"},
+		{"post", "/api/v1/storage/vacuum"},
+		{"get", "/api/v1/openapi.json"},
+		{"get", "/healthz"},
+	} {
+		ops, ok := doc.Paths[tc.path]
+		if !ok {
+			t.Errorf("openapi.json missing path %s", tc.path)
+			continue
+		}
+		if _, ok := ops[tc.method]; !ok {
+			t.Errorf("openapi.json path %s missing method %s", tc.path, tc.method)
+		}
+	}
+}
+
+func TestOpenAPIEndpointServesDoc(t *testing.T) {
+	s := &Server{}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/api/v1/openapi.json", nil)
+	s.apiOpenAPI(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Fatalf("content-type = %q", ct)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
+		t.Fatalf("response does not parse: %v", err)
+	}
+}
