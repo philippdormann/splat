@@ -176,6 +176,9 @@
           "events": { "type": "array", "items": { "type": "object" } },
           "latestEventId": { "type": ["string", "null"] },
           "currentEventId": { "type": ["string", "null"] },
+          "prevEventId": { "type": ["string", "null"] },
+          "nextEventId": { "type": ["string", "null"] },
+          "rawEvent": { "type": ["object", "null"], "description": "Reconstructed Sentry-shaped event document." },
           "traceId": { "type": "string" },
           "traceURL": { "type": "string" }
         }

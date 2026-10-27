@@ -358,9 +358,85 @@ func (s *Server) apiIssueDetail(w http.ResponseWriter, r *http.Request) {
 			return nil
 		}(),
 		"currentEventId": event.EventID,
-		"traceId":        traceID,
-		"traceURL":       tracing.BuildURL(traceTmpl, traceID),
+		"prevEventId": func() any {
+			if prev, err := s.Events.Neighbor(issue.ID, event.Timestamp, "prev"); err == nil {
+				return prev.EventID
+			}
+			return nil
+		}(),
+		"nextEventId": func() any {
+			if next, err := s.Events.Neighbor(issue.ID, event.Timestamp, "next"); err == nil {
+				return next.EventID
+			}
+			return nil
+		}(),
+		"rawEvent": rawEventJSON(event, issue),
+		"traceId":  traceID,
+		"traceURL": tracing.BuildURL(traceTmpl, traceID),
 	})
+}
+
+// rawEventJSON rebuilds the Sentry-shaped event document from stored
+// columns for debugging ("what did the SDK actually send?"). Stored JSON
+// columns pass through verbatim; empty ones are omitted.
+func rawEventJSON(event *events.Event, issue *issues.Issue) map[string]any {
+	raw := func(s string) any {
+		s = strings.TrimSpace(s)
+		if s == "" || s == "[]" || s == "{}" {
+			return nil
+		}
+		var v any
+		if err := json.Unmarshal([]byte(s), &v); err != nil {
+			return nil
+		}
+		return v
+	}
+	out := map[string]any{
+		"event_id":    event.EventID,
+		"timestamp":   event.Timestamp.UTC().Format(time.RFC3339Nano),
+		"level":       issue.Level,
+		"environment": event.Environment,
+		"release":     event.Release,
+		"message":     event.Message,
+	}
+	if event.TransactionName != "" {
+		out["transaction"] = event.TransactionName
+	}
+	if event.ExceptionType != "" || event.ExceptionValue != "" {
+		if ex := raw(event.StacktraceJSON); ex != nil {
+			out["exception"] = ex
+		} else {
+			out["exception"] = map[string]any{
+				"values": []any{map[string]any{"type": event.ExceptionType, "value": event.ExceptionValue}},
+			}
+		}
+	}
+	for _, k := range []string{"tags", "extra", "breadcrumbs", "user", "sdk", "request", "contexts"} {
+		var src string
+		switch k {
+		case "tags":
+			src = event.TagsJSON
+		case "extra":
+			src = event.ExtraJSON
+		case "breadcrumbs":
+			src = event.BreadcrumbsJSON
+		case "user":
+			src = event.UserJSON
+		case "sdk":
+			src = event.SDKJSON
+		case "request":
+			src = event.RequestJSON
+		case "contexts":
+			src = event.ContextsJSON
+		}
+		if v := raw(src); v != nil {
+			out[k] = v
+		}
+	}
+	if event.Culprit != "" {
+		out["culprit"] = event.Culprit
+	}
+	return out
 }
 
 func (s *Server) apiIssueSetStatus(w http.ResponseWriter, r *http.Request) {

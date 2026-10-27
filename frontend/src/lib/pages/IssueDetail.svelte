@@ -15,13 +15,27 @@
   let muteFor = "forever";
   let pendingAction: "resolved" | "resolved-next" | "ignored" | "muted" | "unresolved" | null = null;
   let actionBusy = false;
+  let selectedEvent: string | null = null;
+  let showRaw = false;
 
   async function load() {
     try {
-      data = await api.issue(id);
+      data = await api.issue(id, selectedEvent ?? undefined);
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load issue.";
     }
+  }
+
+  function showEvent(eventId: string) {
+    selectedEvent = eventId;
+    showRaw = false;
+    load();
+    window.scrollTo(0, 0);
+  }
+
+  function copyRaw() {
+    if (!data?.rawEvent) return;
+    navigator.clipboard.writeText(JSON.stringify(data.rawEvent, null, 2));
   }
 
   async function confirmAction() {
@@ -183,10 +197,36 @@
     </div>
 
     {#if data.events.length > 1}
-      <Card cls="p-4"><p class="mb-2 text-sm font-medium">Events ({data.events.length})</p>
-        <div class="max-h-64 space-y-1 overflow-y-auto">
-          {#each data.events as e}<p class="font-mono text-xs text-muted-foreground">{e.timestamp} — {e.eventId}</p>{/each}
+      {@const prevId = data.prevEventId}
+      {@const nextId = data.nextEventId}
+      <Card cls="p-4">
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <p class="text-sm font-medium">Events ({data.events.length})</p>
+          <div class="flex items-center gap-1 text-xs">
+            <Button size="sm" variant="outline" disabled={!prevId} on:click={() => prevId && showEvent(prevId)}>← Older</Button>
+            <Button size="sm" variant="outline" disabled={!nextId} on:click={() => nextId && showEvent(nextId)}>Newer →</Button>
+          </div>
         </div>
+        {#if data.currentEventId}
+          <p class="mb-2 font-mono text-xs text-muted-foreground">Showing event <span class="text-foreground">{data.currentEventId}</span>{data.latestEventId && data.currentEventId !== data.latestEventId ? " (not the latest)" : ""}</p>
+        {/if}
+        <div class="max-h-64 space-y-1 overflow-y-auto">
+          {#each data.events as e}
+            <button class="block w-full truncate text-left font-mono text-xs hover:underline {e.eventId === data.currentEventId ? 'text-foreground' : 'text-muted-foreground'}" on:click={() => showEvent(e.eventId)}>{e.timestamp} — {e.eventId}</button>
+          {/each}
+        </div>
+      </Card>
+    {/if}
+
+    {#if data.rawEvent}
+      <Card cls="p-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <button class="text-sm font-medium hover:underline" on:click={() => (showRaw = !showRaw)}>{showRaw ? "▾" : "▸"} Raw event JSON</button>
+          {#if showRaw}<Button size="sm" variant="outline" on:click={copyRaw}>Copy</Button>{/if}
+        </div>
+        {#if showRaw}
+          <pre class="mt-2 max-h-96 overflow-auto rounded-md bg-muted p-3 font-mono text-xs">{JSON.stringify(data.rawEvent, null, 2)}</pre>
+        {/if}
       </Card>
     {/if}
 

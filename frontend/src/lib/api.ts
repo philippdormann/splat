@@ -48,7 +48,10 @@ export const api = {
 
   issues: (params: URLSearchParams) =>
     req<IssuesData>(`/api/v1/issues?${params.toString()}`),
-  issue: (id: number | string) => req<IssueDetail>(`/api/v1/issues/${id}`),
+  issue: (id: number | string, eventId?: string) =>
+    req<IssueDetail>(
+      `/api/v1/issues/${id}${eventId ? `?event=${encodeURIComponent(eventId)}` : ""}`,
+    ),
   setIssueStatus: (id: number | string, status: string, mutedUntil?: string, resolveInRelease?: boolean) =>
     req<{ ok: boolean }>(`/api/v1/issues/${id}/status`, {
       method: "POST",
@@ -356,6 +359,9 @@ export interface IssueDetail {
   events: { eventId: string; timestamp: string; message: string }[];
   latestEventId: string | null;
   currentEventId: string | null;
+  prevEventId: string | null;
+  nextEventId: string | null;
+  rawEvent: Record<string, unknown> | null;
   traceId: string;
   traceURL: string;
 }

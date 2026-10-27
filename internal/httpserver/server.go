@@ -49,7 +49,7 @@ type Server struct {
 	Version       string
 	StartedAt     time.Time
 
-	mux *http.ServeMux
+	mux    *http.ServeMux
 	ingest *ingestion.Handler
 }
 
