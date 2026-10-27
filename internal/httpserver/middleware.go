@@ -32,6 +32,10 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "same-origin")
+		// An error tracker is authenticated internal tooling, never public
+		// content: keep it out of search indexes even if accidentally
+		// exposed. Belt and suspenders with /robots.txt below.
+		h.Set("X-Robots-Tag", "noindex, nofollow")
 		next.ServeHTTP(w, r)
 	})
 }

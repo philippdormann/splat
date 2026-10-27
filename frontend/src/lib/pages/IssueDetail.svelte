@@ -86,10 +86,10 @@
   <p class="text-sm text-destructive">{error}</p>
 {:else if !data}
   <div class="space-y-4" aria-label="Loading issue">
-    <div class="h-6 w-2/3 animate-pulse rounded bg-muted" />
-    <div class="h-4 w-1/3 animate-pulse rounded bg-muted" />
-    <div class="h-48 animate-pulse rounded-lg bg-muted" />
-    <div class="h-32 animate-pulse rounded-lg bg-muted" />
+    <div class="h-6 w-2/3 animate-pulse rounded bg-muted"></div>
+    <div class="h-4 w-1/3 animate-pulse rounded bg-muted"></div>
+    <div class="h-48 animate-pulse rounded-lg bg-muted"></div>
+    <div class="h-32 animate-pulse rounded-lg bg-muted"></div>
   </div>
 {:else}
   <div class="space-y-4">

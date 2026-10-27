@@ -323,8 +323,8 @@
   />
   {#if !data}
     <div class="space-y-3" aria-label="Loading settings">
-      <div class="h-40 animate-pulse rounded-lg bg-muted" />
-      <div class="h-40 animate-pulse rounded-lg bg-muted" />
+      <div class="h-40 animate-pulse rounded-lg bg-muted"></div>
+      <div class="h-40 animate-pulse rounded-lg bg-muted"></div>
     </div>
   {:else}
     <Card cls="p-4">

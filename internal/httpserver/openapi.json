@@ -1126,6 +1126,13 @@
         "responses": { "200": { "description": "OpenAPI 3.1 JSON." } }
       }
     },
+    "/robots.txt": {
+      "get": {
+        "summary": "Crawler deny-all (the app is private internal tooling)",
+        "security": [],
+        "responses": { "200": { "description": "Plain-text robots file." } }
+      }
+    },
     "/healthz": {
       "get": {
         "summary": "Liveness check (process is up; does not touch the database)",

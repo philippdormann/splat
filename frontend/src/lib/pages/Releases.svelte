@@ -49,9 +49,9 @@
     <p class="text-sm text-destructive">{error}</p>
   {:else if releases === null}
     <div class="space-y-2" aria-label="Loading releases">
-      <div class="h-12 animate-pulse rounded-lg bg-muted" />
-      <div class="h-12 animate-pulse rounded-lg bg-muted" />
-      <div class="h-12 animate-pulse rounded-lg bg-muted" />
+      <div class="h-12 animate-pulse rounded-lg bg-muted"></div>
+      <div class="h-12 animate-pulse rounded-lg bg-muted"></div>
+      <div class="h-12 animate-pulse rounded-lg bg-muted"></div>
     </div>
   {:else if releases.length === 0}
     <Card cls="p-6"><p class="text-sm text-muted-foreground">No releases seen yet. Events and sessions record the release they came from.</p></Card>

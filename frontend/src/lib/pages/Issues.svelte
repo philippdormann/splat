@@ -133,9 +133,9 @@
   <Card cls="divide-y divide-border">
     {#if !data}
       <div class="space-y-2 p-3" aria-label="Loading issues">
-        <div class="h-12 animate-pulse rounded bg-muted" />
-        <div class="h-12 animate-pulse rounded bg-muted" />
-        <div class="h-12 animate-pulse rounded bg-muted" />
+        <div class="h-12 animate-pulse rounded bg-muted"></div>
+        <div class="h-12 animate-pulse rounded bg-muted"></div>
+        <div class="h-12 animate-pulse rounded bg-muted"></div>
       </div>
     {:else if data.issues.length === 0}
       <p class="p-4 text-sm text-muted-foreground">No issues match.</p>

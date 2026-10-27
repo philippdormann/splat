@@ -73,14 +73,14 @@
     <p class="text-sm text-destructive">{error}</p>
   {:else if !data}
     <div class="space-y-3" aria-label="Loading dashboard">
-      <div class="h-7 w-48 animate-pulse rounded bg-muted" />
+      <div class="h-7 w-48 animate-pulse rounded bg-muted"></div>
       <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div class="h-20 animate-pulse rounded-lg bg-muted" />
-        <div class="h-20 animate-pulse rounded-lg bg-muted" />
-        <div class="h-20 animate-pulse rounded-lg bg-muted" />
-        <div class="h-20 animate-pulse rounded-lg bg-muted" />
+        <div class="h-20 animate-pulse rounded-lg bg-muted"></div>
+        <div class="h-20 animate-pulse rounded-lg bg-muted"></div>
+        <div class="h-20 animate-pulse rounded-lg bg-muted"></div>
+        <div class="h-20 animate-pulse rounded-lg bg-muted"></div>
       </div>
-      <div class="h-64 animate-pulse rounded-lg bg-muted" />
+      <div class="h-64 animate-pulse rounded-lg bg-muted"></div>
     </div>
   {:else if !data.hasProjects}
     <Card cls="p-6">

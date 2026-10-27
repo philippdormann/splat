@@ -139,9 +139,9 @@
   <p class="text-sm text-destructive">{error}</p>
 {:else if !data}
   <div class="mx-auto w-full max-w-6xl space-y-4" aria-label="Loading project">
-    <div class="h-8 w-1/3 animate-pulse rounded bg-muted" />
-    <div class="h-24 animate-pulse rounded-lg bg-muted" />
-    <div class="h-64 animate-pulse rounded-lg bg-muted" />
+    <div class="h-8 w-1/3 animate-pulse rounded bg-muted"></div>
+    <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
+    <div class="h-64 animate-pulse rounded-lg bg-muted"></div>
   </div>
 {:else}
   <div class="mx-auto w-full max-w-6xl space-y-4">

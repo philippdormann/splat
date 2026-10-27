@@ -110,12 +110,12 @@
       <p class="mb-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">Platform</p>
       {#if !platforms.length && !error}
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label="Loading platforms">
-          <div class="h-24 animate-pulse rounded-lg bg-muted" />
-          <div class="h-24 animate-pulse rounded-lg bg-muted" />
-          <div class="h-24 animate-pulse rounded-lg bg-muted" />
-          <div class="h-24 animate-pulse rounded-lg bg-muted" />
-          <div class="h-24 animate-pulse rounded-lg bg-muted" />
-          <div class="h-24 animate-pulse rounded-lg bg-muted" />
+          <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
+          <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
+          <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
+          <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
+          <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
+          <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
         </div>
       {:else}
         <PlatformGrid {platforms} value={platform} disabled={busy} onSelect={handlePlatformChange} />

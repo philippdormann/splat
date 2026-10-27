@@ -86,6 +86,7 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/{project}/store/", rateLimit(limiter, http.HandlerFunc(ingest.Store)))
 	s.mux.HandleFunc("GET /healthz", s.healthz)
 	s.mux.HandleFunc("GET /readyz", s.readyz)
+	s.mux.HandleFunc("GET /robots.txt", s.robots)
 	s.mux.HandleFunc("GET /api/v1/meta", s.apiMeta)
 
 	// JSON API for the Svelte SPA. Session cookie or Bearer API key;
@@ -189,6 +190,12 @@ func (s *Server) serveSPA(w http.ResponseWriter, r *http.Request) {
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	// Liveness only: the process is up. Use /readyz to check the database.
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+}
+
+func (s *Server) robots(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("User-agent: *\nDisallow: /\n"))
 }
 
 func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {

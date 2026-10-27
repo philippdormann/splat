@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -93,5 +94,32 @@ func TestMetaExposesBuildInfo(t *testing.T) {
 	}
 	if up, _ := body["uptimeSeconds"].(float64); up < 59 {
 		t.Fatalf("uptimeSeconds = %v, want >= 59", up)
+	}
+}
+
+func TestRobotsDisallowsAll(t *testing.T) {
+	s := testHealthServer(t)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/robots.txt", nil))
+	if rec.Code != 200 {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Disallow: /") {
+		t.Fatalf("robots.txt = %q", body)
+	}
+}
+
+func TestSecurityHeadersIncludeNoindex(t *testing.T) {
+	s := testHealthServer(t)
+	for _, path := range []string{"/healthz", "/readyz", "/robots.txt", "/api/v1/openapi.json"} {
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		if got := rec.Header().Get("X-Robots-Tag"); got != "noindex, nofollow" {
+			t.Fatalf("%s: X-Robots-Tag = %q", path, got)
+		}
+		if got := rec.Header().Get("X-Frame-Options"); got != "DENY" {
+			t.Fatalf("%s: X-Frame-Options = %q", path, got)
+		}
 	}
 }

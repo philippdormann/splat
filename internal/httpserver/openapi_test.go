@@ -69,6 +69,7 @@ func TestOpenAPICoversRoutes(t *testing.T) {
 		{"delete", "/api/v1/api-keys/{id}"},
 		{"get", "/api/v1/openapi.json"},
 		{"get", "/healthz"},
+		{"get", "/robots.txt"},
 		{"get", "/readyz"},
 		{"get", "/api/v1/meta"},
 	} {

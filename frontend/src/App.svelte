@@ -69,6 +69,10 @@
       if (authed) paletteOpen = !paletteOpen;
       return;
     }
+    if (e.key === "Escape" && sidebarOpen) {
+      sidebarOpen = false;
+      return;
+    }
     // Single-key shortcuts (ignored while typing).
     const tag = (e.target as HTMLElement | null)?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || !authed || paletteOpen) return;
@@ -100,6 +104,9 @@
 {:else}
   <CommandPalette bind:open={paletteOpen} {navigate} {logout} />
   <div class="flex min-h-screen">
+    {#if sidebarOpen}
+      <button aria-label="Close menu" class="fixed inset-0 z-10 bg-black/50 md:hidden" on:click={() => (sidebarOpen = false)} />
+    {/if}
     <aside class={`fixed inset-y-0 left-0 z-20 w-60 border-r border-border bg-card p-4 transition-transform md:static md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
       <div class="mb-4 flex items-center gap-2 font-semibold"><Bug class="h-5 w-5" /> Errgotrack</div>
       <nav class="space-y-1">
