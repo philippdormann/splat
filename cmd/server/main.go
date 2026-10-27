@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/philippdormann/splat/internal/apikeys"
+	"github.com/philippdormann/splat/internal/audit"
 	"github.com/philippdormann/splat/internal/auth"
 	"github.com/philippdormann/splat/internal/config"
 	"github.com/philippdormann/splat/internal/dashboard"
@@ -149,6 +150,7 @@ func main() {
 		Sessions:      sessions.NewStore(db),
 		APIKeys:       apikeys.NewStore(db),
 		Teams:         teams.NewStore(db),
+		Audit:         audit.NewStore(db),
 		Logs:          logs.NewStore(db),
 		Traces:        traces.NewStore(db),
 		RepoLinks:     repolink.NewStore(db),

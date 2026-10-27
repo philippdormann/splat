@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput, type APIKey, type GenericWebhook, type User, type Team, type SecurityPolicy } from "$lib/api";
+  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput, type APIKey, type GenericWebhook, type User, type Team, type SecurityPolicy, type AuditLogEntry } from "$lib/api";
   import * as CardUI from "$lib/components/ui/card/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
   import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
@@ -9,7 +9,7 @@
   import { toast } from "svelte-sonner";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import Dialog from "$lib/components/Dialog.svelte";
-  import { Bell, KeyRound, Database, SlidersHorizontal, ScrollText, Users, TriangleAlert, ShieldCheck } from "lucide-svelte";
+  import { Bell, KeyRound, Database, SlidersHorizontal, ScrollText, Users, TriangleAlert, ShieldCheck, History } from "lucide-svelte";
 
   let tab = "general";
   const tabs = [
@@ -18,6 +18,7 @@
     { id: "rules", label: "Alert rules", icon: ScrollText },
     { id: "keys", label: "API keys", icon: KeyRound },
     { id: "users", label: "Users & Teams", icon: Users },
+    { id: "audit", label: "Audit log", icon: History },
     { id: "storage", label: "Storage", icon: Database },
   ];
 
@@ -44,6 +45,30 @@
   let showNewKey = false;
   let meUsername = "";
   let security: SecurityPolicy = { require2fa: false };
+  let auditEntries: AuditLogEntry[] = [];
+  let auditTotal = 0;
+  let auditOffset = 0;
+  let auditFilter = "";
+  let auditBusy = false;
+  const auditPageSize = 50;
+
+  async function loadAudit() {
+    auditBusy = true;
+    try {
+      const res = await api.auditLog({ action: auditFilter.trim() || undefined, limit: auditPageSize, offset: auditOffset });
+      auditEntries = res.entries;
+      auditTotal = res.total;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not load audit log.");
+    } finally {
+      auditBusy = false;
+    }
+  }
+
+  function auditPage(delta: number) {
+    auditOffset = Math.max(0, auditOffset + delta * auditPageSize);
+    loadAudit();
+  }
   let resetPw: { id: number; username: string; password: string } | null = null;
   let teamAddUser: Record<number, number | null> = {};
   let teamAddProject: Record<number, number | null> = {};
@@ -568,7 +593,7 @@
         {#each tabs as t}
           <button
             class={"flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors " + (tab === t.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
-            on:click={() => (tab = t.id)}
+            on:click={() => { tab = t.id; if (t.id === "audit") { auditOffset = 0; loadAudit(); } }}
           >
             <svelte:component this={t.icon} class="h-4 w-4" />
             {t.label}
@@ -1043,6 +1068,44 @@
         </form>
       </Dialog>
     {/if}
+        {:else if tab === "audit"}
+    <CardUI.Root class="gap-0">
+      <CardUI.Header>
+        <CardUI.Title>Audit log</CardUI.Title>
+        <CardUI.Description>Authentication and management actions, newest first. Append-only — entries are never edited or swept.</CardUI.Description>
+      </CardUI.Header>
+      <CardUI.Content>
+      <div class="space-y-3">
+        <form class="flex gap-2" on:submit={(e) => { e.preventDefault(); auditOffset = 0; loadAudit(); }}>
+          <Input bind:value={auditFilter} placeholder="Filter by action prefix, e.g. auth. or users." />
+          <Button type="submit" size="sm" variant="outline">Filter</Button>
+          <Button size="sm" variant="outline" on:click={loadAudit}>Refresh</Button>
+        </form>
+        {#if auditEntries.length}
+          <div class="divide-y divide-border rounded-md border border-border">
+            {#each auditEntries as e}
+              <div class="space-y-0.5 p-2 text-xs">
+                <p>
+                  <span class="font-mono font-medium">{e.action}</span>
+                  <span class="text-muted-foreground"> · {e.actorUsername || "(anonymous)"}{e.entityType ? ` · ${e.entityType}${e.entityId ? " " + e.entityId : ""}` : ""}</span>
+                </p>
+                <p class="font-mono text-[11px] text-muted-foreground">{e.createdAt}{e.ip ? ` · ${e.ip}` : ""}{e.detail && e.detail !== "{}" ? ` · ${e.detail}` : ""}</p>
+              </div>
+            {/each}
+          </div>
+          <div class="flex items-center justify-between text-xs text-muted-foreground">
+            <span>{auditTotal === 0 ? "No entries" : `${auditOffset + 1}–${Math.min(auditOffset + auditPageSize, auditTotal)} of ${auditTotal}`}</span>
+            <span class="flex gap-2">
+              <Button size="sm" variant="outline" disabled={auditOffset === 0 || auditBusy} on:click={() => auditPage(-1)}>Newer</Button>
+              <Button size="sm" variant="outline" disabled={auditOffset + auditPageSize >= auditTotal || auditBusy} on:click={() => auditPage(1)}>Older</Button>
+            </span>
+          </div>
+        {:else}
+          <p class="text-xs text-muted-foreground">{auditBusy ? "Loading…" : "No entries yet."}</p>
+        {/if}
+      </div>
+      </CardUI.Content>
+    </CardUI.Root>
         {:else if tab === "storage"}
     <CardUI.Root class="gap-0">
       <CardUI.Header>

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/philippdormann/splat/internal/apikeys"
+	"github.com/philippdormann/splat/internal/audit"
 	"github.com/philippdormann/splat/internal/auth"
 	"github.com/philippdormann/splat/internal/dashboard"
 	"github.com/philippdormann/splat/internal/events"
@@ -94,6 +95,7 @@ func (s *Server) apiLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	userID, err := s.Auth.Authenticate(input.Username, input.Password)
 	if err != nil {
+		s.auditAs(0, input.Username, clientIP(r), audit.LoginFailed, "user", "", `{"via":"password"}`)
 		writeAPIError(w, http.StatusUnauthorized, "invalid username or password")
 		return
 	}
@@ -124,10 +126,12 @@ func (s *Server) apiLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	auth.SetSessionCookie(w, token, expires, s.CookieSecure)
+	s.auditAs(userID, s.Auth.UsernameOf(userID), clientIP(r), audit.Login, "user", strconv.FormatInt(userID, 10), `{"via":"password"}`)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) apiLogout(w http.ResponseWriter, r *http.Request) {
+	s.audit(r, audit.Logout, "session", "", "{}")
 	s.Auth.DeleteSession(auth.SessionTokenFromRequest(r))
 	auth.ClearSessionCookie(w)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -885,6 +889,7 @@ func (s *Server) apiProjectCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Notifications.UpsertDefaultRule(p.ID)
+	s.audit(r, audit.ProjectCreated, "project", strconv.FormatInt(p.ID, 10), "{}")
 	s.apiProjectDetailByID(w, r, p.ID)
 }
 
@@ -969,6 +974,7 @@ func (s *Server) apiProjectUpdate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.ProjectUpdated, "project", strconv.FormatInt(id, 10), "{}")
 	s.apiProjectDetailByID(w, r, id)
 }
 
@@ -984,6 +990,7 @@ func (s *Server) apiProjectRotate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = key
+	s.audit(r, audit.ProjectKeyRotated, "project", strconv.FormatInt(id, 10), "{}")
 	s.apiProjectDetailByID(w, r, id)
 }
 
@@ -998,6 +1005,7 @@ func (s *Server) apiProjectDelete(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "could not delete project")
 		return
 	}
+	s.audit(r, audit.ProjectDeleted, "project", strconv.FormatInt(id, 10), "{}")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -1363,6 +1371,7 @@ func (s *Server) apiSettingsSaveTelegram(w http.ResponseWriter, r *http.Request)
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.SettingsSaved, "telegram", "", "{}")
 	writeJSON(w, http.StatusOK, s.apiSettingsData())
 }
 
@@ -1404,6 +1413,7 @@ func (s *Server) apiSettingsSaveWebhook(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.SettingsSaved, "webhook", channel, "{}")
 	writeJSON(w, http.StatusOK, s.apiSettingsData())
 }
 
@@ -1471,6 +1481,7 @@ func (s *Server) apiGenericWebhooksCreate(w http.ResponseWriter, r *http.Request
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.audit(r, audit.SettingsSaved, "generic_webhook", strconv.FormatInt(h.ID, 10), `{"op":"create"}`)
 	writeJSON(w, http.StatusCreated, genericWebhookJSON(h))
 }
 
@@ -1518,6 +1529,7 @@ func (s *Server) apiGenericWebhooksUpdate(w http.ResponseWriter, r *http.Request
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.audit(r, audit.SettingsSaved, "generic_webhook", strconv.FormatInt(id, 10), `{"op":"update"}`)
 	writeJSON(w, http.StatusOK, genericWebhookJSON(h))
 }
 
@@ -1532,6 +1544,7 @@ func (s *Server) apiGenericWebhooksDelete(w http.ResponseWriter, r *http.Request
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.SettingsSaved, "generic_webhook", strconv.FormatInt(id, 10), `{"op":"delete"}`)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -1563,6 +1576,7 @@ func (s *Server) apiSettingsSaveTracing(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.SettingsSaved, "tracing", "", "{}")
 	writeJSON(w, http.StatusOK, s.apiSettingsData())
 }
 
@@ -1596,6 +1610,7 @@ func (s *Server) apiSettingsSaveSMTP(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.SettingsSaved, "smtp", "", "{}")
 	writeJSON(w, http.StatusOK, s.apiSettingsData())
 }
 
@@ -1662,6 +1677,7 @@ func (s *Server) apiRulesCreate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.audit(r, audit.RuleChanged, "rule", strconv.FormatInt(rule.ID, 10), `{"op":"create"}`)
 	writeJSON(w, http.StatusCreated, ruleJSON(rule))
 }
 
@@ -1682,6 +1698,7 @@ func (s *Server) apiRulesUpdate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.audit(r, audit.RuleChanged, "rule", strconv.FormatInt(id, 10), `{"op":"update"}`)
 	writeJSON(w, http.StatusOK, ruleJSON(rule))
 }
 
@@ -1696,6 +1713,7 @@ func (s *Server) apiRulesDelete(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.RuleChanged, "rule", strconv.FormatInt(id, 10), `{"op":"delete"}`)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -1743,6 +1761,7 @@ func (s *Server) apiStorageSweep(w http.ResponseWriter, r *http.Request) {
 		bp[strconv.FormatInt(id, 10)] = n
 	}
 	out["byProject"] = bp
+	s.audit(r, audit.SettingsSaved, "storage", "", `{"op":"sweep"}`)
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -1756,6 +1775,7 @@ func (s *Server) apiStorageVacuum(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "vacuum failed: "+err.Error())
 		return
 	}
+	s.audit(r, audit.SettingsSaved, "storage", "", `{"op":"vacuum"}`)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -1939,6 +1959,7 @@ func (s *Server) apiKeysCreate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.audit(r, audit.APIKeyChanged, "api_key", strconv.FormatInt(k.ID, 10), `{"op":"create"}`)
 	writeJSON(w, http.StatusCreated, apiKeyJSON(k))
 }
 
@@ -1954,6 +1975,7 @@ func (s *Server) apiKeysRotate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.audit(r, audit.APIKeyChanged, "api_key", strconv.FormatInt(id, 10), `{"op":"rotate"}`)
 	writeJSON(w, http.StatusOK, apiKeyJSON(k))
 }
 
@@ -1968,6 +1990,7 @@ func (s *Server) apiKeysRevoke(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.APIKeyChanged, "api_key", strconv.FormatInt(id, 10), `{"op":"revoke"}`)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -1982,6 +2005,7 @@ func (s *Server) apiKeysDelete(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.APIKeyChanged, "api_key", strconv.FormatInt(id, 10), `{"op":"delete"}`)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

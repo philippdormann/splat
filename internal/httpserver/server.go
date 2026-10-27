@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/philippdormann/splat/internal/apikeys"
+	"github.com/philippdormann/splat/internal/audit"
 	"github.com/philippdormann/splat/internal/auth"
 	"github.com/philippdormann/splat/internal/dashboard"
 	"github.com/philippdormann/splat/internal/database"
@@ -48,6 +49,7 @@ type Server struct {
 	APIKeys       *apikeys.Store
 	Sessions      *sessions.Store
 	Teams         *teams.Store
+	Audit         *audit.Store
 	Logs          *logs.Store
 	Traces        *traces.Store
 	RepoLinks     *repolink.Store
@@ -225,6 +227,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/v1/users/{id}/role", s.requireAdmin(s.apiUsersSetRole))
 	s.mux.HandleFunc("PUT /api/v1/users/{id}/password", s.requireAdmin(s.apiUsersSetPassword))
 	s.mux.HandleFunc("POST /api/v1/users/{id}/2fa/reset", s.requireAdmin(s.apiUsersReset2FA))
+	s.mux.HandleFunc("GET /api/v1/audit-log", s.requireAdmin(s.apiAuditList))
 	s.mux.HandleFunc("GET /api/v1/teams", s.requireAdmin(s.apiTeamsList))
 	s.mux.HandleFunc("POST /api/v1/teams", s.requireAdmin(s.apiTeamsCreate))
 	s.mux.HandleFunc("DELETE /api/v1/teams/{id}", s.requireAdmin(s.apiTeamsDelete))

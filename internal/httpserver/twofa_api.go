@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/philippdormann/splat/internal/audit"
 	"github.com/philippdormann/splat/internal/auth"
 )
 
@@ -60,9 +61,16 @@ func (s *Server) apiLogin2FA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.Auth.TOTPEnabled(userID) {
-		if _, valid := s.Auth.VerifySecondFactor(userID, input.Code); !valid {
+		recovery, valid := s.Auth.VerifySecondFactor(userID, input.Code)
+		if !valid {
+			s.auditAs(userID, s.Auth.UsernameOf(userID), clientIP(r), audit.LoginFailed, "user", strconv.FormatInt(userID, 10), `{"via":"2fa"}`)
 			writeAPIError(w, http.StatusUnauthorized, "invalid two-factor code")
 			return
+		}
+		if recovery {
+			s.auditAs(userID, s.Auth.UsernameOf(userID), clientIP(r), audit.Login, "user", strconv.FormatInt(userID, 10), `{"via":"recovery_code"}`)
+		} else {
+			s.auditAs(userID, s.Auth.UsernameOf(userID), clientIP(r), audit.Login, "user", strconv.FormatInt(userID, 10), `{"via":"totp"}`)
 		}
 	} else if s.Auth.TOTPRequired() {
 		writeAPIError(w, http.StatusForbidden, "two-factor setup is required on this instance")
@@ -146,6 +154,7 @@ func (s *Server) api2FASetupConfirm(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.audit(r, audit.TOTPEnabled, "user", strconv.FormatInt(userID, 10), "{}")
 	// Enrollment during login completes the login: no session exists yet.
 	if viaChallenge {
 		token, expires, err := s.Auth.CreateSession(userID)
@@ -154,6 +163,7 @@ func (s *Server) api2FASetupConfirm(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		auth.SetSessionCookie(w, token, expires, s.CookieSecure)
+		s.auditAs(userID, s.Auth.UsernameOf(userID), clientIP(r), audit.Login, "user", strconv.FormatInt(userID, 10), `{"via":"totp_enroll"}`)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "recoveryCodes": codes})
 }
@@ -197,6 +207,7 @@ func (s *Server) api2FADisable(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.TOTPDisabled, "user", strconv.FormatInt(userID, 10), "{}")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -221,6 +232,7 @@ func (s *Server) api2FARegenerateCodes(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.audit(r, audit.TOTPCodesRolled, "user", strconv.FormatInt(userID, 10), "{}")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "recoveryCodes": codes})
 }
 
@@ -238,6 +250,7 @@ func (s *Server) apiUsersReset2FA(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.TOTPReset, "user", strconv.FormatInt(id, 10), "{}")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -258,5 +271,6 @@ func (s *Server) apiSecuritySave(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.SecurityChanged, "security", "", `{"require2fa":`+strconv.FormatBool(input.Require2FA)+`}`)
 	s.apiSecurityGet(w, r)
 }

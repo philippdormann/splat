@@ -3257,6 +3257,40 @@
           }
         }
       }
+    },
+    "/api/v1/audit-log": {
+      "get": {
+        "summary": "List audit log entries, newest first (admin session only)",
+        "parameters": [
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Action prefix filter, e.g. auth. or users."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Entries and total."
+          }
+        }
+      }
     }
   }
 }

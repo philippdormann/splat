@@ -81,6 +81,15 @@ export const api = {
       body: JSON.stringify({ require2fa }),
     }),
 
+  auditLog: (params?: { action?: string; limit?: number; offset?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.action) qs.set("action", params.action);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.offset) qs.set("offset", String(params.offset));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return req<AuditLogData>(`/api/v1/audit-log${suffix}`);
+  },
+
   dashboard: (range: string) =>
     req<DashboardData>(`/api/v1/dashboard?range=${encodeURIComponent(range)}`),
 
@@ -733,6 +742,23 @@ export interface TwoFABegin {
 
 export interface SecurityPolicy {
   require2fa: boolean;
+}
+
+export interface AuditLogEntry {
+  id: number;
+  createdAt: string;
+  actorUserId: number;
+  actorUsername: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  detail: string;
+  ip: string;
+}
+
+export interface AuditLogData {
+  entries: AuditLogEntry[];
+  total: number;
 }
 
 export interface Team {

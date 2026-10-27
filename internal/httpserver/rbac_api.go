@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/philippdormann/splat/internal/audit"
 	"github.com/philippdormann/splat/internal/auth"
 )
 
@@ -49,6 +50,7 @@ func (s *Server) apiUsersCreate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.audit(r, audit.UserCreated, "user", strconv.FormatInt(u.ID, 10), `{"role":"`+u.Role+`"}`)
 	writeJSON(w, http.StatusCreated, rbacUserJSON(u))
 }
 
@@ -67,6 +69,7 @@ func (s *Server) apiUsersDelete(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.audit(r, audit.UserDeleted, "user", strconv.FormatInt(id, 10), "{}")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -93,6 +96,7 @@ func (s *Server) apiUsersSetRole(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.audit(r, audit.UserRoleChanged, "user", strconv.FormatInt(id, 10), `{"role":"`+input.Role+`"}`)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -113,6 +117,7 @@ func (s *Server) apiUsersSetPassword(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.audit(r, audit.UserPassReset, "user", strconv.FormatInt(id, 10), "{}")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -153,6 +158,7 @@ func (s *Server) apiTeamsCreate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.audit(r, audit.TeamCreated, "team", strconv.FormatInt(t.ID, 10), "{}")
 	m := teamJSON(t.ID, t.Name, t.Slug, t.CreatedAt)
 	m["memberIds"] = []int64{}
 	m["projectIds"] = []int64{}
@@ -170,6 +176,7 @@ func (s *Server) apiTeamsDelete(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.TeamDeleted, "team", strconv.FormatInt(id, 10), "{}")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -191,6 +198,7 @@ func (s *Server) apiTeamAddMember(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.TeamMemberAdded, "team", strconv.FormatInt(teamID, 10), `{"userId":`+strconv.FormatInt(input.UserID, 10)+`}`)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -210,6 +218,7 @@ func (s *Server) apiTeamRemoveMember(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.TeamMemberShed, "team", strconv.FormatInt(teamID, 10), `{"userId":`+strconv.FormatInt(userID, 10)+`}`)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -235,6 +244,7 @@ func (s *Server) apiTeamGrantProject(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.TeamProjGranted, "team", strconv.FormatInt(teamID, 10), `{"projectId":`+strconv.FormatInt(input.ProjectID, 10)+`}`)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -254,6 +264,7 @@ func (s *Server) apiTeamRevokeProject(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.TeamProjRevoked, "team", strconv.FormatInt(teamID, 10), `{"projectId":`+strconv.FormatInt(projectID, 10)+`}`)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -296,6 +307,7 @@ func (s *Server) apiProjectAddMember(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.ProjMemberAdded, "project", strconv.FormatInt(id, 10), `{"userId":`+strconv.FormatInt(input.UserID, 10)+`}`)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -315,5 +327,6 @@ func (s *Server) apiProjectRemoveMember(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	s.audit(r, audit.ProjMemberShed, "project", strconv.FormatInt(id, 10), `{"userId":`+strconv.FormatInt(userID, 10)+`}`)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

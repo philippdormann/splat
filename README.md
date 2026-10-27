@@ -390,6 +390,14 @@ are AES-256-GCM encrypted in the database (keyed by
 `SPLAT_SESSION_SECRET`); recovery codes are stored as hashes. API keys
 are separate automation credentials and are unaffected by 2FA.
 
+**Audit log** (Settings → Audit log, admins only): every sign-in
+(success and failure), 2FA change, user/team/role change, settings
+save, API key change, project change, and quota/policy change is
+appended with actor, IP, and timestamp. Entries are never edited or
+swept — retention is yours to decide. Filter by action prefix
+(`auth.`, `users.`, …) in the UI or via
+`GET /api/v1/audit-log?action=&limit=&offset=`.
+
 ## Benchmark
 
 ```

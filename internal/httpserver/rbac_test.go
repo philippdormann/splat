@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/philippdormann/splat/internal/apikeys"
+	"github.com/philippdormann/splat/internal/audit"
 	"github.com/philippdormann/splat/internal/auth"
 	"github.com/philippdormann/splat/internal/dashboard"
 	"github.com/philippdormann/splat/internal/database"
@@ -56,6 +57,7 @@ func fullTestServer(t *testing.T) (*Server, *auth.Store, *teams.Store, *projects
 		Sessions:      sessions.NewStore(db),
 		APIKeys:       apikeys.NewStore(db),
 		Teams:         teamsStore,
+		Audit:         audit.NewStore(db),
 		RepoLinks:     repolink.NewStore(db),
 		DB:            db,
 		Logger:        logger,

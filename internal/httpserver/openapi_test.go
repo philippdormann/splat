@@ -31,6 +31,7 @@ func TestOpenAPICoversRoutes(t *testing.T) {
 		{"post", "/api/v1/users/{id}/2fa/reset"},
 		{"get", "/api/v1/settings/security"},
 		{"put", "/api/v1/settings/security"},
+		{"get", "/api/v1/audit-log"},
 		{"get", "/api/v1/me"},
 		{"get", "/api/v1/dashboard"},
 		{"get", "/api/v1/issues"},
