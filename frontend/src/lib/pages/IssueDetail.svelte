@@ -6,7 +6,7 @@
   import LevelBadge from "$lib/components/LevelBadge.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import Button from "$lib/components/button.svelte";
-  import { Copy, Check } from "lucide-svelte";
+  import { Copy, Check, CalendarClock, EyeOff, BellOff, Bell, Undo2 } from "lucide-svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import DateTime from "$lib/components/DateTime.svelte";
 
@@ -143,15 +143,15 @@
         <p class="mt-1 font-mono text-xs text-muted-foreground">{data.issue.exceptionType}: {data.issue.exceptionValue}</p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" on:click={() => (pendingAction = "resolved")}>Resolve</Button>
-        <Button size="sm" variant="outline" title="Resolve, but reopen automatically if the bug appears in a different release" on:click={() => (pendingAction = "resolved-next")}>Resolve in next release</Button>
-        <Button size="sm" variant="outline" on:click={() => (pendingAction = "ignored")}>Ignore</Button>
+        <Button size="sm" variant="outline" class="border-green-600/50 text-green-700 hover:bg-green-50 dark:border-green-500/40 dark:text-green-400 dark:hover:bg-green-950" on:click={() => (pendingAction = "resolved")}><Check class="h-3.5 w-3.5" /> Resolve</Button>
+        <Button size="sm" variant="outline" class="border-green-600/50 text-green-700 hover:bg-green-50 dark:border-green-500/40 dark:text-green-400 dark:hover:bg-green-950" title="Resolve, but reopen automatically if the bug appears in a different release" on:click={() => (pendingAction = "resolved-next")}><CalendarClock class="h-3.5 w-3.5" /> Resolve in next release</Button>
+        <Button size="sm" variant="outline" class="text-muted-foreground" on:click={() => (pendingAction = "ignored")}><EyeOff class="h-3.5 w-3.5" /> Ignore</Button>
         {#if data.issue.status === "muted"}
-          <Button size="sm" variant="outline" on:click={() => (pendingAction = "unresolved")}>Unmute</Button>
+          <Button size="sm" variant="outline" class="border-amber-600/50 text-amber-700 hover:bg-amber-50 dark:border-amber-500/40 dark:text-amber-400 dark:hover:bg-amber-950" on:click={() => (pendingAction = "unresolved")}><Bell class="h-3.5 w-3.5" /> Unmute</Button>
         {:else}
-          <Button size="sm" variant="outline" on:click={() => (pendingAction = "muted")}>Mute</Button>
+          <Button size="sm" variant="outline" class="border-amber-600/50 text-amber-700 hover:bg-amber-50 dark:border-amber-500/40 dark:text-amber-400 dark:hover:bg-amber-950" on:click={() => (pendingAction = "muted")}><BellOff class="h-3.5 w-3.5" /> Mute</Button>
         {/if}
-        <Button size="sm" variant="outline" on:click={() => (pendingAction = "unresolved")}>Reopen</Button>
+        <Button size="sm" variant="outline" class="border-blue-600/50 text-blue-700 hover:bg-blue-50 dark:border-blue-500/40 dark:text-blue-400 dark:hover:bg-blue-950" on:click={() => (pendingAction = "unresolved")}><Undo2 class="h-3.5 w-3.5" /> Reopen</Button>
       </div>
     </div>
 

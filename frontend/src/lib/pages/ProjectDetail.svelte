@@ -10,7 +10,7 @@
   import Dialog from "$lib/components/Dialog.svelte";
   import PlatformIcon from "$lib/components/PlatformIcon.svelte";
   import ProjectOverview from "$lib/pages/ProjectOverview.svelte";
-  import { ArrowLeft, Copy, RefreshCw, Trash2, Upload, Check, Rocket, FlaskConical } from "lucide-svelte";
+  import { ArrowLeft, Copy, RefreshCw, Trash2, Upload, Check, Rocket, FlaskConical, LayoutDashboard, Terminal, SlidersHorizontal, Users } from "lucide-svelte";
 
   export let id: string;
   export let navigate: (path: string) => void;
@@ -34,6 +34,18 @@
   let accessUsers: User[] = [];
   let grantUserId: number | null = null;
   let showGrant = false;
+  let confirmRevoke: { id: number; username: string } | null = null;
+
+  const ptabs = [
+    { id: "overview", label: "Overview", icon: LayoutDashboard },
+    { id: "setup", label: "Setup", icon: Terminal },
+    { id: "settings", label: "Settings", icon: SlidersHorizontal },
+    { id: "sourcemaps", label: "Source maps", icon: Upload },
+    { id: "access", label: "Access", icon: Users, adminOnly: true },
+  ];
+  let ptab = "overview";
+  $: visiblePtabs = ptabs.filter((t) => !t.adminOnly || isAdmin);
+  $: if (!visiblePtabs.some((t) => t.id === ptab)) ptab = "overview";
 
   async function loadAccess() {
     try {
@@ -62,12 +74,16 @@
     }
   }
 
-  async function revokeAccess(userId: number) {
+  async function revokeAccess() {
+    if (!confirmRevoke) return;
     try {
-      await api.revokeProjectMember(id, userId);
+      await api.revokeProjectMember(id, confirmRevoke.id);
       access = await api.projectAccess(id);
+      toast.success("Access revoked.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not revoke access.");
+    } finally {
+      confirmRevoke = null;
     }
   }
 
@@ -253,6 +269,20 @@
       onCancel={() => { if (!rotateBusy) confirmRotate = false; }}
     />
 
+    <div class="flex flex-col gap-4 md:flex-row">
+      <nav aria-label="Project sections" class="flex shrink-0 gap-1 overflow-x-auto md:w-48 md:flex-col">
+        {#each visiblePtabs as t}
+          <button
+            class={"flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors " + (ptab === t.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
+            on:click={() => (ptab = t.id)}
+          >
+            <svelte:component this={t.icon} class="h-4 w-4" />
+            {t.label}
+          </button>
+        {/each}
+      </nav>
+      <div class="min-w-0 flex-1 space-y-4">
+        {#if ptab === "overview"}
     <Card cls="space-y-2 p-4">
       <p class="text-sm font-medium">DSN
         {#if rotated}<span class="ml-2 inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700 dark:bg-green-900 dark:text-green-300"><Check class="h-3 w-3" /> Rotated</span>{/if}
@@ -266,13 +296,13 @@
     </Card>
 
     <ProjectOverview projectId={id} {navigate} />
-
+        {:else if ptab === "setup"}
     <Card cls="p-4">
       <p class="mb-2 text-sm font-medium">Setup — {data.platformLabel}</p>
       <p class="text-xs text-muted-foreground">{data.platformInstall}</p>
       <pre class="mt-2 overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs">{data.platformSnippet}</pre>
     </Card>
-
+        {:else if ptab === "settings"}
     <Card cls="p-4">
       <form on:submit={save} class="space-y-3">
         <p class="text-sm font-medium">Settings</p>
@@ -291,7 +321,7 @@
         <Button type="submit" size="sm">Save</Button>
       </form>
     </Card>
-
+        {:else if ptab === "sourcemaps"}
     <Card cls="p-4">
       <div class="space-y-3">
         <p class="text-sm font-medium">Source maps</p>
@@ -316,7 +346,7 @@
         {/if}
       </div>
     </Card>
-
+        {:else if ptab === "access"}
     {#if isAdmin && access}
       <Card cls="p-4">
         <div class="space-y-3">
@@ -328,7 +358,7 @@
               {#each access.memberIds as uid}
                 <span class="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs">
                   {accessUsername(uid)}
-                  <button class="text-muted-foreground hover:text-foreground" aria-label="Revoke {accessUsername(uid)}" on:click={() => revokeAccess(uid)}>✕</button>
+                  <button class="text-muted-foreground hover:text-foreground" aria-label="Revoke {accessUsername(uid)}" on:click={() => (confirmRevoke = { id: uid, username: accessUsername(uid) })}>✕</button>
                 </span>
               {:else}
                 <span class="text-xs text-muted-foreground">No direct grants.</span>
@@ -340,12 +370,12 @@
             {#if showGrant}
               <Dialog open={true} title="Grant project access" onClose={() => (showGrant = false)}>
                 <div class="space-y-3">
-                  <p class="text-xs text-muted-foreground">The user sees this project's dashboard, issues, and events. Team grants are managed under Settings → Users & Teams.</p>
+                  <p class="text-xs text-muted-foreground">The user sees this project's dashboard, issues, and events. Admins already have access everywhere; team grants are managed under Settings → Users & Teams.</p>
                   <div class="space-y-1">
                     <label class="text-xs">User</label>
                     <select class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={grantUserId}>
                       <option value={null}>Pick a user…</option>
-                      {#each accessUsers.filter((u) => !(access?.memberIds ?? []).includes(u.id)) as u}<option value={u.id}>{u.username} ({u.role})</option>{/each}
+                      {#each accessUsers.filter((u) => u.role !== "admin" && !(access?.memberIds ?? []).includes(u.id)) as u}<option value={u.id}>{u.username}</option>{/each}
                     </select>
                   </div>
                   <div class="flex gap-2">
@@ -355,6 +385,14 @@
                 </div>
               </Dialog>
             {/if}
+            <ConfirmDialog
+              open={confirmRevoke !== null}
+              title={confirmRevoke ? `Revoke ${confirmRevoke.username}'s access?` : ""}
+              description={`“${confirmRevoke?.username}” immediately loses this project's dashboard, issues, and events. Team grants are unaffected.`}
+              confirmLabel="Revoke"
+              onConfirm={revokeAccess}
+              onCancel={() => (confirmRevoke = null)}
+            />
           </div>
           <div>
             <p class="text-xs text-muted-foreground">Teams ({access.teams.length})</p>
@@ -369,5 +407,8 @@
         </div>
       </Card>
     {/if}
+        {/if}
+      </div>
+    </div>
   </div>
 {/if}

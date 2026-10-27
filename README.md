@@ -360,9 +360,9 @@ are binary - there are no per-project roles. Everything else follows:
   project create/delete.
 - `ERRGOTRACK_ADMIN_USERNAME`/`ERRGOTRACK_ADMIN_PASSWORD` bootstrap the
   first admin only when no users exist. Create the rest in the UI.
-- Safety guards: the last user can't be deleted, the last admin can't be
-  demoted, and admins can't delete their own account out from under their
-  session.
+- Safety guards: the last user can't be deleted, admins can't be demoted
+  (or change their own role), and admins can't delete their own account
+  out from under their session.
 
 ## Benchmark
 
