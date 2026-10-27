@@ -175,3 +175,75 @@ func TestSparkline24hBucketsByHourAndZeroFillsGaps(t *testing.T) {
 		t.Fatalf("expected the most recent bucket to hold the 2 same-hour events, got %d (%v)", counts[23], counts)
 	}
 }
+
+func TestUpsertMutedIssueStaysMuted(t *testing.T) {
+	db, projectID := newTestDB(t)
+	store := NewStore(db)
+	ctx := context.Background()
+
+	r1, _ := store.Upsert(ctx, projectID, "fp-mute", "t", "T", "v", "c", "error", "production", "", time.Now())
+	if err := store.SetMuted(r1.Issue.ID, time.Time{}); err != nil {
+		t.Fatalf("mute: %v", err)
+	}
+
+	r2, err := store.Upsert(ctx, projectID, "fp-mute", "t", "T", "v", "c", "error", "production", "", time.Now())
+	if err != nil {
+		t.Fatalf("upsert on muted issue: %v", err)
+	}
+	if r2.Issue.Status != StatusMuted {
+		t.Fatalf("muted issues should not auto-reopen, got status %q", r2.Issue.Status)
+	}
+	if r2.Reopened {
+		t.Fatal("muted upsert must not report reopened")
+	}
+	if r2.Issue.EventCount != 2 {
+		t.Fatalf("event count should still increment while muted, got %d", r2.Issue.EventCount)
+	}
+}
+
+func TestUpsertExpiredMuteUnmutes(t *testing.T) {
+	db, projectID := newTestDB(t)
+	store := NewStore(db)
+	ctx := context.Background()
+
+	r1, _ := store.Upsert(ctx, projectID, "fp-mute-exp", "t", "T", "v", "c", "error", "production", "", time.Now())
+	past := time.Now().Add(-time.Hour)
+	if err := store.SetMuted(r1.Issue.ID, past); err != nil {
+		t.Fatalf("mute: %v", err)
+	}
+
+	r2, err := store.Upsert(ctx, projectID, "fp-mute-exp", "t", "T", "v", "c", "error", "production", "", time.Now())
+	if err != nil {
+		t.Fatalf("upsert after mute expiry: %v", err)
+	}
+	if r2.Issue.Status != StatusUnresolved {
+		t.Fatalf("expired mute should unmute, got status %q", r2.Issue.Status)
+	}
+	if !r2.Reopened {
+		t.Fatal("lapsed mute should report reopened so rules can alert")
+	}
+	if !r2.Issue.MutedUntil.IsZero() {
+		t.Fatalf("muted_until should be cleared, got %v", r2.Issue.MutedUntil)
+	}
+}
+
+func TestSetStatusClearsMute(t *testing.T) {
+	db, projectID := newTestDB(t)
+	store := NewStore(db)
+	ctx := context.Background()
+
+	r1, _ := store.Upsert(ctx, projectID, "fp-mute-clr", "t", "T", "v", "c", "error", "production", "", time.Now())
+	if err := store.SetMuted(r1.Issue.ID, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("mute: %v", err)
+	}
+	if err := store.SetStatus(r1.Issue.ID, StatusResolved); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	got, err := store.Get(r1.Issue.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status != StatusResolved || !got.MutedUntil.IsZero() {
+		t.Fatalf("resolve should clear mute, got %+v", got)
+	}
+}

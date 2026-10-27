@@ -271,6 +271,7 @@ func (h *Handler) ingestEvent(ctx context.Context, project *projects.Project, ev
 		EventCount:    result.Issue.EventCount,
 		IsNew:         result.IsNew,
 		Reopened:      result.Reopened,
+		Status:        string(result.Issue.Status),
 		Timestamp:     ts,
 		IssueURL:      fmt.Sprintf("%s/issues/%d", h.PublicURL, result.Issue.ID),
 	})

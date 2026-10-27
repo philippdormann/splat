@@ -537,6 +537,10 @@ type AlertEvent struct {
 	EventCount    int64
 	IsNew         bool
 	Reopened      bool
+	// Status is the issue's status after this event was grouped. Muted and
+	// ignored issues never notify - not on new occurrences, not on
+	// thresholds: silenced means silenced.
+	Status        string
 	Timestamp     time.Time
 	IssueURL      string
 }
@@ -547,6 +551,9 @@ type AlertEvent struct {
 // should interrupt ingestion - failures are logged and swallowed, since a
 // missed alert is recoverable but a dropped event is not.
 func (s *Store) Evaluate(ctx context.Context, e AlertEvent) {
+	if e.Status == "muted" || e.Status == "ignored" {
+		return
+	}
 	rules, err := s.Rules()
 	if err != nil {
 		s.logger.Error("load notification rules", "error", err)

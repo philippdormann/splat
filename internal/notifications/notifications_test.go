@@ -336,3 +336,22 @@ func TestGenericChannelFanout(t *testing.T) {
 		t.Fatalf("want generic in %v", channels)
 	}
 }
+
+func TestEvaluateSkipsMutedAndIgnored(t *testing.T) {
+	store, projectID, issueID := newTestStore(t)
+	if _, err := store.CreateRule(Rule{Name: "threshold", NotifyThreshold: 5, CooldownSeconds: 0}); err != nil {
+		t.Fatalf("create rule: %v", err)
+	}
+	for _, status := range []string{"muted", "ignored"} {
+		// Event count hits the threshold - would fire on any other status.
+		store.Evaluate(context.Background(), AlertEvent{IssueID: issueID, ProjectID: projectID, IsNew: false, Reopened: false, EventCount: 5, Status: status, Timestamp: time.Now()})
+		if n := pendingCount(t, store); n != 0 {
+			t.Fatalf("status %q must never notify, got %d queued", status, n)
+		}
+	}
+	// Sanity: the same threshold fires for unresolved issues.
+	store.Evaluate(context.Background(), AlertEvent{IssueID: issueID, ProjectID: projectID, IsNew: false, Reopened: false, EventCount: 5, Status: "unresolved", Timestamp: time.Now()})
+	if n := pendingCount(t, store); n == 0 {
+		t.Fatal("threshold should fire for unresolved issues")
+	}
+}

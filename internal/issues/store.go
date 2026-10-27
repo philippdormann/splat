@@ -18,6 +18,7 @@ const (
 	StatusUnresolved Status = "unresolved"
 	StatusResolved   Status = "resolved"
 	StatusIgnored    Status = "ignored"
+	StatusMuted      Status = "muted"
 )
 
 type Issue struct {
@@ -36,6 +37,9 @@ type Issue struct {
 	LastSeen       time.Time
 	Environment    string
 	Release        string
+	// MutedUntil is set only while Status is muted; zero means an
+	// indefinite mute. A new event past the timestamp unmutes the issue.
+	MutedUntil time.Time
 }
 
 var ErrNotFound = errors.New("issue not found")
@@ -56,7 +60,10 @@ type UpsertResult struct {
 // Upsert groups one incoming event into an issue: creates a new issue on
 // first occurrence of a fingerprint, otherwise bumps the existing issue's
 // counters. A resolved issue that sees a new occurrence is reopened; an
-// ignored issue stays ignored (that's the point of ignoring it).
+// ignored issue stays ignored (that's the point of ignoring it). A muted
+// issue stays muted - unless its mute expired, in which case the event
+// unmutes it back to unresolved (reported as reopened so alert rules can
+// fire on the renewed activity).
 //
 // On SQLite runs under BEGIN IMMEDIATE so concurrent ingestion requests
 // serialize on SQLite's single writer instead of racing a read-then-write.
@@ -86,6 +93,38 @@ func (s *Store) Upsert(ctx context.Context, projectID int64, fingerprint string,
 	return issue, nil
 }
 
+// muteExpired reports whether a mute timestamp has lapsed as of now. Empty
+// or unparseable means an indefinite (or corrupt, fail-quiet) mute: never
+// expires, the safe direction for a silencing feature.
+func muteExpired(mutedUntil string, now time.Time) bool {
+	if mutedUntil == "" {
+		return false
+	}
+	until, err := time.Parse(time.RFC3339Nano, mutedUntil)
+	if err != nil {
+		return false
+	}
+	return !until.After(now)
+}
+
+// nextStatus resolves the status transition for a new occurrence of an
+// existing issue, shared by both upsert paths.
+func nextStatus(status, mutedUntil string, seenAt time.Time) (newStatus string, mutedOut string, reopened bool) {
+	newStatus, mutedOut = status, mutedUntil
+	switch Status(status) {
+	case StatusResolved:
+		newStatus = string(StatusUnresolved)
+		reopened = true
+	case StatusMuted:
+		if muteExpired(mutedUntil, seenAt) {
+			newStatus = string(StatusUnresolved)
+			mutedOut = ""
+			reopened = true
+		}
+	}
+	return newStatus, mutedOut, reopened
+}
+
 // upsertPostgres is the Postgres variant of Upsert: one transaction, row
 // lock on the matching issue when it exists, INSERT ... RETURNING id when
 // it does not.
@@ -97,7 +136,8 @@ func (s *Store) upsertPostgres(ctx context.Context, projectID int64, fingerprint
 	seenStr := seenAt.UTC().Format(time.RFC3339Nano)
 	var id int64
 	var status string
-	err = tx.QueryRowContext(ctx, `SELECT id, status FROM issues WHERE project_id = ? AND fingerprint = ? FOR UPDATE`, projectID, fingerprint).Scan(&id, &status)
+	var mutedUntil string
+	err = tx.QueryRowContext(ctx, `SELECT id, status, muted_until FROM issues WHERE project_id = ? AND fingerprint = ? FOR UPDATE`, projectID, fingerprint).Scan(&id, &status, &mutedUntil)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		var newID int64
@@ -122,24 +162,20 @@ func (s *Store) upsertPostgres(ctx context.Context, projectID int64, fingerprint
 		tx.Rollback()
 		return nil, fmt.Errorf("lookup issue: %w", err)
 	}
-	newStatus := status
-	reopened := false
-	if Status(status) == StatusResolved {
-		newStatus = string(StatusUnresolved)
-		reopened = true
-	}
+	newStatus, mutedOut, reopened := nextStatus(status, mutedUntil, seenAt)
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE issues SET
 			event_count = event_count + 1,
 			last_seen = ?,
 			status = ?,
+			muted_until = ?,
 			title = ?,
 			exception_value = ?,
 			culprit = ?,
 			environment = ?,
 			release = ?
 		WHERE id = ?`,
-		seenStr, newStatus, title, excValue, culprit, environment, release, id); err != nil {
+		seenStr, newStatus, mutedOut, title, excValue, culprit, environment, release, id); err != nil {
 		tx.Rollback()
 		return nil, fmt.Errorf("update issue: %w", err)
 	}
@@ -158,9 +194,10 @@ func (s *Store) upsertPostgres(ctx context.Context, projectID int64, fingerprint
 func (s *Store) upsertTx(ctx context.Context, conn *database.Conn, projectID int64, fingerprint string, title, excType, excValue, culprit, level, environment, release string, seenAt time.Time) (*UpsertResult, error) {
 	var id int64
 	var status string
+	var mutedUntil string
 	seenStr := seenAt.UTC().Format(time.RFC3339Nano)
 
-	err := conn.QueryRowContext(ctx, `SELECT id, status FROM issues WHERE project_id = ? AND fingerprint = ?`, projectID, fingerprint).Scan(&id, &status)
+	err := conn.QueryRowContext(ctx, `SELECT id, status, muted_until FROM issues WHERE project_id = ? AND fingerprint = ?`, projectID, fingerprint).Scan(&id, &status, &mutedUntil)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		res, err := conn.ExecContext(ctx, `
@@ -184,25 +221,21 @@ func (s *Store) upsertTx(ctx context.Context, conn *database.Conn, projectID int
 		return nil, fmt.Errorf("lookup issue: %w", err)
 	}
 
-	newStatus := status
-	reopened := false
-	if Status(status) == StatusResolved {
-		newStatus = string(StatusUnresolved)
-		reopened = true
-	}
+	newStatus, mutedOut, reopened := nextStatus(status, mutedUntil, seenAt)
 
 	_, err = conn.ExecContext(ctx, `
 		UPDATE issues SET
 			event_count = event_count + 1,
 			last_seen = ?,
 			status = ?,
+			muted_until = ?,
 			title = ?,
 			exception_value = ?,
 			culprit = ?,
 			environment = ?,
 			release = ?
 		WHERE id = ?`,
-		seenStr, newStatus, title, excValue, culprit, environment, release, id)
+		seenStr, newStatus, mutedOut, title, excValue, culprit, environment, release, id)
 	if err != nil {
 		return nil, fmt.Errorf("update issue: %w", err)
 	}
@@ -214,18 +247,21 @@ func (s *Store) upsertTx(ctx context.Context, conn *database.Conn, projectID int
 	return &UpsertResult{Issue: issue, IsNew: false, Reopened: reopened}, nil
 }
 
-const selectCols = `id, project_id, fingerprint, title, exception_type, exception_value, culprit, level, status, event_count, user_count, first_seen, last_seen, environment, release`
+const selectCols = `id, project_id, fingerprint, title, exception_type, exception_value, culprit, level, status, event_count, user_count, first_seen, last_seen, environment, release, muted_until`
 
 func scan(row interface{ Scan(...any) error }) (*Issue, error) {
 	var iss Issue
-	var firstSeen, lastSeen, status string
+	var firstSeen, lastSeen, status, mutedUntil string
 	if err := row.Scan(&iss.ID, &iss.ProjectID, &iss.Fingerprint, &iss.Title, &iss.ExceptionType, &iss.ExceptionValue,
-		&iss.Culprit, &iss.Level, &status, &iss.EventCount, &iss.UserCount, &firstSeen, &lastSeen, &iss.Environment, &iss.Release); err != nil {
+		&iss.Culprit, &iss.Level, &status, &iss.EventCount, &iss.UserCount, &firstSeen, &lastSeen, &iss.Environment, &iss.Release, &mutedUntil); err != nil {
 		return nil, err
 	}
 	iss.Status = Status(status)
 	iss.FirstSeen, _ = time.Parse(time.RFC3339Nano, firstSeen)
 	iss.LastSeen, _ = time.Parse(time.RFC3339Nano, lastSeen)
+	if mutedUntil != "" {
+		iss.MutedUntil, _ = time.Parse(time.RFC3339Nano, mutedUntil)
+	}
 	return &iss, nil
 }
 
@@ -372,7 +408,22 @@ func (s *Store) Sparkline24h(ids []int64) (map[int64][]int64, error) {
 }
 
 func (s *Store) SetStatus(id int64, status Status) error {
-	_, err := s.db.Exec(`UPDATE issues SET status = ? WHERE id = ?`, status, id)
+	if status == StatusMuted {
+		return s.SetMuted(id, time.Time{})
+	}
+	// Leaving muted clears the mute timestamp; any other transition leaves
+	// it alone (it is already '' outside muted).
+	_, err := s.db.Exec(`UPDATE issues SET status = ?, muted_until = '' WHERE id = ?`, status, id)
+	return err
+}
+
+// SetMuted mutes an issue, optionally until a timestamp (zero = forever).
+func (s *Store) SetMuted(id int64, until time.Time) error {
+	mutedUntil := ""
+	if !until.IsZero() {
+		mutedUntil = until.UTC().Format(time.RFC3339Nano)
+	}
+	_, err := s.db.Exec(`UPDATE issues SET status = 'muted', muted_until = ? WHERE id = ?`, mutedUntil, id)
 	return err
 }
 
@@ -381,7 +432,9 @@ func (s *Store) BulkSetStatus(ids []int64, status Status) error {
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare(`UPDATE issues SET status = ? WHERE id = ?`)
+	// Bulk mute is always indefinite; any other bulk transition clears a
+	// possibly lingering mute timestamp.
+	stmt, err := tx.Prepare(`UPDATE issues SET status = ?, muted_until = '' WHERE id = ?`)
 	if err != nil {
 		tx.Rollback()
 		return err

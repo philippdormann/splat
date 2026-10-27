@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"errgotrack/internal/apikeys"
 	"errgotrack/internal/auth"
@@ -369,20 +370,38 @@ func (s *Server) apiIssueSetStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Status string `json:"status"`
+		Status     string `json:"status"`
+		MutedUntil string `json:"mutedUntil"`
 	}
 	if !decodeJSON(r, &input) {
 		// Also accept form posts for curl convenience.
 		_ = r.ParseForm()
 		input.Status = r.FormValue("status")
+		input.MutedUntil = r.FormValue("muted_until")
 	}
 	status := issues.Status(strings.ToLower(input.Status))
-	if status != issues.StatusResolved && status != issues.StatusIgnored && status != issues.StatusUnresolved {
+	if status != issues.StatusResolved && status != issues.StatusIgnored && status != issues.StatusUnresolved && status != issues.StatusMuted {
 		writeAPIError(w, http.StatusBadRequest, "invalid status")
 		return
 	}
 	if issue, err := s.Issues.Get(id); err != nil || !s.authenticate(r).inProject(issue.ProjectID) {
 		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if status == issues.StatusMuted {
+		var until time.Time
+		if input.MutedUntil != "" {
+			var err error
+			until, err = time.Parse(time.RFC3339, input.MutedUntil)
+			if err != nil {
+				writeAPIError(w, http.StatusBadRequest, "mutedUntil must be RFC3339")
+				return
+			}
+		}
+		if err := s.Issues.SetMuted(id, until); err != nil {
+			s.Logger.Error("set issue muted", "error", err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
 	}
 	if err := s.Issues.SetStatus(id, status); err != nil {
@@ -406,7 +425,7 @@ func (s *Server) apiIssuesBulk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status := issues.Status(strings.ToLower(input.Status))
-	if status != issues.StatusResolved && status != issues.StatusIgnored && status != issues.StatusUnresolved {
+	if status != issues.StatusResolved && status != issues.StatusIgnored && status != issues.StatusUnresolved && status != issues.StatusMuted {
 		writeAPIError(w, http.StatusBadRequest, "invalid status")
 		return
 	}
@@ -419,6 +438,10 @@ func (s *Server) apiIssuesBulk(w http.ResponseWriter, r *http.Request) {
 }
 
 func issueJSON(iss *issues.Issue) map[string]any {
+	var mutedUntil any
+	if !iss.MutedUntil.IsZero() {
+		mutedUntil = iss.MutedUntil
+	}
 	return map[string]any{
 		"id": iss.ID, "title": iss.Title,
 		"exceptionType": iss.ExceptionType, "exceptionValue": iss.ExceptionValue,
@@ -426,6 +449,7 @@ func issueJSON(iss *issues.Issue) map[string]any {
 		"eventCount": iss.EventCount, "userCount": iss.UserCount,
 		"firstSeen": iss.FirstSeen, "lastSeen": iss.LastSeen,
 		"environment": iss.Environment, "release": iss.Release,
+		"mutedUntil": mutedUntil,
 	}
 }
 

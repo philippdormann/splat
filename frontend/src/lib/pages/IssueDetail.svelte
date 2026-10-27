@@ -11,6 +11,7 @@
 
   let data: IssueDetail | null = null;
   let error = "";
+  let muteFor = "forever";
 
   async function load() {
     try {
@@ -23,6 +24,22 @@
   async function setStatus(status: string) {
     await api.setIssueStatus(id, status);
     await load();
+  }
+
+  async function mute() {
+    let mutedUntil: string | undefined;
+    if (muteFor !== "forever") {
+      const hours = { "24h": 24, "7d": 24 * 7, "30d": 24 * 30 }[muteFor] ?? 0;
+      if (hours > 0) mutedUntil = new Date(Date.now() + hours * 3600 * 1000).toISOString();
+    }
+    await api.setIssueStatus(id, "muted", mutedUntil);
+    await load();
+  }
+
+  function formatMutedUntil(iso: string | null): string {
+    if (!iso) return "muted indefinitely";
+    const d = new Date(iso);
+    return `muted until ${d.toLocaleString()}`;
   }
 
   onMount(load);
@@ -39,14 +56,26 @@
         <div class="flex flex-wrap items-center gap-2">
           <LevelBadge level={data.issue.level} />
           <StatusBadge status={data.issue.status} />
+          {#if data.issue.status === "muted"}<span class="text-xs text-muted-foreground">{formatMutedUntil(data.issue.mutedUntil)}</span>{/if}
           <span class="text-xs text-muted-foreground">{data.project.name} · {data.issue.environment} · {data.issue.eventCount} events</span>
         </div>
         <h2 class="mt-2 text-xl font-bold">{data.issue.title}</h2>
         <p class="mt-1 font-mono text-xs text-muted-foreground">{data.issue.exceptionType}: {data.issue.exceptionValue}</p>
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="outline" on:click={() => setStatus("resolved")}>Resolve</Button>
         <Button size="sm" variant="outline" on:click={() => setStatus("ignored")}>Ignore</Button>
+        {#if data.issue.status === "muted"}
+          <Button size="sm" variant="outline" on:click={() => setStatus("unresolved")}>Unmute</Button>
+        {:else}
+          <select class="h-8 rounded-md border border-input bg-background px-2 text-xs" bind:value={muteFor} aria-label="Mute duration">
+            <option value="forever">Mute forever</option>
+            <option value="24h">Mute 24 hours</option>
+            <option value="7d">Mute 7 days</option>
+            <option value="30d">Mute 30 days</option>
+          </select>
+          <Button size="sm" variant="outline" on:click={mute}>Mute</Button>
+        {/if}
         <Button size="sm" variant="outline" on:click={() => setStatus("unresolved")}>Reopen</Button>
       </div>
     </div>

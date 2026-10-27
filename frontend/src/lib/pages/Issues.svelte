@@ -64,6 +64,7 @@
       <div class="flex gap-2">
         <Button size="sm" variant="outline" on:click={() => bulk("resolved")}>Resolve ({selected.size})</Button>
         <Button size="sm" variant="outline" on:click={() => bulk("ignored")}>Ignore ({selected.size})</Button>
+        <Button size="sm" variant="outline" on:click={() => bulk("muted")}>Mute ({selected.size})</Button>
       </div>
     {/if}
   </div>
@@ -79,6 +80,7 @@
       <option value="unresolved">Unresolved</option>
       <option value="resolved">Resolved</option>
       <option value="ignored">Ignored</option>
+      <option value="muted">Muted</option>
     </select>
     <select class="h-9 rounded-md border border-input bg-background px-2 text-sm" bind:value={sort} on:change={() => { page = 1; load(); }}>
       <option value="">Sort: last seen</option>
