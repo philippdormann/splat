@@ -110,7 +110,7 @@
       "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors " +
       (active
         ? "bg-primary text-primary-foreground"
-        : "text-muted-foreground hover:bg-muted hover:text-foreground")
+        : "text-zinc-400 hover:bg-white/10 hover:text-white")
     );
   }
 </script>
@@ -127,14 +127,14 @@
     {#if sidebarOpen}
       <button aria-label="Close menu" class="fixed inset-0 z-10 bg-black/50 md:hidden" on:click={() => (sidebarOpen = false)} />
     {/if}
-    <aside class={`fixed inset-y-0 left-0 z-20 w-60 border-r border-border bg-muted/50 p-4 transition-transform md:static md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
-      <div class="mb-4 flex items-center gap-2 font-semibold"><Bug class="h-5 w-5" /> Errgotrack</div>
+    <aside class={`fixed inset-y-0 left-0 z-20 flex w-60 flex-col border-r border-zinc-800 bg-zinc-950 p-4 text-zinc-200 transition-transform md:static md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+      <div class="mb-4 flex items-center gap-2 font-semibold text-white"><Bug class="h-5 w-5 text-primary-foreground bg-primary rounded-md p-0.5" /> Errgotrack</div>
       <nav class="space-y-1">
         <a href="/" class={navClass(path === "/")} on:click|preventDefault={() => navigate("/")}><LayoutDashboard class="h-4 w-4" /> Dashboard</a>
         <a href="/issues" class={navClass(path.startsWith("/issues"))} on:click|preventDefault={() => navigate("/issues")}><TriangleAlert class="h-4 w-4" /> Issues</a>
         <DropdownMenu.Root>
           <DropdownMenu.Trigger
-            class={path.startsWith("/projects") ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}
+            class={path.startsWith("/projects") ? "bg-primary text-primary-foreground" : "text-zinc-400 hover:bg-white/10 hover:text-white"}
             onclick={loadNavProjects}
           >
             <Folder class="h-4 w-4" />
@@ -166,7 +166,7 @@
           <a href="/settings" class={navClass(path === "/settings")} on:click|preventDefault={() => navigate("/settings")}><Settings class="h-4 w-4" /> Settings</a>
         {/if}
       </nav>
-      <div class="mt-8">
+      <div class="mt-auto pt-4">
         <button class={navClass(false)} on:click={logout}><LogOut class="h-4 w-4" /> Log out</button>
       </div>
     </aside>
