@@ -64,6 +64,7 @@
             <th class="p-3 text-right font-medium">Events</th>
             <th class="p-3 text-right font-medium">Issues</th>
             <th class="p-3 text-right font-medium">Sessions</th>
+            <th class="p-3 text-right font-medium">Traces</th>
             <th class="p-3 text-right font-medium">Crash-free</th>
             <th class="p-3 text-right font-medium">Last seen</th>
           </tr>
@@ -77,6 +78,7 @@
               <td class="p-3 text-right tabular-nums">{r.events.toLocaleString()}</td>
               <td class="p-3 text-right tabular-nums">{r.issues.toLocaleString()}</td>
               <td class="p-3 text-right tabular-nums">{r.sessions > 0 ? r.sessions.toLocaleString() : "—"}</td>
+              <td class="p-3 text-right tabular-nums">{r.transactions > 0 ? r.transactions.toLocaleString() : "—"}</td>
               <td class="p-3 text-right tabular-nums">
                 {#if r.sessions > 0}
                   <span class={tier(r.crashFreeSessions)}>{r.crashFreeSessions.toFixed(1)}%</span>

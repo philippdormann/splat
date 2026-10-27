@@ -327,6 +327,7 @@ type ReleaseHealth struct {
 	Issues            int64   `json:"issues"`
 	Sessions          int64   `json:"sessions"`
 	Users             int64   `json:"users"`
+	Transactions      int64   `json:"transactions"`
 	CrashFreeSessions float64 `json:"crashFreeSessions"`
 	CrashFreeUsers    float64 `json:"crashFreeUsers"`
 	FirstSeen         string  `json:"firstSeen"`
@@ -402,6 +403,36 @@ func (s *Store) Releases(projectID int64) ([]ReleaseHealth, error) {
 	}
 	srows.Close()
 	if err := srows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Transactions (distributed traces) also record their release.
+	trows, err := db.Query(`
+		SELECT COALESCE(NULLIF(release, ''), '(none)'), COUNT(*),
+			MIN(timestamp), MAX(timestamp)
+		FROM transactions WHERE project_id = ? GROUP BY 1`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	for trows.Next() {
+		var release, first, last string
+		var n int64
+		if err := trows.Scan(&release, &n, &first, &last); err != nil {
+			trows.Close()
+			return nil, err
+		}
+		r := touch(release)
+		r.Transactions += n
+		if first != "" && (r.FirstSeen == "" || first < r.FirstSeen) {
+			r.FirstSeen = first
+		}
+		if last != "" && (r.LastSeen == "" || last > r.LastSeen) {
+			r.LastSeen = last
+			lastActivity[release] = last
+		}
+	}
+	trows.Close()
+	if err := trows.Err(); err != nil {
 		return nil, err
 	}
 

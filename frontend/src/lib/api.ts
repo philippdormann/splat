@@ -503,6 +503,7 @@ export interface ReleaseHealth {
   issues: number;
   sessions: number;
   users: number;
+  transactions: number;
   crashFreeSessions: number;
   crashFreeUsers: number;
   firstSeen: string;

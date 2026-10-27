@@ -159,6 +159,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/platforms", s.requireScope(s.apiPlatforms))
 	s.mux.HandleFunc("GET /api/v1/projects/{id}/overview", s.requireScope(s.apiProjectOverview))
 	s.mux.HandleFunc("GET /api/v1/projects/{id}/releases", s.requireScope(s.apiProjectReleases))
+	s.mux.HandleFunc("GET /api/v1/projects/{id}/logs", s.requireScope(s.apiProjectLogs))
+	s.mux.HandleFunc("GET /api/v1/projects/{id}/traces", s.requireScope(s.apiProjectTraces))
+	s.mux.HandleFunc("GET /api/v1/projects/{id}/traces/{traceId}", s.requireScope(s.apiProjectTraceDetail))
 	s.mux.HandleFunc("GET /api/v1/projects/{id}/sessions/summary", s.requireScope(s.apiProjectSessionSummary))
 	s.mux.HandleFunc("POST /api/v1/projects/{id}/test-event", s.requireScope(s.apiProjectTestEvent))
 
@@ -230,7 +233,7 @@ func (s *Server) routes() {
 		"GET /{$}", "GET /login",
 		"GET /issues", "GET /issues/{id}",
 		"GET /projects", "GET /projects/new", "GET /projects/{id}",
-		"GET /projects/{id}/releases",
+		"GET /projects/{id}/releases", "GET /projects/{id}/traces/{traceId}",
 		"GET /settings",
 	} {
 		s.mux.HandleFunc(route, s.serveSPA)
