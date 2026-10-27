@@ -47,6 +47,15 @@ command.
 - **Release health** - SDK session envelopes are stored and aggregated into
   crash-free sessions/users per release, with a releases view and session
   health trends. No APM/tracing backend required.
+- **Logs and traces from the same SDKs** - structured log records (`log`
+  items) are stored per project with level/search/trace filters, and
+  transaction items become browsable traces with span waterfalls, so the
+  `trace_id` on an issue opens the real local trace (plus logs in that
+  trace) instead of only linking out. Releases roll up events, sessions,
+  and transactions alike.
+- **Repository integration** - link a project to GitHub, GitLab, Gitea, or
+  Forgejo and file errgotrack issues there with one click (title/body
+  prefilled, backlink included), then track them as linked external issues.
 - **Notifications on Telegram, Slack, Discord, Microsoft Teams, Google
   Sheets, email, and generic webhooks** - configure any combination; each delivers independently through a durable
   retry queue, so one channel's outage never blocks or duplicates another's
@@ -393,7 +402,9 @@ notification formatting/retry/
 backoff/cooldowns across all channels and their independence from
 each other, retention deletion vs. issue summary preservation, and
 multi-user/team access scoping (grants, team grants, admin-only instance
-routes, 404-not-403 for ungranted projects), and
+routes, 404-not-403 for ungranted projects), log/transaction ingestion and
+per-trace assembly, forge issue creation against stub APIs for all four
+providers, and
 JSON-escaping of untrusted event data (a regression test serializes an issue
 with a `<script>` payload in the exception type/tags/project
 name through the JSON API and asserts it never appears unescaped - stored
@@ -465,8 +476,10 @@ your provider's snapshots as usual.
 
 ## What's deliberately not here
 
-- No performance tracing / APM, profiling, or session replay - this is an
-  error tracker. See Trace correlation above for linking out instead.
+- No APM (metrics, profiling, session replay, span search across projects)
+  - transactions and logs are ingested and viewable per project, but there
+  is no sampling, alerting, or aggregation on them. See Trace correlation
+  above for linking out instead.
 - No per-project roles or SSO - membership is binary (access or not) and
   auth is username + password with bcrypt hashes.
 
@@ -491,6 +504,10 @@ internal/telegram/ + internal/webhooks/   channel-specific formatting/delivery c
 internal/tracing/      trace_id -> external tracing backend URL correlation
 internal/auth/         users, instance roles, login sessions, CSRF
 internal/teams/        teams, memberships, project grants, access checks
+internal/logs/         structured SDK log records, level/search/trace queries
+internal/traces/       transactions and spans, per-trace assembly
+internal/forge/        GitHub/GitLab/Gitea/Forgejo issue APIs
+internal/repolink/     linked repos and external issue links (storage)
 internal/apikeys/      Bearer keys, scopes, expiry, rotation
 internal/sourcemaps/   upload + dependency-free v3 resolution
 internal/storage/      usage reporting, manual sweep + vacuum
