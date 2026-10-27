@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type ProjectDetail, type SourceMapMeta, type ProjectAccess, type User } from "$lib/api";
+  import { api, type ProjectDetail, type SourceMapMeta, type ProjectAccess, type User, type RepoConfig } from "$lib/api";
   import Card from "$lib/components/card.svelte";
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
@@ -12,7 +12,7 @@
   import ProjectOverview from "$lib/pages/ProjectOverview.svelte";
   import ProjectLogs from "$lib/pages/ProjectLogs.svelte";
   import ProjectTraces from "$lib/pages/ProjectTraces.svelte";
-  import { ArrowLeft, Copy, RefreshCw, Trash2, Upload, Check, Rocket, FlaskConical, LayoutDashboard, Terminal, SlidersHorizontal, Users, ScrollText, Activity } from "lucide-svelte";
+  import { ArrowLeft, Copy, RefreshCw, Trash2, Upload, Check, Rocket, FlaskConical, LayoutDashboard, Terminal, SlidersHorizontal, Users, ScrollText, Activity, GitBranch } from "lucide-svelte";
 
   export let id: string;
   export let navigate: (path: string) => void;
@@ -37,6 +37,10 @@
   let grantUserId: number | null = null;
   let showGrant = false;
   let confirmRevoke: { id: number; username: string } | null = null;
+  let repo: RepoConfig | null = null;
+  let repoForm = { provider: "github", baseUrl: "", owner: "", repo: "", token: "" };
+  let repoBusy = false;
+  let confirmUnlinkRepo = false;
 
   const ptabs = [
     { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -45,6 +49,7 @@
     { id: "sourcemaps", label: "Source maps", icon: Upload },
     { id: "logs", label: "Logs", icon: ScrollText },
     { id: "traces", label: "Traces", icon: Activity },
+    { id: "repository", label: "Repository", icon: GitBranch },
     { id: "access", label: "Access", icon: Users, adminOnly: true },
   ];
   let ptab = "overview";
@@ -55,6 +60,10 @@
     try {
       const me = await api.me();
       isAdmin = me.role === "admin";
+      repo = await api.projectRepo(id);
+      if (repo) {
+        repoForm = { provider: repo.provider, baseUrl: repo.baseUrl, owner: repo.owner, repo: repo.repo, token: "" };
+      }
       if (isAdmin) {
         const [a, u] = await Promise.all([api.projectAccess(id), api.users()]);
         access = a;
@@ -62,6 +71,46 @@
       }
     } catch {
       // Non-admins get 401 here; the card simply stays hidden.
+    }
+  }
+
+  async function saveRepo(e: Event) {
+    e.preventDefault();
+    repoBusy = true;
+    try {
+      repo = await api.saveProjectRepo(id, repoForm);
+      repoForm = { ...repoForm, token: "" };
+      toast.success("Repository linked.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save repository.");
+    } finally {
+      repoBusy = false;
+    }
+  }
+
+  async function testRepo() {
+    repoBusy = true;
+    try {
+      const r = await api.testProjectRepo(id);
+      if (r.ok) toast.success(r.message);
+      else toast.error(r.message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Connection test failed.");
+    } finally {
+      repoBusy = false;
+    }
+  }
+
+  async function unlinkRepo() {
+    try {
+      await api.deleteProjectRepo(id);
+      repo = null;
+      repoForm = { provider: "github", baseUrl: "", owner: "", repo: "", token: "" };
+      toast.success("Repository unlinked — existing issue links are kept.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not unlink repository.");
+    } finally {
+      confirmUnlinkRepo = false;
     }
   }
 
@@ -354,6 +403,53 @@
     <ProjectLogs projectId={id} {navigate} />
         {:else if ptab === "traces"}
     <ProjectTraces projectId={id} {navigate} />
+        {:else if ptab === "repository"}
+    <Card cls="p-4">
+      <div class="space-y-3">
+        <p class="text-sm font-medium">Repository</p>
+        <p class="text-xs text-muted-foreground">Link the codebase so issues can be filed as GitHub, GitLab, Gitea, or Forgejo issues. GitHub and GitLab work out of the box; Gitea/Forgejo need the instance base URL.</p>
+        {#if isAdmin}
+          <form on:submit={saveRepo} class="space-y-3">
+            <div class="grid grid-cols-2 gap-3">
+              <div class="space-y-1"><label class="text-xs">Provider</label>
+                <select class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={repoForm.provider}>
+                  <option value="github">GitHub</option>
+                  <option value="gitlab">GitLab</option>
+                  <option value="gitea">Gitea</option>
+                  <option value="forgejo">Forgejo</option>
+                </select>
+              </div>
+              <div class="space-y-1"><label class="text-xs">Base URL (blank = provider default)</label><Input bind:value={repoForm.baseUrl} placeholder="https://git.example.com" autocomplete="off" /></div>
+              <div class="space-y-1"><label class="text-xs">Owner / org</label><Input bind:value={repoForm.owner} placeholder="acme" autocomplete="off" /></div>
+              <div class="space-y-1"><label class="text-xs">Repository</label><Input bind:value={repoForm.repo} placeholder="webapp" autocomplete="off" /></div>
+              <div class="space-y-1"><label class="text-xs">API token {repo?.hasToken ? "(set — blank keeps it)" : ""}</label><Input type="password" bind:value={repoForm.token} placeholder={repo?.hasToken ? "leave blank to keep" : "token with issue write scope"} autocomplete="off" /></div>
+            </div>
+            <div class="flex gap-2">
+              <Button type="submit" size="sm" disabled={repoBusy}>Save</Button>
+              {#if repo}
+                <Button size="sm" variant="outline" disabled={repoBusy} on:click={testRepo}>Test connection</Button>
+                <Button size="sm" variant="outline" on:click={() => (confirmUnlinkRepo = true)}>Unlink</Button>
+              {/if}
+            </div>
+          </form>
+          {#if repo}
+            <p class="font-mono text-xs text-muted-foreground">Linked: {repo.provider} · {repo.slug} · {repo.effectiveBaseUrl}</p>
+          {/if}
+          <ConfirmDialog
+            open={confirmUnlinkRepo}
+            title="Unlink repository?"
+            description="Existing external-issue links stay on their issues; new issues just can't be filed until you link again."
+            confirmLabel="Unlink"
+            onConfirm={unlinkRepo}
+            onCancel={() => (confirmUnlinkRepo = false)}
+          />
+        {:else if repo}
+          <p class="font-mono text-xs text-muted-foreground">Linked: {repo.provider} · {repo.slug}</p>
+        {:else}
+          <p class="text-xs text-muted-foreground">No repository linked. An admin can link one here.</p>
+        {/if}
+      </div>
+    </Card>
         {:else if ptab === "access"}
     {#if isAdmin && access}
       <Card cls="p-4">

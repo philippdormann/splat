@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type IssueDetail } from "$lib/api";
+  import { api, type IssueDetail, type IssueLink } from "$lib/api";
   import Card from "$lib/components/card.svelte";
   import Input from "$lib/components/input.svelte";
   import LevelBadge from "$lib/components/LevelBadge.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import Button from "$lib/components/button.svelte";
-  import { Copy, Check, CalendarClock, EyeOff, BellOff, Bell, Undo2 } from "lucide-svelte";
+  import Dialog from "$lib/components/Dialog.svelte";
+  import { Copy, Check, CalendarClock, EyeOff, BellOff, Bell, Undo2, ExternalLink } from "lucide-svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import DateTime from "$lib/components/DateTime.svelte";
 
@@ -26,10 +27,17 @@
   let noteBusy = false;
   let confirmDeleteNote: number | null = null;
   let localSpans: number | null = null;
+  let links: IssueLink[] = [];
+  let showFileIssue = false;
+  let fileTitle = "";
+  let fileBody = "";
+  let fileBusy = false;
+  let confirmUnlink: IssueLink | null = null;
 
   async function load() {
     try {
       data = await api.issue(id, selectedEvent ?? undefined);
+      links = data.links ?? [];
       localSpans = null;
       if (data.traceId) {
         try {
@@ -41,6 +49,40 @@
       }
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load issue.";
+    }
+  }
+
+  function openFileDialog() {
+    if (!data) return;
+    fileTitle = data.issue.title;
+    fileBody = "";
+    showFileIssue = true;
+  }
+
+  async function fileIssue(e: Event) {
+    e.preventDefault();
+    if (!fileTitle.trim()) return;
+    fileBusy = true;
+    try {
+      const link = await api.createIssueLink(id, { title: fileTitle.trim(), body: fileBody });
+      links = [...links, link];
+      showFileIssue = false;
+    } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to file issue.";
+    } finally {
+      fileBusy = false;
+    }
+  }
+
+  async function unlinkIssue() {
+    if (!confirmUnlink) return;
+    try {
+      await api.deleteIssueLink(id, confirmUnlink.id);
+      links = links.filter((l) => l.id !== confirmUnlink?.id);
+    } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to unlink issue.";
+    } finally {
+      confirmUnlink = null;
     }
   }
 
@@ -325,6 +367,51 @@
       confirmLabel="Delete"
       onConfirm={deleteNote}
       onCancel={() => (confirmDeleteNote = null)}
+    />
+
+    <Card cls="p-4">
+      <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p class="text-sm font-medium">External issues ({links.length})</p>
+        <Button size="sm" variant="outline" on:click={openFileDialog}><ExternalLink class="h-3.5 w-3.5" /> File issue</Button>
+      </div>
+      {#if links.length}
+        <div class="mb-1 divide-y divide-border rounded-md border border-border">
+          {#each links as l}
+            <div class="flex flex-wrap items-center justify-between gap-2 p-2 text-xs">
+              <span class="min-w-0">
+                <a class="font-medium text-primary hover:underline" href={l.url} target="_blank" rel="noreferrer">{l.repo}#{l.number}</a>
+                <span class="text-muted-foreground"> · {l.provider}{l.title ? ` · ${l.title}` : ""}</span>
+              </span>
+              <Button size="sm" variant="ghost" on:click={() => (confirmUnlink = l)}>Unlink</Button>
+            </div>
+          {/each}
+        </div>
+        <p class="text-xs text-muted-foreground">Unlinking only removes the reference here — the forge issue itself is untouched.</p>
+      {:else}
+        <p class="text-xs text-muted-foreground">Not filed anywhere yet. Needs a repository linked on the project page first.</p>
+      {/if}
+    </Card>
+
+    {#if showFileIssue}
+      <Dialog open={true} title="File as external issue" onClose={() => (showFileIssue = false)}>
+        <form on:submit={fileIssue} class="space-y-3">
+          <div class="space-y-1"><label class="text-xs">Title</label><Input bind:value={fileTitle} /></div>
+          <div class="space-y-1"><label class="text-xs">Body (blank = summary + backlink)</label><textarea rows="6" bind:value={fileBody} placeholder="Leave blank for the default summary." class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" /></div>
+          <div class="flex gap-2">
+            <Button type="submit" size="sm" disabled={fileBusy || !fileTitle.trim()}>{fileBusy ? "Filing…" : "Create issue"}</Button>
+            <Button size="sm" variant="outline" on:click={() => (showFileIssue = false)}>Cancel</Button>
+          </div>
+        </form>
+      </Dialog>
+    {/if}
+
+    <ConfirmDialog
+      open={confirmUnlink !== null}
+      title="Unlink external issue?"
+      description={confirmUnlink ? `“${confirmUnlink.repo}#${confirmUnlink.number}” stays on the forge — only the reference here is removed.` : ""}
+      confirmLabel="Unlink"
+      onConfirm={unlinkIssue}
+      onCancel={() => (confirmUnlink = null)}
     />
 
     <Button variant="ghost" size="sm" on:click={() => navigate("/issues")}>← Back to issues</Button>

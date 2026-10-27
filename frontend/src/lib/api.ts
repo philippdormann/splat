@@ -138,6 +138,32 @@ export const api = {
   projectTrace: (id: number | string, traceId: string) =>
     req<TraceDetail>(`/api/v1/projects/${id}/traces/${encodeURIComponent(traceId)}`),
 
+  projectRepo: (id: number | string) =>
+    req<RepoConfig | null>(`/api/v1/projects/${id}/repo`),
+  saveProjectRepo: (id: number | string, input: { provider: string; baseUrl?: string; owner: string; repo: string; token?: string }) =>
+    req<RepoConfig>(`/api/v1/projects/${id}/repo`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+  deleteProjectRepo: (id: number | string) =>
+    req<{ ok: boolean }>(`/api/v1/projects/${id}/repo`, { method: "DELETE" }),
+  testProjectRepo: (id: number | string) =>
+    req<{ ok: boolean; message: string }>(`/api/v1/projects/${id}/repo/test`, {
+      method: "POST",
+      body: "{}",
+    }),
+
+  issueLinks: (id: number | string) => req<IssueLink[]>(`/api/v1/issues/${id}/links`),
+  createIssueLink: (id: number | string, input: { title?: string; body?: string }) =>
+    req<IssueLink>(`/api/v1/issues/${id}/links`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  deleteIssueLink: (id: number | string, linkId: number) =>
+    req<{ ok: boolean }>(`/api/v1/issues/${id}/links/${linkId}`, {
+      method: "DELETE",
+    }),
+
   projectSessionSummary: (id: number | string, period: string) =>
     req<SessionSummary>(`/api/v1/projects/${id}/sessions/summary?period=${encodeURIComponent(period)}`),
 
@@ -455,6 +481,7 @@ export interface IssueDetail {
   nextEventId: string | null;
   rawEvent: Record<string, unknown> | null;
   notes: IssueNote[];
+  links: IssueLink[];
   traceId: string;
   traceURL: string;
 }
@@ -683,4 +710,26 @@ export interface TraceDetail {
   transactions: TraceTransaction[];
   spans: TraceSpan[];
   logs: LogEntry[];
+}
+
+export interface RepoConfig {
+  provider: string;
+  baseUrl: string;
+  effectiveBaseUrl: string;
+  owner: string;
+  repo: string;
+  slug: string;
+  hasToken: boolean;
+  updatedAt: string;
+}
+
+export interface IssueLink {
+  id: number;
+  issueId: number;
+  provider: string;
+  repo: string;
+  number: number;
+  url: string;
+  title: string;
+  createdAt: string;
 }
