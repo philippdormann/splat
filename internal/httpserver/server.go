@@ -24,6 +24,7 @@ import (
 	"github.com/philippdormann/splat/internal/metrics"
 	"github.com/philippdormann/splat/internal/notifications"
 	"github.com/philippdormann/splat/internal/projects"
+	"github.com/philippdormann/splat/internal/quotas"
 	"github.com/philippdormann/splat/internal/repolink"
 	"github.com/philippdormann/splat/internal/retention"
 	"github.com/philippdormann/splat/internal/sessions"
@@ -50,6 +51,7 @@ type Server struct {
 	Sessions      *sessions.Store
 	Teams         *teams.Store
 	Audit         *audit.Store
+	Quotas        *quotas.Store
 	Logs          *logs.Store
 	Traces        *traces.Store
 	RepoLinks     *repolink.Store
@@ -90,6 +92,7 @@ func (s *Server) routes() {
 		Notifications: s.Notifications,
 		Logs:          s.Logs,
 		Traces:        s.Traces,
+		Quotas:        s.Quotas,
 		Metrics:       s.Metrics,
 		Logger:        s.Logger,
 		PublicURL:     s.PublicURL,
@@ -157,6 +160,8 @@ func (s *Server) routes() {
 	// other instance settings.
 	s.mux.HandleFunc("GET /api/v1/settings/security", s.requireInstance(s.apiSecurityGet))
 	s.mux.HandleFunc("PUT /api/v1/settings/security", s.requireInstance(s.apiSecuritySave))
+	s.mux.HandleFunc("GET /api/v1/settings/quotas", s.requireInstance(s.apiQuotasDefaultsGet))
+	s.mux.HandleFunc("PUT /api/v1/settings/quotas", s.requireInstance(s.apiQuotasDefaultsSave))
 
 	s.mux.HandleFunc("GET /api/v1/dashboard", s.requireScope(s.apiDashboard))
 
@@ -237,6 +242,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /api/v1/teams/{id}/projects/{projectId}", s.requireAdmin(s.apiTeamRevokeProject))
 	s.mux.HandleFunc("GET /api/v1/projects/{id}/access", s.requireAdmin(s.apiProjectAccess))
 	s.mux.HandleFunc("POST /api/v1/projects/{id}/access/members", s.requireAdmin(s.apiProjectAddMember))
+	s.mux.HandleFunc("GET /api/v1/projects/{id}/quota", s.requireScope(s.apiProjectQuotaGet))
+	s.mux.HandleFunc("PUT /api/v1/projects/{id}/quota", s.requireAdmin(s.apiProjectQuotaSave))
 	s.mux.HandleFunc("DELETE /api/v1/projects/{id}/access/members/{userId}", s.requireAdmin(s.apiProjectRemoveMember))
 
 	// Repository integration: config read needs project access, config

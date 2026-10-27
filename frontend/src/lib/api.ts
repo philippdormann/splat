@@ -390,6 +390,19 @@ export const api = {
 
   projectAccess: (id: number | string) =>
     req<ProjectAccess>(`/api/v1/projects/${id}/access`),
+  projectQuota: (id: number | string) =>
+    req<ProjectQuota>(`/api/v1/projects/${id}/quota`),
+  saveProjectQuota: (id: number | string, input: { hourly?: number | null; daily?: number | null }) =>
+    req<ProjectQuota>(`/api/v1/projects/${id}/quota`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+  quotaDefaults: () => req<QuotaDefaults>("/api/v1/settings/quotas"),
+  saveQuotaDefaults: (input: { defaultHourly: number; defaultDaily: number }) =>
+    req<QuotaDefaults>("/api/v1/settings/quotas", {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
   grantProjectMember: (id: number | string, userId: number) =>
     req<{ ok: boolean }>(`/api/v1/projects/${id}/access/members`, {
       method: "POST",
@@ -773,6 +786,23 @@ export interface Team {
 export interface ProjectAccess {
   memberIds: number[];
   teams: { id: number; name: string; slug: string }[];
+}
+
+export interface ProjectQuota {
+  projectId: number;
+  hourly: number;
+  daily: number;
+  hourlyOverride: number | null;
+  dailyOverride: number | null;
+  usedHour: number;
+  usedDay: number;
+  breachedHour: boolean;
+  breachedDay: boolean;
+}
+
+export interface QuotaDefaults {
+  defaultHourly: number;
+  defaultDaily: number;
 }
 
 export interface LogEntry {

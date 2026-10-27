@@ -22,6 +22,7 @@ import (
 	"github.com/philippdormann/splat/internal/issues"
 	"github.com/philippdormann/splat/internal/notifications"
 	"github.com/philippdormann/splat/internal/projects"
+	"github.com/philippdormann/splat/internal/quotas"
 	"github.com/philippdormann/splat/internal/repolink"
 	"github.com/philippdormann/splat/internal/retention"
 	"github.com/philippdormann/splat/internal/sessions"
@@ -58,6 +59,7 @@ func fullTestServer(t *testing.T) (*Server, *auth.Store, *teams.Store, *projects
 		APIKeys:       apikeys.NewStore(db),
 		Teams:         teamsStore,
 		Audit:         audit.NewStore(db),
+		Quotas:        quotas.NewStore(db),
 		RepoLinks:     repolink.NewStore(db),
 		DB:            db,
 		Logger:        logger,

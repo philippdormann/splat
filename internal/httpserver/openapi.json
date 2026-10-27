@@ -3291,6 +3291,87 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{id}/quota": {
+      "get": {
+        "summary": "Quota limits and current usage for a project",
+        "responses": {
+          "200": {
+            "description": "Effective limits, overrides, usage."
+          }
+        }
+      },
+      "put": {
+        "summary": "Set per-project quota overrides (admin session only)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "hourly": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "daily": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated."
+          },
+          "400": {
+            "description": "Negative limit."
+          }
+        }
+      }
+    },
+    "/api/v1/settings/quotas": {
+      "get": {
+        "summary": "Instance default quotas",
+        "responses": {
+          "200": {
+            "description": "Default caps."
+          }
+        }
+      },
+      "put": {
+        "summary": "Set instance default quotas",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "defaultHourly": {
+                    "type": "integer"
+                  },
+                  "defaultDaily": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated."
+          }
+        }
+      }
     }
   }
 }

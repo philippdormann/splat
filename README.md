@@ -398,6 +398,16 @@ swept — retention is yours to decide. Filter by action prefix
 (`auth.`, `users.`, …) in the UI or via
 `GET /api/v1/audit-log?action=&limit=&offset=`.
 
+**Ingestion quotas** (spike protection): instance defaults (5000
+events/hour, 50000/day — Settings → General) with per-project
+overrides on each project's Settings tab (`null` inherits, `0`
+unlimited). Only stored error events count, over trailing hour/day
+windows. Over-quota ingestion is rejected with `429` + `Retry-After`
+(test events through the UI bypass quotas), and the operator is
+alerted once per hour per project through the normal alert channels.
+Usage and breach state are visible on the project page; every change
+is audit-logged.
+
 ## Benchmark
 
 ```

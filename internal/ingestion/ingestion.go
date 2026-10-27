@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/philippdormann/splat/internal/apikeys"
@@ -24,6 +25,7 @@ import (
 	"github.com/philippdormann/splat/internal/metrics"
 	"github.com/philippdormann/splat/internal/notifications"
 	"github.com/philippdormann/splat/internal/projects"
+	"github.com/philippdormann/splat/internal/quotas"
 	"github.com/philippdormann/splat/internal/sentryprotocol"
 	"github.com/philippdormann/splat/internal/sessions"
 	"github.com/philippdormann/splat/internal/traces"
@@ -40,6 +42,7 @@ type Handler struct {
 	Sessions      *sessions.Store // optional: nil disables session tracking
 	Logs          *logs.Store     // optional: nil drops log items
 	Traces        *traces.Store   // optional: nil drops transaction items
+	Quotas        *quotas.Store   // optional: nil disables spike protection
 	Metrics       *metrics.Registry
 	Logger        *slog.Logger
 	PublicURL     string
@@ -78,6 +81,32 @@ func (h *Handler) skipped(itemType string) {
 	h.Metrics.Inc("splat_envelope_items_skipped_total", itemType)
 }
 
+// checkQuota enforces per-project ingestion quotas (spike protection).
+// Over-quota projects get 429 + Retry-After; the quota store alerts the
+// operator on fresh breaches. Only stored error events count toward
+// usage, so session/log/transaction-only traffic never trips a quota.
+func (h *Handler) checkQuota(w http.ResponseWriter, r *http.Request, project *projects.Project) bool {
+	if h.Quotas == nil {
+		return true
+	}
+	dec := h.Quotas.Check(r.Context(), project.ID, project.Name, h.projectURL(project.ID))
+	if dec.Allowed {
+		return true
+	}
+	h.Logger.Warn("project quota exceeded", "project", project.Slug, "window", dec.Window, "used", dec.Used, "limit", dec.Limit)
+	w.Header().Set("Retry-After", strconv.Itoa(dec.RetryAfter))
+	h.reject(w, "quota", http.StatusTooManyRequests, `{"error":"project quota exceeded"}`)
+	return false
+}
+
+func (h *Handler) projectURL(id int64) string {
+	base := strings.TrimSuffix(h.PublicURL, "/")
+	if base == "" {
+		return ""
+	}
+	return base + "/projects/" + strconv.FormatInt(id, 10)
+}
+
 // Envelope handles POST /api/{project}/envelope/.
 func (h *Handler) Envelope(w http.ResponseWriter, r *http.Request) {
 	body, ok := h.readBody(w, r)
@@ -97,6 +126,9 @@ func (h *Handler) Envelope(w http.ResponseWriter, r *http.Request) {
 	}
 	project, ok := h.resolveProject(w, r, authKey)
 	if !ok {
+		return
+	}
+	if !h.checkQuota(w, r, project) {
 		return
 	}
 
@@ -182,6 +214,9 @@ func (h *Handler) Store(w http.ResponseWriter, r *http.Request) {
 	authKey := authKeyFromRequest(r)
 	project, ok := h.resolveProject(w, r, authKey)
 	if !ok {
+		return
+	}
+	if !h.checkQuota(w, r, project) {
 		return
 	}
 	ev, err := sentryprotocol.ParseEventPayload(body)

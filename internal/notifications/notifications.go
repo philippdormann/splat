@@ -326,6 +326,28 @@ func (s *Store) SendTest(ctx context.Context) error {
 	return s.telegram.Send(ctx, cfg.BotToken, cfg.ChatID, "<b>Splat</b>\nTest notification - if you can read this, Telegram alerts are working.")
 }
 
+// NotifyQuotaBreach alerts every enabled channel that a project blew its
+// ingestion quota. Unlike issue alerts it sends synchronously and
+// best-effort (throttled by the caller): a breach is an operational
+// signal, not queued work, and failures must never affect ingestion.
+func (s *Store) NotifyQuotaBreach(ctx context.Context, projectName, projectURL, window string, used, limit int) {
+	e := AlertEvent{
+		ProjectName:   projectName,
+		ExceptionType: "Quota exceeded",
+		Message:       fmt.Sprintf("%s ingested %d error events in the last %s (limit %d) - ingestion is rejected with 429 until usage drops.", projectName, used, window, limit),
+		EventCount:    int64(used),
+		Timestamp:     time.Now(),
+		IssueURL:      projectURL,
+	}
+	for _, channel := range s.enabledChannels() {
+		if skip, err := s.send(ctx, channel, e); err != nil {
+			s.logger.Error("quota breach notify", "error", err, "channel", channel, "project", projectName)
+		} else if skip {
+			s.logger.Debug("quota breach notify skipped", "channel", channel, "project", projectName)
+		}
+	}
+}
+
 // GetWebhookConfig and SetWebhookConfig manage Slack/Discord/Teams, which
 // is why channel must be one of webhookChannelNames - anything else is a
 // caller bug, not bad user input (the HTTP layer validates the path

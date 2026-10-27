@@ -25,6 +25,7 @@ import (
 	"github.com/philippdormann/splat/internal/metrics"
 	"github.com/philippdormann/splat/internal/notifications"
 	"github.com/philippdormann/splat/internal/projects"
+	"github.com/philippdormann/splat/internal/quotas"
 	"github.com/philippdormann/splat/internal/repolink"
 	"github.com/philippdormann/splat/internal/retention"
 	"github.com/philippdormann/splat/internal/sessions"
@@ -123,6 +124,12 @@ func main() {
 
 	notif := notifications.NewStore(db, logger)
 
+	quotaStore := quotas.NewStore(db)
+	// Breach alerts reuse the normal alert channels (best-effort).
+	quotaStore.Notify = func(ctx context.Context, projectID int64, projectName, projectURL, window string, used, limit int) {
+		notif.NotifyQuotaBreach(ctx, projectName, projectURL, window, used, limit)
+	}
+
 	sweeper := retention.NewSweeper(db, logger)
 
 	var reg *metrics.Registry
@@ -151,6 +158,7 @@ func main() {
 		APIKeys:       apikeys.NewStore(db),
 		Teams:         teams.NewStore(db),
 		Audit:         audit.NewStore(db),
+		Quotas:        quotaStore,
 		Logs:          logs.NewStore(db),
 		Traces:        traces.NewStore(db),
 		RepoLinks:     repolink.NewStore(db),

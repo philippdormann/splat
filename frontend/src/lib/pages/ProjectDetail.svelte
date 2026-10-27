@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type ProjectDetail, type SourceMapMeta, type ProjectAccess, type User, type RepoConfig } from "$lib/api";
+  import { api, type ProjectDetail, type SourceMapMeta, type ProjectAccess, type User, type RepoConfig, type ProjectQuota } from "$lib/api";
   import * as CardUI from "$lib/components/ui/card/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
   import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
@@ -40,6 +40,9 @@
   let showGrant = false;
   let confirmRevoke: { id: number; username: string } | null = null;
   let repo: RepoConfig | null = null;
+  let quota: ProjectQuota | null = null;
+  let quotaForm = { hourly: "" as string, daily: "" as string, inheritHourly: true, inheritDaily: true };
+  let quotaBusy = false;
   let repoForm = { provider: "github", baseUrl: "", owner: "", repo: "", token: "" };
   let repoBusy = false;
   let confirmUnlinkRepo = false;
@@ -70,6 +73,17 @@
         const [a, u] = await Promise.all([api.projectAccess(id), api.users()]);
         access = a;
         accessUsers = u;
+      }
+      try {
+        quota = await api.projectQuota(id);
+        quotaForm = {
+          hourly: quota.hourlyOverride == null ? "" : String(quota.hourlyOverride),
+          daily: quota.dailyOverride == null ? "" : String(quota.dailyOverride),
+          inheritHourly: quota.hourlyOverride == null,
+          inheritDaily: quota.dailyOverride == null,
+        };
+      } catch {
+        // Quota reporting unavailable; the card stays hidden.
       }
     } catch {
       // Non-admins get 401 here; the card simply stays hidden.
@@ -224,6 +238,35 @@
     });
     data = updated;
     toast.success("Saved.");
+  }
+
+  function quotaLimitText(q: ProjectQuota, window: "hour" | "day"): string {
+    const limit = window === "hour" ? q.hourly : q.daily;
+    const used = window === "hour" ? q.usedHour : q.usedDay;
+    if (limit <= 0) return `${used} events (unlimited)`;
+    return `${used} / ${limit} events`;
+  }
+
+  async function saveQuota(e: Event) {
+    e.preventDefault();
+    quotaBusy = true;
+    try {
+      const parse = (inherit: boolean, raw: string): number | null => {
+        if (inherit) return null;
+        const n = raw.trim() === "" ? 0 : Number(raw);
+        if (!Number.isInteger(n) || n < 0) throw new Error("Limits must be whole numbers >= 0 (0 = unlimited).");
+        return n;
+      };
+      quota = await api.saveProjectQuota(id, {
+        hourly: parse(quotaForm.inheritHourly, quotaForm.hourly),
+        daily: parse(quotaForm.inheritDaily, quotaForm.daily),
+      });
+      toast.success("Quota updated.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save quota.");
+    } finally {
+      quotaBusy = false;
+    }
   }
 
   async function rotate() {
@@ -393,6 +436,39 @@
       </form>
       </CardUI.Content>
     </CardUI.Root>
+    {#if quota}
+    <CardUI.Root class="gap-0">
+      <CardUI.Header>
+        <CardUI.Title>Ingestion quota</CardUI.Title>
+        <CardUI.Description>Spike protection over stored error events. Over-quota ingestion is rejected with 429 until usage drops; the operator is alerted through the normal channels.</CardUI.Description>
+      </CardUI.Header>
+      <CardUI.Content>
+      <div class="space-y-3 text-sm">
+        <p>Last hour: <span class="font-mono">{quotaLimitText(quota, "hour")}</span>
+          {#if quota.breachedHour}<span class="ml-1 rounded-md bg-red-600/15 px-1.5 py-0.5 text-[11px] font-medium text-red-600">over quota</span>{/if}</p>
+        <p>Last day: <span class="font-mono">{quotaLimitText(quota, "day")}</span>
+          {#if quota.breachedDay}<span class="ml-1 rounded-md bg-red-600/15 px-1.5 py-0.5 text-[11px] font-medium text-red-600">over quota</span>{/if}</p>
+        {#if isAdmin}
+          <form on:submit={saveQuota} class="space-y-3 border-t border-border pt-3">
+            <div class="grid grid-cols-2 gap-3">
+              <div class="space-y-1">
+                <label class="text-xs">Hourly limit (0 = unlimited)</label>
+                <Input type="number" min="0" bind:value={quotaForm.hourly} disabled={quotaForm.inheritHourly} placeholder="inherit" />
+                <label class="flex items-center gap-1 text-xs text-muted-foreground"><input type="checkbox" bind:checked={quotaForm.inheritHourly} /> Inherit instance default</label>
+              </div>
+              <div class="space-y-1">
+                <label class="text-xs">Daily limit (0 = unlimited)</label>
+                <Input type="number" min="0" bind:value={quotaForm.daily} disabled={quotaForm.inheritDaily} placeholder="inherit" />
+                <label class="flex items-center gap-1 text-xs text-muted-foreground"><input type="checkbox" bind:checked={quotaForm.inheritDaily} /> Inherit instance default</label>
+              </div>
+            </div>
+            <Button type="submit" size="sm" disabled={quotaBusy}>{quotaBusy ? "Saving…" : "Save quota"}</Button>
+          </form>
+        {/if}
+      </div>
+      </CardUI.Content>
+    </CardUI.Root>
+    {/if}
         {:else if ptab === "sourcemaps"}
     <CardUI.Root class="gap-0">
       <CardUI.Header>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput, type APIKey, type GenericWebhook, type User, type Team, type SecurityPolicy, type AuditLogEntry } from "$lib/api";
+  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput, type APIKey, type GenericWebhook, type User, type Team, type SecurityPolicy, type AuditLogEntry, type QuotaDefaults } from "$lib/api";
   import * as CardUI from "$lib/components/ui/card/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
   import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
@@ -45,6 +45,7 @@
   let showNewKey = false;
   let meUsername = "";
   let security: SecurityPolicy = { require2fa: false };
+  let quotaDefaults: QuotaDefaults = { defaultHourly: 5000, defaultDaily: 50000 };
   let auditEntries: AuditLogEntry[] = [];
   let auditTotal = 0;
   let auditOffset = 0;
@@ -230,6 +231,7 @@
         users = await api.users();
         teams = await api.teams();
         security = await api.security();
+        quotaDefaults = await api.quotaDefaults();
         meUsername = (await api.me()).username ?? "";
       } catch (e) {
         toast.error(`Could not load users/teams: ${e instanceof Error ? e.message : e}`);
@@ -464,6 +466,16 @@
     }
   }
 
+  async function saveQuotaDefaults(e: Event) {
+    e.preventDefault();
+    try {
+      quotaDefaults = await api.saveQuotaDefaults(quotaDefaults);
+      toast.success("Default quotas saved. Projects without overrides inherit them.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save quotas.");
+    }
+  }
+
   async function createTeam(e: Event) {
     e.preventDefault();
     try {
@@ -610,6 +622,19 @@
       <CardUI.Content>
       <form on:submit={saveSecurity} class="flex flex-wrap items-center gap-3">
         <label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={security.require2fa} /> Require two-factor authentication for all logins</label>
+        <Button type="submit" size="sm">Save</Button>
+      </form>
+      </CardUI.Content>
+    </CardUI.Root>
+    <CardUI.Root class="gap-0">
+      <CardUI.Header>
+        <CardUI.Title>Default ingestion quotas</CardUI.Title>
+        <CardUI.Description>Spike protection inherited by projects without overrides. 0 disables a window. Counts stored error events over trailing hour/day windows.</CardUI.Description>
+      </CardUI.Header>
+      <CardUI.Content>
+      <form on:submit={saveQuotaDefaults} class="flex flex-wrap items-end gap-3">
+        <div class="space-y-1"><label class="text-xs">Events per hour (0 = unlimited)</label><Input type="number" min="0" bind:value={quotaDefaults.defaultHourly} /></div>
+        <div class="space-y-1"><label class="text-xs">Events per day (0 = unlimited)</label><Input type="number" min="0" bind:value={quotaDefaults.defaultDaily} /></div>
         <Button type="submit" size="sm">Save</Button>
       </form>
       </CardUI.Content>
