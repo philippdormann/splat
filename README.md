@@ -1,4 +1,6 @@
-# Errgotrack
+# Splat
+
+> Forked from [raiden70/errgotrack](https://github.com/raiden70/errgotrack) and renamed as it diverged.
 
 **A lightweight, self-hosted, Sentry-compatible error tracker.** One Go
 binary, SQLite by default (Postgres optional), a small Docker image. No
@@ -7,13 +9,13 @@ shadcn-svelte SPA built with bun and embedded in the binary. Point your
 app's official Sentry SDK at it and it just works - built to run
 comfortably on a small VPS instead of needing a cluster.
 
-![Errgotrack dashboard](docs/screenshot-dashboard.png)
+![Splat dashboard](docs/screenshot-dashboard.png)
 
 ## Why
 
 Sentry (self-hosted) and even lighter forks like GlitchTip or Bugsink are
 real, mature products - but they're still a multi-service stack with real
-memory and operational overhead. Errgotrack is the "I just want to see my
+memory and operational overhead. Splat is the "I just want to see my
 app's exceptions, with alerts, on a $5 VPS" version: a single static binary
 that embeds its own frontend, talks the real Sentry wire protocol, and
 keeps its entire database in one SQLite file you can back up with one
@@ -54,18 +56,18 @@ command.
   trace) instead of only linking out. Releases roll up events, sessions,
   and transactions alike.
 - **Repository integration** - link a project to GitHub, GitLab, Gitea, or
-  Forgejo and file errgotrack issues there with one click (title/body
+  Forgejo and file Splat issues there with one click (title/body
   prefilled, backlink included), then track them as linked external issues.
 - **Notifications on Telegram, Slack, Discord, Microsoft Teams, Google
   Sheets, email, and generic webhooks** - configure any combination; each delivers independently through a durable
   retry queue, so one channel's outage never blocks or duplicates another's
   alert, and none of them can block event ingestion itself. Generic
-  webhooks post signed JSON (`X-Errgotrack-Signature`) with custom headers
+  webhooks post signed JSON (`X-Splat-Signature`) with custom headers
   to any HTTPS endpoint.
 - **Trace correlation** - if an event carries a `trace_id` (from an SDK
   wired for distributed tracing), link straight out to whatever tracing
-  backend you already run (Jaeger, Tempo, Honeycomb, ...). Errgotrack
-  doesn't store spans itself - it stays an error tracker, not an APM.
+  backend you already run (Jaeger, Tempo, Honeycomb, ...), and opens the matching local trace when the SDK's spans were ingested. Splat
+  stores spans for its own trace view - it stays an error tracker, not an APM.
 - **Multi-project, with per-platform setup snippets** - create a project
   from a visual platform picker, get the right install command + init
   code with your real DSN already filled in. A one-click test event
@@ -87,7 +89,7 @@ command.
   with every runtime asset served locally. The theme follows the OS color
   scheme live, with no manual toggle.
 - **Deploys in one command** - a small Docker image published to
-  `ghcr.io/philippdormann/errgotrack` (`:latest`, `:1`, `:1.2`, `:1.2.3`
+  `ghcr.io/philippdormann/splat` (`:latest`, `:1`, `:1.2`, `:1.2.3`
   on tags), non-root, with its own health check (no shell needed), or a
   single static binary with no dependencies at all.
 
@@ -114,37 +116,37 @@ compatibility wall:
 **Docker:**
 
 ```bash
-docker run -d --name errgotrack -p 8080:8080 \
-  -v errgotrack-data:/data \
-  -e ERRGOTRACK_SESSION_SECRET=$(openssl rand -hex 32) \
-  -e ERRGOTRACK_ADMIN_USERNAME=admin \
-  -e ERRGOTRACK_ADMIN_PASSWORD='change-me' \
-  -e ERRGOTRACK_PUBLIC_URL=http://localhost:8080 \
-  ghcr.io/philippdormann/errgotrack:latest
+docker run -d --name splat -p 8080:8080 \
+  -v splat-data:/data \
+  -e SPLAT_SESSION_SECRET=$(openssl rand -hex 32) \
+  -e SPLAT_ADMIN_USERNAME=admin \
+  -e SPLAT_ADMIN_PASSWORD='change-me' \
+  -e SPLAT_PUBLIC_URL=http://localhost:8080 \
+  ghcr.io/philippdormann/splat:latest
 ```
 
-Images are published by CI to `ghcr.io/philippdormann/errgotrack` on every
+Images are published by CI to `ghcr.io/philippdormann/splat` on every
 push to `main` (`:latest`, `:sha-<commit>`) and on every `v*` tag
 (`:1.2.3`, `:1.2`, `:1`, `:latest`, `:sha-<commit>` - so tag `v1.2.3`
 publishes all four version tags at once), for both `linux/amd64` and
 `linux/arm64` - see [`.github/workflows/docker.yml`](.github/workflows/docker.yml).
-To pin a version: `ghcr.io/philippdormann/errgotrack:1.2.3` (or `:1` / `:1.2`
+To pin a version: `ghcr.io/philippdormann/splat:1.2.3` (or `:1` / `:1.2`
 to float on patch/minor releases).
 
 **Or run it directly with Go, no Docker at all:**
 
-Requires Go 1.26+ (`go build` auto-downloads the matching toolchain if
+Requires Go 1.27+ (`go build` auto-downloads the matching toolchain if
 your installed Go is older, per the `go` directive in `go.mod`) and
 [bun](https://bun.sh) 1.x for the frontend build.
 
 ```bash
 make build   # bun install + bun run build (frontend/) + go build, UI embedded
 
-ERRGOTRACK_SESSION_SECRET=$(openssl rand -hex 32) \
-ERRGOTRACK_ADMIN_USERNAME=admin \
-ERRGOTRACK_ADMIN_PASSWORD='change-me' \
-ERRGOTRACK_PUBLIC_URL=http://localhost:8080 \
-./bin/errgotrack
+SPLAT_SESSION_SECRET=$(openssl rand -hex 32) \
+SPLAT_ADMIN_USERNAME=admin \
+SPLAT_ADMIN_PASSWORD='change-me' \
+SPLAT_PUBLIC_URL=http://localhost:8080 \
+./bin/splat
 ```
 
 Or skip the explicit build and just `go run ./cmd/server` with the same
@@ -169,20 +171,22 @@ useful for confirming the server itself works before wiring up anything.
 
 ## Configuration
 
-All configuration is environment variables (see `internal/config/config.go`):
+All configuration is environment variables (see `internal/config/config.go`).
+Pre-rename `ERRGOTRACK_*` names are still honored as fallback with lower
+precedence, so existing setups keep working unedited:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ERRGOTRACK_ADDR` | `:8080` | listen address |
-| `ERRGOTRACK_DB_DRIVER` | `sqlite` | `sqlite` (default, zero-ops) or `postgres` |
-| `ERRGOTRACK_DB_PATH` | `data/errgotrack.db` | SQLite file path (sqlite driver only) |
-| `ERRGOTRACK_DATABASE_URL` | - | Postgres connection URL, e.g. `postgres://errgotrack:errgotrack@localhost:5432/errgotrack?sslmode=disable` (postgres driver only, **required** there) |
-| `ERRGOTRACK_PUBLIC_URL` | `http://localhost:8080` | used to build DSNs and alert links; `https://` here also makes session cookies `Secure` |
-| `ERRGOTRACK_ADMIN_USERNAME` / `ERRGOTRACK_ADMIN_PASSWORD` | - | bootstraps the first admin user when no users exist yet; ignored afterwards (manage users in the UI) |
-| `ERRGOTRACK_SESSION_SECRET` | - | **required**; any random 32+ byte string |
-| `ERRGOTRACK_RETENTION_SWEEP` | `1h` | how often the retention sweeper runs |
-| `ERRGOTRACK_METRICS` | off | `1`/`true` exposes Prometheus metrics at `GET /metrics` |
-| `ERRGOTRACK_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
+| `SPLAT_ADDR` | `:8080` | listen address |
+| `SPLAT_DB_DRIVER` | `sqlite` | `sqlite` (default, zero-ops) or `postgres` |
+| `SPLAT_DB_PATH` | `data/splat.db` | SQLite file path (sqlite driver only) |
+| `SPLAT_DATABASE_URL` | - | Postgres connection URL, e.g. `postgres://errgotrack:errgotrack@localhost:5432/errgotrack?sslmode=disable` (postgres driver only, **required** there) |
+| `SPLAT_PUBLIC_URL` | `http://localhost:8080` | used to build DSNs and alert links; `https://` here also makes session cookies `Secure` |
+| `SPLAT_ADMIN_USERNAME` / `SPLAT_ADMIN_PASSWORD` | - | bootstraps the first admin user when no users exist yet; ignored afterwards (manage users in the UI) |
+| `SPLAT_SESSION_SECRET` | - | **required**; any random 32+ byte string |
+| `SPLAT_RETENTION_SWEEP` | `1h` | how often the retention sweeper runs |
+| `SPLAT_METRICS` | off | `1`/`true` exposes Prometheus metrics at `GET /metrics` |
+| `SPLAT_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
 
 ## Sentry protocol compatibility
 
@@ -310,8 +314,8 @@ Event search uses an FTS5 virtual table over message/exception
 type/value on SQLite, kept in sync via triggers, so free-text search doesn't
 scan every row.
 
-**Postgres (optional):** set `ERRGOTRACK_DB_DRIVER=postgres` +
-`ERRGOTRACK_DATABASE_URL` (see [`.env.example`](.env.example) and
+**Postgres (optional):** set `SPLAT_DB_DRIVER=postgres` +
+`SPLAT_DATABASE_URL` (see [`.env.example`](.env.example) and
 [`compose.postgres.yaml`](compose.postgres.yaml), which runs a `postgres`
 service alongside the app). Schema and migrations are ported 1:1
 (`internal/database/migrations/postgres/`); timestamps stay RFC3339 TEXT on
@@ -367,7 +371,7 @@ are binary - there are no per-project roles. Everything else follows:
   ungranted project reads as `404`, never `403`, so membership can't be
   probed. Members never reach Settings, user/team/key management, or
   project create/delete.
-- `ERRGOTRACK_ADMIN_USERNAME`/`ERRGOTRACK_ADMIN_PASSWORD` bootstrap the
+- `SPLAT_ADMIN_USERNAME`/`SPLAT_ADMIN_PASSWORD` bootstrap the
   first admin only when no users exist. Create the rest in the UI.
 - Safety guards: the last user can't be deleted, admins can't be demoted
   (or change their own role), and admins can't delete their own account
@@ -417,7 +421,7 @@ all API values as text, never as raw HTML).
 **Docker:**
 
 ```bash
-cp .env.example .env   # set ERRGOTRACK_SESSION_SECRET, ERRGOTRACK_ADMIN_USERNAME/PASSWORD
+cp .env.example .env   # set SPLAT_SESSION_SECRET, SPLAT_ADMIN_USERNAME/PASSWORD
 docker compose -f compose.sqlite.yaml up -d --build
 # ...or with Postgres instead of SQLite:
 docker compose -f compose.postgres.yaml up -d --build
@@ -426,8 +430,8 @@ docker compose -f compose.postgres.yaml up -d --build
 Runs as a non-root user (uid 65532) on a `scratch` runtime image built
 from `golang:1.27.3-alpine3.24` - no OS layer, so no OS CVEs to track,
 with the CA bundle copied in for HTTPS notifications. SQLite data on
-a named volume (or set `ERRGOTRACK_DB_DRIVER=postgres` +
-`ERRGOTRACK_DATABASE_URL` in `.env` to use the bundled `postgres` service
+a named volume (or set `SPLAT_DB_DRIVER=postgres` +
+`SPLAT_DATABASE_URL` in `.env` to use the bundled `postgres` service
 instead - SQLite stays the default), health-checked via the binary's own
 `-healthcheck` flag (the runtime image has no shell/curl for a traditional
 `HEALTHCHECK`).
@@ -436,24 +440,40 @@ instead - SQLite stays the default), health-checked via the binary's own
 
 ```bash
 make build
-ERRGOTRACK_SESSION_SECRET=... ERRGOTRACK_ADMIN_USERNAME=... ERRGOTRACK_ADMIN_PASSWORD=... \
-ERRGOTRACK_PUBLIC_URL=https://errors.example.com ./bin/errgotrack
+SPLAT_SESSION_SECRET=... SPLAT_ADMIN_USERNAME=... SPLAT_ADMIN_PASSWORD=... \
+SPLAT_PUBLIC_URL=https://errors.example.com ./bin/splat
 ```
 
 Put it behind a reverse proxy for TLS - see
 [`deploy/Caddyfile`](deploy/Caddyfile) or [`deploy/nginx.conf`](deploy/nginx.conf).
-`ERRGOTRACK_PUBLIC_URL` must use `https://` for session/CSRF cookies to be
+`SPLAT_PUBLIC_URL` must use `https://` for session/CSRF cookies to be
 marked `Secure`.
 
 **Upgrading:** stop the container/process, replace the binary/image, start
 it again - migrations in `internal/database/migrations/` run automatically
 and are idempotent.
 
+**Upgrading from errgotrack:** rename your environment (`ERRGOTRACK_*` →
+`SPLAT_*`; the old names still work as fallback, new names win on
+conflict), then move the data once - the defaults changed:
+
+```bash
+# SQLite file (inside the data volume / data dir):
+mv /data/errgotrack.db /data/splat.db
+# Docker Compose volume (compose now uses splat-data):
+docker run --rm -v errgotrack_errgotrack-data:/from -v splat-data:/to \
+  alpine sh -c "cp /from/errgotrack.db /to/splat.db && chown 65532:65532 /to/splat.db"
+```
+
+Two more one-time effects: all sessions log out (cookie names changed),
+and generic-webhook receivers must accept `X-Splat-Signature` instead of
+`X-Errgotrack-Signature`.
+
 **Backup (SQLite):** the entire database is one file (plus its `-wal`/`-shm`
 sidecars while running). Simplest safe backup:
 
 ```bash
-sqlite3 /data/errgotrack.db ".backup /backup/errgotrack-$(date +%F).db"
+sqlite3 /data/splat.db ".backup /backup/splat-$(date +%F).db"
 ```
 
 (`.backup` is safe against a concurrently-running writer; `cp`-ing the file
@@ -468,7 +488,7 @@ your provider's snapshots as usual.
   `503` when the DB is unreachable. `GET /api/v1/meta` exposes the same
   build metadata publicly.
 - `GET /metrics` - Prometheus exposition (request counts by route, ingested
-  / rejected events, DB gauges). Off unless `ERRGOTRACK_METRICS=1`.
+  / rejected events, DB gauges). Off unless `SPLAT_METRICS=1`.
 - Every response carries a strict Content-Security-Policy (the SPA has no
   inline scripts or third-party fetches), `X-Frame-Options: DENY`, and
   `X-Robots-Tag: noindex, nofollow`, plus a deny-all `robots.txt`.
