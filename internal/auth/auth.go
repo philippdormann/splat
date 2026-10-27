@@ -47,7 +47,7 @@ func (s *Store) EnsureAdmin(username, password string) error {
 		return nil
 	}
 	if username == "" || password == "" {
-		return errors.New("no users exist and ERRGOTRACK_ADMIN_USERNAME/ERRGOTRACK_ADMIN_PASSWORD are not set")
+		return errors.New("no users exist and SPLAT_ADMIN_USERNAME/SPLAT_ADMIN_PASSWORD are not set")
 	}
 	_, err := s.CreateUser(username, password, RoleAdmin)
 	return err

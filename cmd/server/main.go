@@ -53,17 +53,20 @@ func parseLogLevel(s string) slog.Level {
 	}
 }
 
-// runHealthcheck lets `errgotrack -healthcheck` serve as a Docker HEALTHCHECK
-// command: the distroless runtime image has no shell or curl, so the binary
+// runHealthcheck lets `splat -healthcheck` serve as a Docker HEALTHCHECK
+// command: the scratch runtime image has no shell or curl, so the binary
 // itself does the local GET /healthz and reports success via exit code.
 func runHealthcheck() {
-	addr := os.Getenv("ERRGOTRACK_ADDR")
+	addr := os.Getenv("SPLAT_ADDR")
+	if addr == "" {
+		addr = os.Getenv("ERRGOTRACK_ADDR")
+	}
 	if addr == "" {
 		addr = ":8080"
 	}
 	host := strings.TrimPrefix(addr, ":")
 	if host == addr {
-		// ERRGOTRACK_ADDR was a bare host:port, use it as-is.
+		// The addr var was a bare host:port, use it as-is.
 		host = addr
 	} else {
 		host = "localhost" + addr

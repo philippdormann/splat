@@ -1,8 +1,8 @@
 // Package database owns the DB connection and embedded schema migrations.
 //
 // SQLite is the default backend (single file, zero ops). Postgres is an
-// opt-in backend selected via ERRGOTRACK_DB_DRIVER=postgres +
-// ERRGOTRACK_DATABASE_URL. Both backends share the same store interfaces;
+// opt-in backend selected via SPLAT_DB_DRIVER=postgres +
+// SPLAT_DATABASE_URL. Both backends share the same store interfaces;
 // the only SQLite-specific bits (FTS5 search, BEGIN IMMEDIATE locking,
 // strftime bucketing) are branched behind DB.IsPostgres at the call sites.
 package database
