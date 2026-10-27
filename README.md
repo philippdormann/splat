@@ -148,6 +148,7 @@ All configuration is environment variables (see `internal/config/config.go`):
 | `ERRGOTRACK_SESSION_SECRET` | - | **required**; any random 32+ byte string |
 | `ERRGOTRACK_RETENTION_SWEEP` | `1h` | how often the retention sweeper runs |
 | `ERRGOTRACK_METRICS` | off | `1`/`true` exposes Prometheus metrics at `GET /metrics` |
+| `ERRGOTRACK_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
 
 ## Sentry protocol compatibility
 

@@ -34,6 +34,21 @@ import (
 // "dev" means a local un-stamped build.
 var version = "dev"
 
+// parseLogLevel maps ERRGOTRACK_LOG_LEVEL names to slog levels,
+// defaulting to info on anything unrecognized.
+func parseLogLevel(s string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
 // runHealthcheck lets `errgotrack -healthcheck` serve as a Docker HEALTHCHECK
 // command: the distroless runtime image has no shell or curl, so the binary
 // itself does the local GET /healthz and reports success via exit code.
@@ -62,13 +77,15 @@ func main() {
 		return
 	}
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-
 	cfg, err := config.Load()
 	if err != nil {
-		logger.Error("config", "error", err)
+		slog.New(slog.NewJSONHandler(os.Stdout, nil)).Error("config", "error", err)
 		os.Exit(1)
 	}
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: parseLogLevel(cfg.LogLevel),
+	}))
 
 	if cfg.DBDriver == "postgres" {
 		logger.Info("database backend", "driver", "postgres")

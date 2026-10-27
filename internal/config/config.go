@@ -23,6 +23,8 @@ type Config struct {
 	// MetricsEnabled exposes GET /metrics (Prometheus text format).
 	// Off by default: the endpoint leaks operational counts.
 	MetricsEnabled bool
+	// LogLevel is the slog level name (debug, info, warn, error).
+	LogLevel string
 }
 
 func Load() (Config, error) {
@@ -38,6 +40,7 @@ func Load() (Config, error) {
 		RetentionSweep:  getenvDuration("ERRGOTRACK_RETENTION_SWEEP", time.Hour),
 		ShutdownTimeout: getenvDuration("ERRGOTRACK_SHUTDOWN_TIMEOUT", 10*time.Second),
 		MetricsEnabled:  getenvBool("ERRGOTRACK_METRICS", false),
+		LogLevel:        getenv("ERRGOTRACK_LOG_LEVEL", "info"),
 	}
 	if c.SessionSecret == "" {
 		return c, fmt.Errorf("ERRGOTRACK_SESSION_SECRET must be set (random 32+ byte string)")
