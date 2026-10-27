@@ -56,6 +56,9 @@ func Load() (Config, error) {
 	if c.SessionSecret == "" {
 		return c, fmt.Errorf("SPLAT_SESSION_SECRET must be set (random 32+ byte string)")
 	}
+	if len([]byte(c.SessionSecret)) < 32 {
+		return c, fmt.Errorf("SPLAT_SESSION_SECRET must be at least 32 bytes (got %d)", len([]byte(c.SessionSecret)))
+	}
 	switch c.DBDriver {
 	case "", "sqlite":
 		c.DBDriver = "sqlite"

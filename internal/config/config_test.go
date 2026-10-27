@@ -6,7 +6,7 @@ import (
 
 func TestLoadReadsSplatEnv(t *testing.T) {
 	t.Setenv("SPLAT_ADDR", ":9999")
-	t.Setenv("SPLAT_SESSION_SECRET", "test-secret-0123456789abcdef")
+	t.Setenv("SPLAT_SESSION_SECRET", "test-secret-0123456789abcdef01234567")
 	c, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
