@@ -1,7 +1,7 @@
 name: Docker image
 
 # Runs the test suite, then builds the Docker image on every push. The
-# image is only *pushed* to ghcr.io/philippdormann/errgotrack on main/tags -
+# image is only *pushed* to ghcr.io/philippdormann/splat on main/tags -
 # PR builds still build (catching a broken Dockerfile early) but don't
 # publish anything.
 #
@@ -21,7 +21,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: philippdormann/errgotrack
+  IMAGE_NAME: philippdormann/splat
 
 jobs:
   test:
@@ -74,13 +74,13 @@ jobs:
         with:
           context: .
           load: true
-          tags: errgotrack:trivy-scan
+          tags: splat:trivy-scan
           build-args: |
             VERSION=ci-scan
       - name: Scan image for HIGH/CRITICAL vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: errgotrack:trivy-scan
+          image-ref: splat:trivy-scan
           severity: HIGH,CRITICAL
           exit-code: "1"
 

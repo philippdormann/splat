@@ -1,29 +1,29 @@
-# Errgotrack with the optional Postgres backend: app + database, still one
+# Splat with the optional Postgres backend: app + database, still one
 # compose file. SQLite stays the default - only use this if you outgrow it.
 #
 #   cp .env.example .env   # set secrets, admin credentials + POSTGRES_PASSWORD
 #   docker compose -f compose.postgres.yaml up -d --build
 services:
-  errgotrack:
+  splat:
     build: .
-    image: ghcr.io/philippdormann/errgotrack:latest
+    image: ghcr.io/philippdormann/splat:latest
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - errgotrack-data:/data
+      - splat-data:/data
     environment:
-      ERRGOTRACK_PUBLIC_URL: ${ERRGOTRACK_PUBLIC_URL:-https://errors.example.com}
-      ERRGOTRACK_ADMIN_USERNAME: ${ERRGOTRACK_ADMIN_USERNAME}
-      ERRGOTRACK_ADMIN_PASSWORD: ${ERRGOTRACK_ADMIN_PASSWORD}
-      ERRGOTRACK_SESSION_SECRET: ${ERRGOTRACK_SESSION_SECRET}
-      ERRGOTRACK_DB_DRIVER: postgres
-      ERRGOTRACK_DATABASE_URL: postgres://${POSTGRES_USER:-errgotrack}:${POSTGRES_PASSWORD:-errgotrack}@postgres:5432/${POSTGRES_DB:-errgotrack}?sslmode=disable
+      SPLAT_PUBLIC_URL: ${SPLAT_PUBLIC_URL:-https://errors.example.com}
+      SPLAT_ADMIN_USERNAME: ${SPLAT_ADMIN_USERNAME}
+      SPLAT_ADMIN_PASSWORD: ${SPLAT_ADMIN_PASSWORD}
+      SPLAT_SESSION_SECRET: ${SPLAT_SESSION_SECRET}
+      SPLAT_DB_DRIVER: postgres
+      SPLAT_DATABASE_URL: postgres://${POSTGRES_USER:-errgotrack}:${POSTGRES_PASSWORD:-errgotrack}@postgres:5432/${POSTGRES_DB:-errgotrack}?sslmode=disable
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "/app/errgotrack", "-healthcheck"]
+      test: ["CMD", "/app/splat", "-healthcheck"]
       interval: 30s
       timeout: 3s
       retries: 3
@@ -47,5 +47,5 @@ services:
       retries: 5
 
 volumes:
-  errgotrack-data:
+  splat-data:
   postgres-data:

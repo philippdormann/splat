@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end integration test: starts a real errgotrack server against a
+# End-to-end integration test: starts a real splat server against a
 # scratch database, creates a project through the JSON API (the same API the
 # Svelte SPA uses), and sends a real exception through the official
 # `sentry-sdk` Python package (not a hand-crafted payload) - then checks the
@@ -26,12 +26,12 @@ if [ -z "${PYTHON:-}" ]; then
   PYTHON="$WORKDIR/venv/bin/python"
 fi
 
-ERRGOTRACK_SESSION_SECRET=$(openssl rand -hex 32) \
-ERRGOTRACK_ADMIN_USERNAME=$ADMIN_USER \
-ERRGOTRACK_ADMIN_PASSWORD=$ADMIN_PASS \
-ERRGOTRACK_PUBLIC_URL=$BASE \
-ERRGOTRACK_DB_PATH="$WORKDIR/errgotrack.db" \
-ERRGOTRACK_ADDR=":$PORT" \
+SPLAT_SESSION_SECRET=$(openssl rand -hex 32) \
+SPLAT_ADMIN_USERNAME=$ADMIN_USER \
+SPLAT_ADMIN_PASSWORD=$ADMIN_PASS \
+SPLAT_PUBLIC_URL=$BASE \
+SPLAT_DB_PATH="$WORKDIR/splat.db" \
+SPLAT_ADDR=":$PORT" \
 go run ./cmd/server > "$WORKDIR/server.log" 2>&1 &
 SERVER_PID=$!
 

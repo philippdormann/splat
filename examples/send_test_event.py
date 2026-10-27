@@ -13,7 +13,7 @@ Usage:
     python3 examples/send_test_event.py <public_key> [project_id] [base_url]
 
 Find <public_key> and [project_id] in Settings on the project's page, or:
-    sqlite3 data/errgotrack.db "SELECT id, public_key FROM projects;"
+    sqlite3 data/splat.db "SELECT id, public_key FROM projects;"
 """
 import json
 import sys
