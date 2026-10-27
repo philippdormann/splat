@@ -2,7 +2,8 @@
   import { onMount } from "svelte";
   import { api, type IssueDetail } from "$lib/api";
   import Card from "$lib/components/card.svelte";
-  import Badge from "$lib/components/badge.svelte";
+  import LevelBadge from "$lib/components/LevelBadge.svelte";
+  import StatusBadge from "$lib/components/StatusBadge.svelte";
   import Button from "$lib/components/button.svelte";
 
   export let id: string;
@@ -36,8 +37,8 @@
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
         <div class="flex flex-wrap items-center gap-2">
-          <Badge variant={data.issue.level === "error" ? "destructive" : "secondary"}>{data.issue.level}</Badge>
-          <Badge>{data.issue.status}</Badge>
+          <LevelBadge level={data.issue.level} />
+          <StatusBadge status={data.issue.status} />
           <span class="text-xs text-muted-foreground">{data.project.name} · {data.issue.environment} · {data.issue.eventCount} events</span>
         </div>
         <h2 class="mt-2 text-xl font-bold">{data.issue.title}</h2>

@@ -268,6 +268,7 @@ export interface IssuesData {
     title: string;
     culprit: string;
     level: string;
+    status: string;
     projectName: string;
     environment: string;
     eventCount: number;

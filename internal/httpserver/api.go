@@ -222,6 +222,7 @@ func (s *Server) apiIssuesList(w http.ResponseWriter, r *http.Request) {
 	for _, iss := range list {
 		rows = append(rows, map[string]any{
 			"id": iss.ID, "title": iss.Title, "culprit": iss.Culprit, "level": iss.Level,
+			"status": string(iss.Status),
 			"projectName": names[iss.ProjectID], "environment": iss.Environment,
 			"eventCount": iss.EventCount, "userCount": iss.UserCount,
 			"lastSeen": iss.LastSeen, "lastSeenRelative": relativeTime(iss.LastSeen),
