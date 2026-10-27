@@ -50,6 +50,7 @@ type Server struct {
 	StartedAt     time.Time
 
 	mux *http.ServeMux
+	ingest *ingestion.Handler
 }
 
 func New(s *Server) (*Server, error) {
@@ -76,6 +77,7 @@ func (s *Server) routes() {
 		Logger:        s.Logger,
 		PublicURL:     s.PublicURL,
 	}
+	s.ingest = ingest
 	limiter := newIPRateLimiter(50, 100)     // 50 req/s sustained, burst 100 - generous for a handful of app processes
 	loginLimiter := newIPRateLimiter(0.5, 5) // 1 attempt/2s sustained, burst 5 - throttles brute force against the single admin account
 
@@ -109,6 +111,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/projects/{id}/overview", s.requireScope(s.apiProjectOverview))
 	s.mux.HandleFunc("GET /api/v1/projects/{id}/releases", s.requireScope(s.apiProjectReleases))
 	s.mux.HandleFunc("GET /api/v1/projects/{id}/sessions/summary", s.requireScope(s.apiProjectSessionSummary))
+	s.mux.HandleFunc("POST /api/v1/projects/{id}/test-event", s.requireScope(s.apiProjectTestEvent))
 
 	s.mux.HandleFunc("GET /api/v1/settings", s.requireInstance(s.apiSettings))
 	s.mux.HandleFunc("PUT /api/v1/settings/telegram", s.requireInstance(s.apiSettingsSaveTelegram))

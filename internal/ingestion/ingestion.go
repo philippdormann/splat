@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"errgotrack/internal/apikeys"
 	"errgotrack/internal/events"
@@ -230,7 +231,7 @@ func newEventID() string {
 // and evaluates it for notification. Errors are logged, not surfaced to the
 // client: the SDK fires-and-forgets, and a 5xx just trains it to retry the
 // exact payload, which doesn't help either side.
-func (h *Handler) ingestEvent(ctx context.Context, project *projects.Project, ev *sentryprotocol.Event) {
+func (h *Handler) ingestEvent(ctx context.Context, project *projects.Project, ev *sentryprotocol.Event) *issues.UpsertResult {
 	ts := ev.ParsedTimestamp()
 	environment := ev.Environment
 	if environment == "" {
@@ -248,7 +249,7 @@ func (h *Handler) ingestEvent(ctx context.Context, project *projects.Project, ev
 	result, err := h.Issues.Upsert(ctx, project.ID, fingerprint, title, excType, excValue, culprit, level, environment, ev.Release, ts)
 	if err != nil {
 		h.Logger.Error("issue upsert failed", "error", err, "project", project.Slug)
-		return
+		return nil
 	}
 
 	tagsJSON, _ := json.Marshal(ev.Tags)
@@ -276,7 +277,7 @@ func (h *Handler) ingestEvent(ctx context.Context, project *projects.Project, ev
 	}
 	if err := h.Events.Insert(record); err != nil {
 		h.Logger.Error("event insert failed", "error", err, "project", project.Slug)
-		return
+		return nil
 	}
 
 	h.Notifications.Evaluate(ctx, notifications.AlertEvent{
@@ -293,6 +294,35 @@ func (h *Handler) ingestEvent(ctx context.Context, project *projects.Project, ev
 		Timestamp:     ts,
 		IssueURL:      fmt.Sprintf("%s/issues/%d", h.PublicURL, result.Issue.ID),
 	})
+	return result
+}
+
+// SendTestEvent ingests one synthetic event through the real pipeline so
+// operators can verify a project's DSN end to end. It returns the grouped
+// issue's id for linking.
+func (h *Handler) SendTestEvent(ctx context.Context, project *projects.Project) (int64, error) {
+	ts := time.Now().UTC()
+	ev := &sentryprotocol.Event{
+		EventID:     newEventID(),
+		Timestamp:   json.RawMessage(strconv.Quote(ts.Format(time.RFC3339Nano))),
+		Level:       "error",
+		Platform:    "other",
+		Environment: project.DefaultEnvironment,
+		Exception: &sentryprotocol.ExceptionValues{Values: []sentryprotocol.ExceptionValue{{
+			Type:  "TestError",
+			Value: "This is a test event sent from Errgotrack - safe to resolve once received.",
+			Stacktrace: &sentryprotocol.Stacktrace{Frames: []sentryprotocol.Frame{{
+				Filename: "errgotrack/test.py", Function: "send_test_event",
+				LineNo: 1, InApp: true, ContextLine: "raise TestError('hello from errgotrack')",
+			}}},
+		}}},
+		Tags: sentryprotocol.Tags{"test-event": "true"},
+	}
+	result := h.ingestEvent(ctx, project, ev)
+	if result == nil {
+		return 0, fmt.Errorf("test event failed to ingest")
+	}
+	return result.Issue.ID, nil
 }
 
 // summarize picks the exception type/value/culprit used for the issue title

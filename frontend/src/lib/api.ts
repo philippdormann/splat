@@ -73,6 +73,11 @@ export const api = {
       body: JSON.stringify(input),
     }),
   project: (id: number | string) => req<ProjectDetail>(`/api/v1/projects/${id}`),
+  testEvent: (id: number | string) =>
+    req<{ issueId: number }>(`/api/v1/projects/${id}/test-event`, {
+      method: "POST",
+      body: "{}",
+    }),
   updateProject: (
     id: number | string,
     input: {

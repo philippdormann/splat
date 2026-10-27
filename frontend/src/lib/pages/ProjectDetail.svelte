@@ -9,7 +9,7 @@
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import PlatformIcon from "$lib/components/PlatformIcon.svelte";
   import ProjectOverview from "$lib/pages/ProjectOverview.svelte";
-  import { ArrowLeft, Copy, RefreshCw, Trash2, Upload, Check, Rocket } from "lucide-svelte";
+  import { ArrowLeft, Copy, RefreshCw, Trash2, Upload, Check, Rocket, FlaskConical } from "lucide-svelte";
 
   export let id: string;
   export let navigate: (path: string) => void;
@@ -25,6 +25,20 @@
   let confirmDeleteProject = false;
   let confirmDeleteMap: number | null = null;
   let deleteBusy = false;
+  let testBusy = false;
+
+  async function sendTestEvent() {
+    testBusy = true;
+    try {
+      const r = await api.testEvent(id);
+      toast.success("Test event ingested — opening its issue.");
+      navigate(`/issues/${r.issueId}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Test event failed.");
+    } finally {
+      testBusy = false;
+    }
+  }
 
   async function load() {
     try {
@@ -143,6 +157,7 @@
         </div>
       </div>
       <Button size="sm" variant="outline" on:click={() => navigate(`/projects/${id}/releases`)}><Rocket class="h-4 w-4" /> Releases</Button>
+      <Button size="sm" variant="outline" disabled={testBusy} on:click={sendTestEvent}><FlaskConical class="h-4 w-4" /> {testBusy ? "Sending…" : "Send test event"}</Button>
       <Button size="sm" variant="destructive" on:click={() => (confirmDeleteProject = true)}><Trash2 class="h-4 w-4" /> Delete</Button>
     </div>
 

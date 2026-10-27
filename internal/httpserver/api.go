@@ -731,6 +731,36 @@ func overviewPeriod(r *http.Request) (string, time.Time) {
 	return period, since
 }
 
+// apiProjectTestEvent ingests one synthetic event through the real
+// pipeline and returns the grouped issue for linking.
+func (s *Server) apiProjectTestEvent(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	project, err := s.Projects.Get(id)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if !s.authenticate(r).inProject(id) {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if s.ingest == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "ingestion not configured")
+		return
+	}
+	issueID, err := s.ingest.SendTestEvent(r.Context(), project)
+	if err != nil {
+		s.Logger.Error("test event failed", "error", err, "project_id", id)
+		writeAPIError(w, http.StatusInternalServerError, "test event failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"issueId": issueID})
+}
+
 // apiProjectReleases lists every release seen by a project with event,
 // issue and session-health rollups, most recently active first.
 func (s *Server) apiProjectReleases(w http.ResponseWriter, r *http.Request) {

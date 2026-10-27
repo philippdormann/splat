@@ -675,6 +675,25 @@
         }
       }
     },
+    "/api/v1/projects/{id}/test-event": {
+      "post": {
+        "summary": "Ingest a synthetic test event through the real pipeline",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": {
+            "description": "{issueId} of the grouped test issue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "issueId": { "type": "integer" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{id}/sourcemaps": {
       "get": {
         "summary": "List source maps",
