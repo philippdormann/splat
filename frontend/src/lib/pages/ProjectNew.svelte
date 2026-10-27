@@ -111,22 +111,24 @@
   let category = "popular";
   let query = "";
 
-  function visiblePlatforms(): Platform[] {
-    const q = query.trim().toLowerCase();
-    if (q) {
-      return platforms
-        .filter((p) => p.id.toLowerCase().includes(q) || p.label.toLowerCase().includes(q) || p.language.toLowerCase().includes(q))
+  function visiblePlatforms(all: Platform[], q: string, cat: string): Platform[] {
+    const needle = q.trim().toLowerCase();
+    if (needle) {
+      return all
+        .filter((p) => p.id.toLowerCase().includes(needle) || p.label.toLowerCase().includes(needle) || p.language.toLowerCase().includes(needle))
         .sort((a, b) => a.label.localeCompare(b.label));
     }
-    const cat = categories.find((c) => c.id === category);
-    if (!cat || !cat.platforms) {
-      return [...platforms].sort((a, b) => a.label.localeCompare(b.label));
+    const categoryDef = categories.find((c) => c.id === cat);
+    if (!categoryDef || !categoryDef.platforms) {
+      return [...all].sort((a, b) => a.label.localeCompare(b.label));
     }
-    const byId = new Map(platforms.map((p) => [p.id, p]));
-    const resolved = (cat.platforms ?? []).map((id) => byId.get(id)).filter((p): p is Platform => p !== undefined);
-    return category === "popular" ? resolved : resolved.sort((a, b) => a.label.localeCompare(b.label));
+    const byId = new Map(all.map((p) => [p.id, p]));
+    const resolved = (categoryDef.platforms ?? []).map((id) => byId.get(id)).filter((p): p is Platform => p !== undefined);
+    return cat === "popular" ? resolved : resolved.sort((a, b) => a.label.localeCompare(b.label));
   }
-  $: filtered = visiblePlatforms();
+  // Pass state as arguments: Svelte's legacy reactivity only re-runs on
+  // variables named in the statement, not on reads inside the function.
+  $: filtered = visiblePlatforms(platforms, query, category);
 </script>
 
 <div class="mx-auto w-full max-w-6xl">

@@ -67,6 +67,10 @@ command.
 - **API keys with scopes** - `egt_…` Bearer tokens for automation
   (`ingest`/`read`/`write`), optionally project-bound and expiring, hashes
   only on disk, secret shown once.
+- **Multi-user with teams and project grants** - instance admins manage
+  users, teams, and per-project access; members only ever see granted
+  projects across the dashboard, issues, and API (ungranted projects read
+  as 404, never 403).
 - **Configurable retention** - old events age out in the background without
   ever touching issue history (counts, first/last seen stay intact).
 - **Automatic dark/light theme, keyboard-friendly, no CDN** - the dashboard is a
@@ -165,7 +169,7 @@ All configuration is environment variables (see `internal/config/config.go`):
 | `ERRGOTRACK_DB_PATH` | `data/errgotrack.db` | SQLite file path (sqlite driver only) |
 | `ERRGOTRACK_DATABASE_URL` | - | Postgres connection URL, e.g. `postgres://errgotrack:errgotrack@localhost:5432/errgotrack?sslmode=disable` (postgres driver only, **required** there) |
 | `ERRGOTRACK_PUBLIC_URL` | `http://localhost:8080` | used to build DSNs and alert links; `https://` here also makes session cookies `Secure` |
-| `ERRGOTRACK_ADMIN_USERNAME` / `ERRGOTRACK_ADMIN_PASSWORD` | - | bootstraps the one admin account on first run only |
+| `ERRGOTRACK_ADMIN_USERNAME` / `ERRGOTRACK_ADMIN_PASSWORD` | - | bootstraps the first admin user when no users exist yet; ignored afterwards (manage users in the UI) |
 | `ERRGOTRACK_SESSION_SECRET` | - | **required**; any random 32+ byte string |
 | `ERRGOTRACK_RETENTION_SWEEP` | `1h` | how often the retention sweeper runs |
 | `ERRGOTRACK_METRICS` | off | `1`/`true` exposes Prometheus metrics at `GET /metrics` |
@@ -343,6 +347,23 @@ project's ingestion and reads; instance routes stay admin/unbound) and can
 expire. Only SHA256 hashes are stored - the secret is shown once at
 creation/rotation; rotate, revoke, or delete any time.
 
+## Users, teams and access control
+
+Two instance roles: **admins** bypass every check; **members** only see
+projects granted to them, directly (project page → Access card) or through
+a **team** (Settings → Users & Teams → grant the team to projects). Grants
+are binary - there are no per-project roles. Everything else follows:
+
+- Dashboard, issue lists, and project lists scope to a member's grants; an
+  ungranted project reads as `404`, never `403`, so membership can't be
+  probed. Members never reach Settings, user/team/key management, or
+  project create/delete.
+- `ERRGOTRACK_ADMIN_USERNAME`/`ERRGOTRACK_ADMIN_PASSWORD` bootstrap the
+  first admin only when no users exist. Create the rest in the UI.
+- Safety guards: the last user can't be deleted, the last admin can't be
+  demoted, and admins can't delete their own account out from under their
+  session.
+
 ## Benchmark
 
 ```
@@ -371,6 +392,8 @@ enforcement, on both SQLite and Postgres), FTS5/ILIKE search and pagination,
 notification formatting/retry/
 backoff/cooldowns across all channels and their independence from
 each other, retention deletion vs. issue summary preservation, and
+multi-user/team access scoping (grants, team grants, admin-only instance
+routes, 404-not-403 for ungranted projects), and
 JSON-escaping of untrusted event data (a regression test serializes an issue
 with a `<script>` payload in the exception type/tags/project
 name through the JSON API and asserts it never appears unescaped - stored
@@ -444,9 +467,8 @@ your provider's snapshots as usual.
 
 - No performance tracing / APM, profiling, or session replay - this is an
   error tracker. See Trace correlation above for linking out instead.
-- No multi-user/team/RBAC model - one admin account, matching "a private
-  dashboard on a VPS."
-- No source map resolution for minified JS stacks.
+- No per-project roles or SSO - membership is binary (access or not) and
+  auth is username + password with bcrypt hashes.
 
 ## Layout
 
@@ -467,7 +489,8 @@ internal/notifications/   alert rules, durable per-channel queue
 internal/email/        stdlib SMTP delivery
 internal/telegram/ + internal/webhooks/   channel-specific formatting/delivery clients
 internal/tracing/      trace_id -> external tracing backend URL correlation
-internal/auth/         admin login, sessions, CSRF
+internal/auth/         users, instance roles, login sessions, CSRF
+internal/teams/        teams, memberships, project grants, access checks
 internal/apikeys/      Bearer keys, scopes, expiry, rotation
 internal/sourcemaps/   upload + dependency-free v3 resolution
 internal/storage/      usage reporting, manual sweep + vacuum
