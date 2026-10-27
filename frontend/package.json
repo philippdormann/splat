@@ -10,6 +10,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
+    "bits-ui": "^2.20.2",
     "chart.js": "^4.4.7",
     "clsx": "^2.1.1",
     "lucide-svelte": "^0.469.0",
