@@ -5,8 +5,6 @@
     Folder,
     FolderPlus,
     Settings,
-    Sun,
-    Moon,
     LogOut,
   } from "lucide-svelte";
   import * as Command from "$lib/components/ui/command/index.js";
@@ -15,14 +13,10 @@
   let {
     open = $bindable(false),
     navigate,
-    toggleTheme,
-    isDark,
     logout,
   }: {
     open?: boolean;
     navigate: (to: string) => void;
-    toggleTheme: () => void;
-    isDark: boolean;
     logout: () => void;
   } = $props();
 
@@ -41,11 +35,6 @@
   function go(to: string) {
     open = false;
     navigate(to);
-  }
-
-  function doTheme() {
-    open = false;
-    toggleTheme();
   }
 
   function doLogout() {
@@ -111,9 +100,6 @@
           </Command.Group>
           <Command.Separator />
           <Command.Group heading="Actions">
-            <Command.Item value="toggle theme" keywords={["dark", "light", "mode"]} onSelect={doTheme}>
-              {#if isDark}<Sun /><span>Light mode</span>{:else}<Moon /><span>Dark mode</span>{/if}
-            </Command.Item>
             <Command.Item value="logout" keywords={["sign out", "exit"]} onSelect={doLogout}>
               <LogOut /><span>Log out</span>
             </Command.Item>

@@ -7,8 +7,6 @@
     Folder,
     Settings,
     LogOut,
-    Sun,
-    Moon,
     Menu,
   } from "lucide-svelte";
   import { api } from "$lib/api";
@@ -25,24 +23,20 @@
   let authed: boolean | null = null;
   let path = window.location.pathname;
   let sidebarOpen = false;
-  let isDark = false;
   let paletteOpen = false;
 
-  function applyTheme() {
-    document.documentElement.classList.toggle("dark", isDark);
-    try {
-      localStorage.setItem("errgotrack-theme", isDark ? "dark" : "light");
-    } catch { /* ignore */ }
+  // Full auto theme: follow the OS color scheme, live. No manual toggle,
+  // no stored preference.
+  function applyTheme(e?: MediaQueryListEvent) {
+    const dark = e ? e.matches : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.classList.toggle("dark", dark);
   }
 
   onMount(async () => {
-    try {
-      const stored = localStorage.getItem("errgotrack-theme");
-      isDark = stored ? stored === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
-    } catch {
-      isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    }
     applyTheme();
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = (e: MediaQueryListEvent) => applyTheme(e);
+    mq.addEventListener("change", onChange);
     window.addEventListener("popstate", () => {
       path = window.location.pathname;
     });
@@ -65,11 +59,6 @@
     await api.logout();
     authed = false;
     navigate("/login");
-  }
-
-  function toggleTheme() {
-    isDark = !isDark;
-    applyTheme();
   }
 
   function onGlobalKeydown(e: KeyboardEvent) {
@@ -107,7 +96,7 @@
 {:else if !authed}
   <Login onLoggedIn={() => { authed = true; navigate("/"); }} />
 {:else}
-  <CommandPalette bind:open={paletteOpen} {navigate} {toggleTheme} {isDark} {logout} />
+  <CommandPalette bind:open={paletteOpen} {navigate} {logout} />
   <div class="flex min-h-screen">
     <aside class={`fixed inset-y-0 left-0 z-20 w-60 border-r border-border bg-card p-4 transition-transform md:static md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
       <div class="mb-4 flex items-center gap-2 font-semibold"><Bug class="h-5 w-5" /> Errgotrack</div>
@@ -129,9 +118,7 @@
           <span>Search or command…</span>
           <kbd class="rounded bg-muted px-1 font-mono">⌘K</kbd>
         </button>
-        <button class="rounded-md p-2 hover:bg-muted" on:click={toggleTheme} aria-label="Toggle theme">
-          {#if isDark}<Sun class="h-5 w-5" />{:else}<Moon class="h-5 w-5" />{/if}
-        </button>
+        <span class="text-xs text-muted-foreground">Errgotrack</span>
       </header>
       <main class="mx-auto w-full max-w-6xl flex-1 p-4 md:p-6">
         {#if path === "/"}

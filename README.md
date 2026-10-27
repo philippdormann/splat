@@ -50,9 +50,10 @@ command.
   resolve/ignore.
 - **Configurable retention** - old events age out in the background without
   ever touching issue history (counts, first/last seen stay intact).
-- **Dark/light theme, keyboard-friendly, no CDN** - the dashboard is a
+- **Automatic dark/light theme, keyboard-friendly, no CDN** - the dashboard is a
   Svelte 5 + shadcn-svelte SPA (built with bun, embedded in the binary),
-  with every runtime asset served locally.
+  with every runtime asset served locally. The theme follows the OS color
+  scheme live, with no manual toggle.
 - **Deploys in one command** - a small Docker image published to
   `ghcr.io/philippdormann/errgotrack` (`:latest`, `:1`, `:1.2`, `:1.2.3`
   on tags), non-root, with its own health check (no shell needed), or a
@@ -206,7 +207,7 @@ Svelte 5 + shadcn-svelte SPA in [`frontend/`](frontend/), built with bun
 (`bun install && bun run build`) and embedded into the Go binary as
 `web/dist` - the server only serves the built `index.html` + fingerprinted
 assets and a JSON API under `/api/v1/` (same-origin, session-cookie auth).
-Dark/light theme via a class toggle (system preference by default),
+The theme follows the OS color scheme live.
 Chart.js for charts, lucide-svelte icons. For local UI iteration,
 `cd frontend && bun run dev` proxies `/api` to a Go server on `:8080`.
 
