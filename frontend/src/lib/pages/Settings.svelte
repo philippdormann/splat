@@ -6,6 +6,16 @@
   import Button from "$lib/components/button.svelte";
   import { toast } from "svelte-sonner";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import { Bell, KeyRound, Database, SlidersHorizontal, ScrollText } from "lucide-svelte";
+
+  let tab = "general";
+  const tabs = [
+    { id: "general", label: "General", icon: SlidersHorizontal },
+    { id: "notifications", label: "Notifications", icon: Bell },
+    { id: "rules", label: "Alert rules", icon: ScrollText },
+    { id: "keys", label: "API keys", icon: KeyRound },
+    { id: "storage", label: "Storage", icon: Database },
+  ];
 
   let data: SettingsData | null = null;
   let error = "";
@@ -327,6 +337,30 @@
       <div class="h-40 animate-pulse rounded-lg bg-muted"></div>
     </div>
   {:else}
+    <div class="flex flex-col gap-4 md:flex-row">
+      <nav aria-label="Settings sections" class="flex shrink-0 gap-1 overflow-x-auto md:w-48 md:flex-col">
+        {#each tabs as t}
+          <button
+            class={"flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors " + (tab === t.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
+            on:click={() => (tab = t.id)}
+          >
+            <svelte:component this={t.icon} class="h-4 w-4" />
+            {t.label}
+          </button>
+        {/each}
+      </nav>
+      <div class="min-w-0 flex-1 space-y-4">
+        {#if tab === "general"}
+    <Card cls="p-4">
+      <form on:submit={saveTracing} class="space-y-3">
+        <p class="text-sm font-medium">Trace correlation</p>
+        <p class="text-xs text-muted-foreground">URL template with &#123;trace_id&#125; placeholder, e.g. https://tempo.example.com/explore?traceID=&#123;trace_id&#125;</p>
+        <Input bind:value={traceURL} placeholder="https://…/&#123;trace_id&#125;" />
+        <Button type="submit" size="sm">Save</Button>
+      </form>
+    </Card>
+
+        {:else if tab === "notifications"}
     <Card cls="p-4">
       <form on:submit={saveTelegram} class="space-y-3">
         <p class="text-sm font-medium">Telegram {#if data.telegram.enabled}<span class="text-green-600">(enabled)</span>{/if}</p>
@@ -355,7 +389,6 @@
         </form>
       </Card>
     {/each}
-
     <Card cls="p-4">
       <div class="space-y-3">
         <div class="flex items-center justify-between">
@@ -400,16 +433,6 @@
         {/if}
       </div>
     </Card>
-
-    <Card cls="p-4">
-      <form on:submit={saveTracing} class="space-y-3">
-        <p class="text-sm font-medium">Trace correlation</p>
-        <p class="text-xs text-muted-foreground">URL template with &#123;trace_id&#125; placeholder, e.g. https://tempo.example.com/explore?traceID=&#123;trace_id&#125;</p>
-        <Input bind:value={traceURL} placeholder="https://…/&#123;trace_id&#125;" />
-        <Button type="submit" size="sm">Save</Button>
-      </form>
-    </Card>
-
     <Card cls="p-4">
       <form on:submit={saveSMTP} class="space-y-3">
         <p class="text-sm font-medium">Email (SMTP) {#if data.smtp.enabled}<span class="text-green-600">(enabled)</span>{/if}</p>
@@ -432,7 +455,7 @@
         </div>
       </form>
     </Card>
-
+        {:else if tab === "rules"}
     <Card cls="p-4">
       <div class="space-y-3">
         <div class="flex items-center justify-between">
@@ -496,7 +519,7 @@
         {/if}
       </div>
     </Card>
-
+        {:else if tab === "keys"}
     <Card cls="p-4">
       <div class="space-y-3">
         <p class="text-sm font-medium">API keys</p>
@@ -556,7 +579,7 @@
         </form>
       </div>
     </Card>
-
+        {:else if tab === "storage"}
     <Card cls="p-4">
       <div class="space-y-3">
         <p class="text-sm font-medium">Storage</p>
@@ -587,5 +610,8 @@
         </div>
       </div>
     </Card>
+        {/if}
+      </div>
+    </div>
   {/if}
 </div>
