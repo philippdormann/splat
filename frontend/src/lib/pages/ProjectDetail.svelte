@@ -24,6 +24,8 @@
   let rotatedTimer: ReturnType<typeof setTimeout>;
   let confirmDeleteProject = false;
   let confirmDeleteMap: number | null = null;
+  let confirmRotate = false;
+  let rotateBusy = false;
   let deleteBusy = false;
   let testBusy = false;
 
@@ -107,11 +109,20 @@
   }
 
   async function rotate() {
-    const r = await api.rotateProjectKey(id);
-    if (data) data = { ...data, dsn: r.dsn };
-    rotated = true;
-    clearTimeout(rotatedTimer);
-    rotatedTimer = setTimeout(() => (rotated = false), 4000);
+    rotateBusy = true;
+    try {
+      const r = await api.rotateProjectKey(id);
+      if (data) data = { ...data, dsn: r.dsn };
+      rotated = true;
+      clearTimeout(rotatedTimer);
+      rotatedTimer = setTimeout(() => (rotated = false), 4000);
+      toast.success("DSN rotated — update your apps to the new DSN.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Rotate failed.");
+    } finally {
+      rotateBusy = false;
+      confirmRotate = false;
+    }
   }
 
   async function remove() {
@@ -185,6 +196,16 @@
       onCancel={() => { if (!deleteBusy) confirmDeleteMap = null; }}
     />
 
+    <ConfirmDialog
+      open={confirmRotate}
+      title="Rotate DSN key?"
+      description="The current DSN stops working immediately. Update every app using it, or their events will be rejected."
+      confirmLabel="Rotate key"
+      busy={rotateBusy}
+      onConfirm={rotate}
+      onCancel={() => { if (!rotateBusy) confirmRotate = false; }}
+    />
+
     <Card cls="space-y-2 p-4">
       <p class="text-sm font-medium">DSN
         {#if rotated}<span class="ml-2 inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700 dark:bg-green-900 dark:text-green-300"><Check class="h-3 w-3" /> Rotated</span>{/if}
@@ -192,7 +213,7 @@
       <div class="flex gap-2">
         <code class="flex-1 overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs transition-colors {rotated ? 'ring-2 ring-green-500' : ''}">{data.dsn}</code>
         <Button size="sm" variant="outline" on:click={() => data && copy(data.dsn)}><Copy class="h-4 w-4" /></Button>
-        <Button size="sm" variant="outline" on:click={rotate}><RefreshCw class="h-4 w-4" /> Rotate</Button>
+        <Button size="sm" variant="outline" on:click={() => (confirmRotate = true)}><RefreshCw class="h-4 w-4" /> Rotate</Button>
       </div>
       <p class="text-xs text-muted-foreground">{data.stats.events7d} events / 7d · {data.stats.unresolved} unresolved</p>
     </Card>
