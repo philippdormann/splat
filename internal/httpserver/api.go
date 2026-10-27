@@ -717,6 +717,20 @@ func (s *Server) apiIssuesBulk(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "invalid status")
 		return
 	}
+	if len(input.IDs) == 0 || len(input.IDs) > 100 {
+		writeAPIError(w, http.StatusBadRequest, "ids must contain 1-100 issues")
+		return
+	}
+	// Enforce per-project access: a caller may only touch issues in
+	// projects they can access. Unknown issues return 404 to avoid
+	// leaking existence across project boundaries.
+	for _, id := range input.IDs {
+		iss, err := s.Issues.Get(id)
+		if err != nil || !s.canAccessProject(r, iss.ProjectID) {
+			writeAPIError(w, http.StatusNotFound, "not found")
+			return
+		}
+	}
 	if err := s.Issues.BulkSetStatus(input.IDs, status); err != nil {
 		s.Logger.Error("bulk set status", "error", err)
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
