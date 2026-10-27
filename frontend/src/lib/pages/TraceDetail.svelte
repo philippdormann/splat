@@ -114,7 +114,11 @@
               <rect x={`${r.x}%`} y={i * 28 + 6} width={`${r.w}%`} height="16" rx="3" fill={barFill(r.span.status)}>
                 <title>{r.span.op} — {fmtDuration(r.span.durationMs)}</title>
               </rect>
-              <text x={`${Math.min(r.x + r.w + 1, 96)}%`} y={i * 28 + 18} font-size="10" fill="var(--muted-foreground)">{fmtDuration(r.span.durationMs)}</text>
+              {#if r.x + r.w > 86}
+                <text x={`${Math.max(r.x + r.w - 1, 4)}%`} y={i * 28 + 18} font-size="10" text-anchor="end" fill="var(--primary-foreground)">{fmtDuration(r.span.durationMs)}</text>
+              {:else}
+                <text x={`${r.x + r.w + 1}%`} y={i * 28 + 18} font-size="10" fill="var(--muted-foreground)">{fmtDuration(r.span.durationMs)}</text>
+              {/if}
             {/each}
           </svg>
         </div>
