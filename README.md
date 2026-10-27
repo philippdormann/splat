@@ -126,9 +126,9 @@ docker run -d --name splat -p 8080:8080 \
 ```
 
 Images are published by CI to `ghcr.io/philippdormann/splat` on every
-push to `main` (`:latest`, `:sha-<commit>`) and on every `v*` tag
-(`:1.2.3`, `:1.2`, `:1`, `:latest`, `:sha-<commit>` - so tag `v1.2.3`
-publishes all four version tags at once), for both `linux/amd64` and
+push to `main` (`:latest`, `:sha-<commit>`) and on every version tag
+(`:1.2.3`, `:1.2`, `:1`, `:latest`, `:sha-<commit>` - so tag `1.2.3`
+publishes all four version tags at once, never with a `v` prefix), for both `linux/amd64` and
 `linux/arm64` - see [`.github/workflows/docker.yml`](.github/workflows/docker.yml).
 To pin a version: `ghcr.io/philippdormann/splat:1.2.3` (or `:1` / `:1.2`
 to float on patch/minor releases).

@@ -7,11 +7,11 @@ name: Docker image
 #
 # Tagging:
 #   main branch -> :latest + :sha-<short>
-#   tag v1.2.3  -> :1.2.3 + :1.2 + :1 + :latest + :sha-<short>
+#   tag 1.2.3   -> :1.2.3 + :1.2 + :1 + :latest + :sha-<short> (never with "v" prefix)
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    tags: ["[0-9]*.[0-9]*.[0-9]*"]
   pull_request:
     branches: [main]
 
