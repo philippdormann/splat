@@ -34,14 +34,52 @@ export class ApiError extends Error {
 }
 
 export const api = {
-  me: () => req<{ authenticated: boolean; username?: string; role?: string }>("/api/v1/me"),
+  me: () => req<{ authenticated: boolean; username?: string; role?: string; totpEnabled?: boolean; totpRequired?: boolean }>("/api/v1/me"),
   login: (username: string, password: string) =>
-    req<{ ok: boolean }>("/api/v1/login", {
+    req<LoginResponse>("/api/v1/login", {
       method: "POST",
       body: JSON.stringify({ username, password }),
     }),
+  login2fa: (challenge: string, code: string) =>
+    req<{ ok: boolean }>("/api/v1/login/2fa", {
+      method: "POST",
+      body: JSON.stringify({ challenge, code }),
+    }),
   logout: () =>
     req<{ ok: boolean }>("/api/v1/logout", { method: "POST", body: "{}" }),
+
+  twofaStatus: () => req<TwoFAStatus>("/api/v1/2fa/status"),
+  twofaBegin: (challenge?: string) =>
+    req<TwoFABegin>("/api/v1/2fa/setup/begin", {
+      method: "POST",
+      body: JSON.stringify(challenge ? { challenge } : {}),
+    }),
+  twofaConfirm: (code: string, challenge?: string) =>
+    req<{ ok: boolean; recoveryCodes: string[] }>("/api/v1/2fa/setup/confirm", {
+      method: "POST",
+      body: JSON.stringify(challenge ? { code, challenge } : { code }),
+    }),
+  twofaDisable: (password: string) =>
+    req<{ ok: boolean }>("/api/v1/2fa/disable", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
+  twofaRegenCodes: (password: string) =>
+    req<{ ok: boolean; recoveryCodes: string[] }>("/api/v1/2fa/recovery-codes/regenerate", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
+  resetUser2fa: (id: number) =>
+    req<{ ok: boolean }>(`/api/v1/users/${id}/2fa/reset`, {
+      method: "POST",
+      body: "{}",
+    }),
+  security: () => req<SecurityPolicy>("/api/v1/settings/security"),
+  saveSecurity: (require2fa: boolean) =>
+    req<SecurityPolicy>("/api/v1/settings/security", {
+      method: "PUT",
+      body: JSON.stringify({ require2fa }),
+    }),
 
   dashboard: (range: string) =>
     req<DashboardData>(`/api/v1/dashboard?range=${encodeURIComponent(range)}`),
@@ -671,6 +709,30 @@ export interface User {
   username: string;
   role: string;
   createdAt: string;
+  totpEnabled: boolean;
+}
+
+export interface LoginResponse {
+  ok?: boolean;
+  twoFactorRequired?: boolean;
+  enrollRequired?: boolean;
+  challenge?: string;
+}
+
+export interface TwoFAStatus {
+  enabled: boolean;
+  required: boolean;
+  recoveryCodesRemaining: number;
+}
+
+export interface TwoFABegin {
+  otpauthUrl: string;
+  qrDataUri: string;
+  secret: string;
+}
+
+export interface SecurityPolicy {
+  require2fa: boolean;
 }
 
 export interface Team {

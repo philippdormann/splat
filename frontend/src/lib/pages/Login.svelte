@@ -4,7 +4,8 @@
   import * as Alert from "$lib/components/ui/alert/index.js";
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
-  import { Bug, TriangleAlert } from "lucide-svelte";
+  import TwoFASetup from "$lib/components/TwoFASetup.svelte";
+  import { Bug, TriangleAlert, KeyRound, Check } from "lucide-svelte";
 
   export let onLoggedIn: () => void;
 
@@ -13,17 +14,72 @@
   let error = "";
   let busy = false;
 
+  // Password step done; waiting on the second factor (or enrollment).
+  let challenge: string | null = null;
+  let enrollRequired = false;
+  let code = "";
+  let copied: Record<string, boolean> = {};
+  let recoveryCodes: string[] | null = null;
+
   async function submit(e: Event) {
     e.preventDefault();
     busy = true;
     error = "";
     try {
-      await api.login(username, password);
-      onLoggedIn();
+      const res = await api.login(username, password);
+      if (res.twoFactorRequired && res.challenge) {
+        challenge = res.challenge;
+        enrollRequired = !!res.enrollRequired;
+      } else {
+        onLoggedIn();
+      }
     } catch (err) {
       error = err instanceof ApiError ? "Invalid username or password." : "Login failed.";
     } finally {
       busy = false;
+    }
+  }
+
+  async function submitCode(e: Event) {
+    e.preventDefault();
+    if (!challenge) return;
+    busy = true;
+    error = "";
+    try {
+      await api.login2fa(challenge, code);
+      onLoggedIn();
+    } catch (err) {
+      error =
+        err instanceof ApiError && err.status === 401
+          ? "Invalid code. Try the current code from your authenticator app, or a recovery code."
+          : err instanceof Error
+            ? err.message
+            : "Verification failed.";
+    } finally {
+      busy = false;
+    }
+  }
+
+  function enrolled(codes: string[]) {
+    // Enrollment during login already issued the session server-side.
+    recoveryCodes = codes;
+  }
+
+  function back() {
+    challenge = null;
+    enrollRequired = false;
+    code = "";
+    error = "";
+    recoveryCodes = null;
+  }
+
+  async function copyCode(c: string) {
+    try {
+      await navigator.clipboard.writeText(c);
+      copied = { ...copied, [c]: true };
+      setTimeout(() => (copied = { ...copied, [c]: false }), 2000);
+    } catch {
+      // Clipboard unavailable: codes remain visible below.
     }
   }
 </script>
@@ -36,28 +92,78 @@
       </span>
       <div>
         <Card.Title class="text-lg">Splat</Card.Title>
-        <Card.Description>Sign in to continue</Card.Description>
+        <Card.Description>
+          {#if recoveryCodes}Save your recovery codes
+          {:else if challenge && enrollRequired}Set up two-factor authentication
+          {:else if challenge}Two-factor authentication
+          {:else}Sign in to continue{/if}
+        </Card.Description>
       </div>
     </Card.Header>
     <Card.Content>
-      <form on:submit={submit} class="space-y-4">
-        <div class="space-y-2">
-          <label class="text-sm font-medium" for="username">Username</label>
-          <Input name="username" bind:value={username} required placeholder="admin" />
-        </div>
-        <div class="space-y-2">
-          <label class="text-sm font-medium" for="password">Password</label>
-          <Input name="password" type="password" bind:value={password} required placeholder="••••••••" />
-        </div>
-        {#if error}
-          <Alert.Root variant="destructive">
-            <TriangleAlert />
-            <Alert.Title>Sign-in failed</Alert.Title>
-            <Alert.Description>{error}</Alert.Description>
+      {#if recoveryCodes}
+        <div class="space-y-4">
+          <Alert.Root>
+            <KeyRound />
+            <Alert.Title>One-time only</Alert.Title>
+            <Alert.Description>These recovery codes replace your authenticator if you lose it. Each works once — store them somewhere safe.</Alert.Description>
           </Alert.Root>
-        {/if}
-        <Button type="submit" disabled={busy} class="w-full">{busy ? "Signing in…" : "Sign in"}</Button>
-      </form>
+          <ul class="space-y-1">
+            {#each recoveryCodes as c}
+              <li>
+                <button
+                  class="flex w-full items-center justify-between gap-2 rounded-md bg-muted px-2 py-1.5 font-mono text-xs hover:bg-muted/70"
+                  title="Copy"
+                  on:click={() => copyCode(c)}
+                >
+                  <span>{c}</span>
+                  {#if copied[c]}<Check class="size-4" />{:else}<span class="text-muted-foreground">copy</span>{/if}
+                </button>
+              </li>
+            {/each}
+          </ul>
+          <Button class="w-full" on:click={onLoggedIn}>I've saved them — continue</Button>
+        </div>
+      {:else if challenge && enrollRequired}
+        <TwoFASetup {challenge} submitLabel="Verify & sign in" onDone={enrolled} />
+        <button class="mt-3 w-full text-center text-xs text-muted-foreground hover:text-foreground" on:click={back}>Back to sign-in</button>
+      {:else if challenge}
+        <form on:submit={submitCode} class="space-y-4">
+          <div class="space-y-2">
+            <label class="text-sm font-medium" for="code">Authenticator or recovery code</label>
+            <Input name="code" bind:value={code} required placeholder="123456" />
+            <p class="text-xs text-muted-foreground">Signed in as {username} — enter the 6-digit code from your authenticator app, or a recovery code.</p>
+          </div>
+          {#if error}
+            <Alert.Root variant="destructive">
+              <TriangleAlert />
+              <Alert.Title>Verification failed</Alert.Title>
+              <Alert.Description>{error}</Alert.Description>
+            </Alert.Root>
+          {/if}
+          <Button type="submit" disabled={busy} class="w-full">{busy ? "Verifying…" : "Verify"}</Button>
+          <button type="button" class="w-full text-center text-xs text-muted-foreground hover:text-foreground" on:click={back}>Back to sign-in</button>
+        </form>
+      {:else}
+        <form on:submit={submit} class="space-y-4">
+          <div class="space-y-2">
+            <label class="text-sm font-medium" for="username">Username</label>
+            <Input name="username" bind:value={username} required placeholder="admin" />
+          </div>
+          <div class="space-y-2">
+            <label class="text-sm font-medium" for="password">Password</label>
+            <Input name="password" type="password" bind:value={password} required placeholder="••••••••" />
+          </div>
+          {#if error}
+            <Alert.Root variant="destructive">
+              <TriangleAlert />
+              <Alert.Title>Sign-in failed</Alert.Title>
+              <Alert.Description>{error}</Alert.Description>
+            </Alert.Root>
+          {/if}
+          <Button type="submit" disabled={busy} class="w-full">{busy ? "Signing in…" : "Sign in"}</Button>
+        </form>
+      {/if}
     </Card.Content>
   </Card.Root>
 </div>

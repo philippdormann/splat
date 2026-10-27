@@ -375,6 +375,21 @@ are binary - there are no per-project roles. Everything else follows:
   (or change their own role), and admins can't delete their own account
   out from under their session.
 
+**Two-factor authentication** (TOTP): each user enables it for
+themselves on the Security page — scan the QR code with any
+authenticator app, verify once, and store the ten single-use recovery
+codes (each works once, shown only at setup). Sign-in becomes two
+steps: password first, then the authenticator or a recovery code; the
+password step mints a 5-minute signed challenge instead of a session,
+and both steps share the login brute-force budget. Admins can require
+2FA for every login (Settings → General): users without a factor
+enroll one inline before their session is issued, and can never
+disable it while required. Locked out (lost device, no codes)? An
+admin resets 2FA per user in Settings → Users & Teams. TOTP secrets
+are AES-256-GCM encrypted in the database (keyed by
+`SPLAT_SESSION_SECRET`); recovery codes are stored as hashes. API keys
+are separate automation credentials and are unaffected by 2FA.
+
 ## Benchmark
 
 ```
@@ -485,7 +500,8 @@ your provider's snapshots as usual.
   is no sampling, alerting, or aggregation on them. See Trace correlation
   above for linking out instead.
 - No per-project roles or SSO - membership is binary (access or not) and
-  auth is username + password with bcrypt hashes.
+  auth is username + password with bcrypt hashes, plus optional TOTP
+  two-factor authentication.
 
 ## Layout
 
@@ -506,7 +522,7 @@ internal/notifications/   alert rules, durable per-channel queue
 internal/email/        stdlib SMTP delivery
 internal/telegram/ + internal/webhooks/   channel-specific formatting/delivery clients
 internal/tracing/      trace_id -> external tracing backend URL correlation
-internal/auth/         users, instance roles, login sessions, CSRF
+internal/auth/         users, instance roles, login sessions, CSRF, TOTP 2FA
 internal/teams/        teams, memberships, project grants, access checks
 internal/logs/         structured SDK log records, level/search/trace queries
 internal/traces/       transactions and spans, per-trace assembly

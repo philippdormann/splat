@@ -7,6 +7,7 @@
     Folder,
     FolderPlus,
     Settings,
+    ShieldCheck,
     LogOut,
     Menu,
     ChevronDown,
@@ -26,6 +27,7 @@
   import ReleaseDetail from "$lib/pages/ReleaseDetail.svelte";
   import TraceDetail from "$lib/pages/TraceDetail.svelte";
   import SettingsPage from "$lib/pages/Settings.svelte";
+  import SecurityPage from "$lib/pages/Security.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
 
   let authed: boolean | null = null;
@@ -166,6 +168,7 @@
         {#if isAdmin}
           <a href="/settings" class={navClass(path === "/settings")} on:click|preventDefault={() => navigate("/settings")}><Settings class="h-4 w-4" /> Settings</a>
         {/if}
+        <a href="/security" class={navClass(path === "/security")} on:click|preventDefault={() => navigate("/security")}><ShieldCheck class="h-4 w-4" /> Security</a>
       </nav>
       <div class="mt-auto pt-4">
         <button class={navClass(false)} on:click={logout}><LogOut class="h-4 w-4" /> Log out</button>
@@ -205,6 +208,8 @@
           {/if}
         {:else if path === "/settings"}
           <SettingsPage />
+        {:else if path === "/security"}
+          <SecurityPage />
         {:else if path === "/login"}
           <Dashboard {navigate} />
         {:else}

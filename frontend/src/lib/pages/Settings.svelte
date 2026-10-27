@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput, type APIKey, type GenericWebhook, type User, type Team } from "$lib/api";
+  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput, type APIKey, type GenericWebhook, type User, type Team, type SecurityPolicy } from "$lib/api";
   import * as CardUI from "$lib/components/ui/card/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
   import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
@@ -9,7 +9,7 @@
   import { toast } from "svelte-sonner";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import Dialog from "$lib/components/Dialog.svelte";
-  import { Bell, KeyRound, Database, SlidersHorizontal, ScrollText, Users, TriangleAlert } from "lucide-svelte";
+  import { Bell, KeyRound, Database, SlidersHorizontal, ScrollText, Users, TriangleAlert, ShieldCheck } from "lucide-svelte";
 
   let tab = "general";
   const tabs = [
@@ -43,6 +43,7 @@
   let showNewTeam = false;
   let showNewKey = false;
   let meUsername = "";
+  let security: SecurityPolicy = { require2fa: false };
   let resetPw: { id: number; username: string; password: string } | null = null;
   let teamAddUser: Record<number, number | null> = {};
   let teamAddProject: Record<number, number | null> = {};
@@ -203,6 +204,7 @@
       try {
         users = await api.users();
         teams = await api.teams();
+        security = await api.security();
         meUsername = (await api.me()).username ?? "";
       } catch (e) {
         toast.error(`Could not load users/teams: ${e instanceof Error ? e.message : e}`);
@@ -414,6 +416,29 @@
     }
   }
 
+  function resetUser2fa(id: number, username: string) {
+    confirmBox = {
+      title: `Reset two-factor authentication for “${username}”?`,
+      description: "Their authenticator and all recovery codes stop working immediately. At their next sign-in they set up a fresh second factor.",
+      label: "Reset 2FA",
+      run: async () => {
+        await api.resetUser2fa(id);
+        await reloadUsersTeams();
+        toast.success("Two-factor authentication reset.");
+      },
+    };
+  }
+
+  async function saveSecurity(e: Event) {
+    e.preventDefault();
+    try {
+      security = await api.saveSecurity(security.require2fa);
+      toast.success(security.require2fa ? "Two-factor authentication is now required for every login." : "Two-factor enforcement disabled.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save security settings.");
+    }
+  }
+
   async function createTeam(e: Event) {
     e.preventDefault();
     try {
@@ -552,6 +577,18 @@
       </nav>
       <div class="min-w-0 flex-1 space-y-4">
         {#if tab === "general"}
+    <CardUI.Root class="gap-0">
+      <CardUI.Header>
+        <CardUI.Title class="flex items-center gap-2"><ShieldCheck class="size-4" /> Two-factor enforcement</CardUI.Title>
+        <CardUI.Description>When required, every password sign-in continues to an authenticator code, and users without a factor enroll one before their session is issued. API keys are unaffected.</CardUI.Description>
+      </CardUI.Header>
+      <CardUI.Content>
+      <form on:submit={saveSecurity} class="flex flex-wrap items-center gap-3">
+        <label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={security.require2fa} /> Require two-factor authentication for all logins</label>
+        <Button type="submit" size="sm">Save</Button>
+      </form>
+      </CardUI.Content>
+    </CardUI.Root>
     <CardUI.Root class="gap-0">
       <CardUI.Header>
         <CardUI.Title>Trace correlation</CardUI.Title>
@@ -858,6 +895,9 @@
                   <span class="font-medium">{u.username}</span>
                   {#if isSelf}<span class="text-muted-foreground"> (you)</span>{/if}
                   <span class="text-muted-foreground"> · {u.role}</span>
+                  {#if u.totpEnabled}
+                    <span class="ml-1 rounded-md bg-green-600/15 px-1.5 py-0.5 text-[11px] font-medium text-green-600" title="Two-factor authentication enabled">2FA</span>
+                  {/if}
                 </span>
                 <span class="flex items-center gap-2">
                   {#if u.role === "admin"}
@@ -872,6 +912,9 @@
                     >Promote</Button>
                   {/if}
                   <Button size="sm" variant="outline" on:click={() => (resetPw = { id: u.id, username: u.username, password: "" })}>Reset password</Button>
+                  {#if u.totpEnabled}
+                    <Button size="sm" variant="outline" on:click={() => resetUser2fa(u.id, u.username)}>Reset 2FA</Button>
+                  {/if}
                   <Button
                     size="sm"
                     variant="outline"
