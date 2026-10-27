@@ -185,7 +185,7 @@ func main() {
 		DB:            db,
 		Logger:        logger,
 		PublicURL:     cfg.PublicURL,
-		CookieSecure:  strings.HasPrefix(cfg.PublicURL, "https://"),
+		CookieSecure:  cfg.CookieSecure,
 		Version:       version,
 	})
 	if err != nil {

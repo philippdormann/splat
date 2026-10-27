@@ -137,7 +137,7 @@ func (s *Server) apiLogin(w http.ResponseWriter, r *http.Request) {
 func (s *Server) apiLogout(w http.ResponseWriter, r *http.Request) {
 	s.audit(r, audit.Logout, "session", "", "{}")
 	s.Auth.DeleteSession(auth.SessionTokenFromRequest(r))
-	auth.ClearSessionCookie(w)
+	auth.ClearSessionCookie(w, s.CookieSecure)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

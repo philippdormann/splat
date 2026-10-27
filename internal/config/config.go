@@ -26,6 +26,9 @@ type Config struct {
 	OIDCClientSecret string
 	OIDCName         string
 	OIDCScopes       string
+	// CookieSecure marks the session cookie Secure. True by default;
+	// set SPLAT_COOKIE_SECURE=false for plaintext local http dev only.
+	CookieSecure bool
 	// MetricsEnabled exposes GET /metrics (Prometheus text format).
 	// Off by default: the endpoint leaks operational counts.
 	MetricsEnabled bool
@@ -52,6 +55,7 @@ func Load() (Config, error) {
 		ShutdownTimeout:  getenvDuration("SPLAT_SHUTDOWN_TIMEOUT", 10*time.Second),
 		MetricsEnabled:   getenvBool("SPLAT_METRICS", false),
 		LogLevel:         getenv("SPLAT_LOG_LEVEL", "info"),
+		CookieSecure:     getenvBool("SPLAT_COOKIE_SECURE", true),
 	}
 	if c.SessionSecret == "" {
 		return c, fmt.Errorf("SPLAT_SESSION_SECRET must be set (random 32+ byte string)")
