@@ -1,10 +1,9 @@
-// Package httpserver wires HTTP routes, middleware, and template rendering
-// for the dashboard and admin UI. Event ingestion itself lives in
-// internal/ingestion; this package mounts it alongside the dashboard.
+// Package httpserver wires HTTP routes and middleware for the JSON API and
+// the embedded Svelte SPA. Event ingestion itself lives in
+// internal/ingestion; this package mounts it alongside the API.
 package httpserver
 
 import (
-	"context"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -34,16 +33,10 @@ type Server struct {
 	PublicURL     string
 	CookieSecure  bool
 
-	render *renderer
-	mux    *http.ServeMux
+	mux *http.ServeMux
 }
 
 func New(s *Server) (*Server, error) {
-	r, err := newRenderer(s.Logger)
-	if err != nil {
-		return nil, err
-	}
-	s.render = r
 	s.mux = http.NewServeMux()
 	s.routes()
 	return s, nil
@@ -62,88 +55,79 @@ func (s *Server) routes() {
 		Logger:        s.Logger,
 		PublicURL:     s.PublicURL,
 	}
-	limiter := newIPRateLimiter(50, 100)     // 50 req/s sustained, burst 100 - generous for a handful of Django processes
+	limiter := newIPRateLimiter(50, 100)     // 50 req/s sustained, burst 100 - generous for a handful of app processes
 	loginLimiter := newIPRateLimiter(0.5, 5) // 1 attempt/2s sustained, burst 5 - throttles brute force against the single admin account
 
+	// Sentry-compatible ingestion (unchanged wire protocol).
 	s.mux.Handle("POST /api/{project}/envelope/", rateLimit(limiter, http.HandlerFunc(ingest.Envelope)))
 	s.mux.Handle("POST /api/{project}/store/", rateLimit(limiter, http.HandlerFunc(ingest.Store)))
 	s.mux.HandleFunc("GET /healthz", s.healthz)
 
-	staticFS, _ := fs.Sub(web.Static, "static")
-	s.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
+	// JSON API for the Svelte SPA.
+	s.mux.Handle("POST /api/v1/login", rateLimit(loginLimiter, http.HandlerFunc(s.apiLogin)))
+	s.mux.HandleFunc("GET /api/v1/me", s.apiMe)
+	s.mux.HandleFunc("POST /api/v1/logout", s.apiLogout)
 
-	s.mux.HandleFunc("GET /login", s.loginPage)
-	s.mux.Handle("POST /login", rateLimit(loginLimiter, http.HandlerFunc(s.loginSubmit)))
-	s.mux.HandleFunc("POST /logout", s.requireAuth(s.logout))
+	s.mux.HandleFunc("GET /api/v1/dashboard", s.requireAPIAuth(s.apiDashboard))
 
-	s.mux.HandleFunc("GET /{$}", s.requireAuth(s.dashboard))
-	s.mux.HandleFunc("GET /issues", s.requireAuth(s.issuesList))
-	s.mux.HandleFunc("POST /issues/bulk", s.requireAuth(s.issuesBulk))
-	s.mux.HandleFunc("GET /issues/{id}", s.requireAuth(s.issueDetail))
-	s.mux.HandleFunc("POST /issues/{id}/status", s.requireAuth(s.issueSetStatus))
+	s.mux.HandleFunc("GET /api/v1/issues", s.requireAPIAuth(s.apiIssuesList))
+	s.mux.HandleFunc("POST /api/v1/issues/bulk", s.requireAPIAuth(s.apiIssuesBulk))
+	s.mux.HandleFunc("GET /api/v1/issues/{id}", s.requireAPIAuth(s.apiIssueDetail))
+	s.mux.HandleFunc("POST /api/v1/issues/{id}/status", s.requireAPIAuth(s.apiIssueSetStatus))
 
-	s.mux.HandleFunc("GET /projects", s.requireAuth(s.projectsList))
-	s.mux.HandleFunc("GET /projects/new", s.requireAuth(s.projectNewPage))
-	s.mux.HandleFunc("POST /projects/new", s.requireAuth(s.projectCreate))
-	s.mux.HandleFunc("GET /projects/{id}", s.requireAuth(s.projectDetail))
-	s.mux.HandleFunc("POST /projects/{id}/settings", s.requireAuth(s.projectUpdateSettings))
-	s.mux.HandleFunc("POST /projects/{id}/rotate", s.requireAuth(s.projectRotate))
-	s.mux.HandleFunc("POST /projects/{id}/delete", s.requireAuth(s.projectDelete))
+	s.mux.HandleFunc("GET /api/v1/projects", s.requireAPIAuth(s.apiProjectsList))
+	s.mux.HandleFunc("POST /api/v1/projects", s.requireAPIAuth(s.apiProjectCreate))
+	s.mux.HandleFunc("GET /api/v1/projects/{id}", s.requireAPIAuth(s.apiProjectDetail))
+	s.mux.HandleFunc("PATCH /api/v1/projects/{id}", s.requireAPIAuth(s.apiProjectUpdate))
+	s.mux.HandleFunc("POST /api/v1/projects/{id}/rotate", s.requireAPIAuth(s.apiProjectRotate))
+	s.mux.HandleFunc("DELETE /api/v1/projects/{id}", s.requireAPIAuth(s.apiProjectDelete))
+	s.mux.HandleFunc("GET /api/v1/platforms", s.requireAPIAuth(s.apiPlatforms))
 
-	s.mux.HandleFunc("GET /settings", s.requireAuth(s.settingsPage))
-	s.mux.HandleFunc("POST /settings/telegram", s.requireAuth(s.settingsSaveTelegram))
-	s.mux.HandleFunc("POST /settings/telegram/test", s.requireAuth(s.settingsTestTelegram))
-	s.mux.HandleFunc("POST /settings/webhook/{channel}", s.requireAuth(s.settingsSaveWebhook))
-	s.mux.HandleFunc("POST /settings/webhook/{channel}/test", s.requireAuth(s.settingsTestWebhook))
-	s.mux.HandleFunc("POST /settings/tracing", s.requireAuth(s.settingsSaveTracing))
+	s.mux.HandleFunc("GET /api/v1/settings", s.requireAPIAuth(s.apiSettings))
+	s.mux.HandleFunc("PUT /api/v1/settings/telegram", s.requireAPIAuth(s.apiSettingsSaveTelegram))
+	s.mux.HandleFunc("POST /api/v1/settings/telegram/test", s.requireAPIAuth(s.apiSettingsTestTelegram))
+	s.mux.HandleFunc("PUT /api/v1/settings/webhooks/{channel}", s.requireAPIAuth(s.apiSettingsSaveWebhook))
+	s.mux.HandleFunc("POST /api/v1/settings/webhooks/{channel}/test", s.requireAPIAuth(s.apiSettingsTestWebhook))
+	s.mux.HandleFunc("PUT /api/v1/settings/tracing", s.requireAPIAuth(s.apiSettingsSaveTracing))
+
+	// Built Svelte assets (fingerprinted files under /assets/).
+	dist := web.Sub()
+	assets, _ := fs.Sub(dist, "assets")
+	if assets != nil {
+		s.mux.Handle("GET /assets/", http.StripPrefix("/assets/", http.FileServerFS(assets)))
+	}
+
+	// SPA entry points: every UI route serves the built index.html and lets
+	// the Svelte router take over client-side.
+	for _, route := range []string{
+		"GET /{$}", "GET /login",
+		"GET /issues", "GET /issues/{id}",
+		"GET /projects", "GET /projects/new", "GET /projects/{id}",
+		"GET /settings",
+	} {
+		s.mux.HandleFunc(route, s.serveSPA)
+	}
+}
+
+// serveSPA serves the embedded Svelte build's index.html. If the frontend
+// has not been built (fresh checkout without `bun run build`), it serves a
+// plain-text hint instead of a 500 so the failure mode is obvious.
+func (s *Server) serveSPA(w http.ResponseWriter, r *http.Request) {
+	index, err := fs.ReadFile(web.Sub(), "index.html")
+	if err != nil {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("UI not built: run `bun install && bun run build` in frontend/ and rebuild.\n"))
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(index)
 }
 
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("ok"))
-}
-
-// PageBase carries the fields every authenticated page template needs:
-// which nav item is active, and the CSRF token to echo back in forms.
-type PageBase struct {
-	Authenticated bool
-	Nav           string
-	CSRFToken     string
-}
-
-func (s *Server) pageBase(w http.ResponseWriter, r *http.Request, nav string) PageBase {
-	return PageBase{
-		Authenticated: true,
-		Nav:           nav,
-		CSRFToken:     auth.EnsureCSRFCookie(w, r, s.CookieSecure),
-	}
-}
-
-type userKey struct{}
-
-func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		token := auth.SessionTokenFromRequest(r)
-		userID, ok := s.Auth.ValidateSession(token)
-		if !ok {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
-			return
-		}
-		ctx := context.WithValue(r.Context(), userKey{}, userID)
-		next(w, r.WithContext(ctx))
-	}
-}
-
-func checkCSRF(w http.ResponseWriter, r *http.Request) bool {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad form", http.StatusBadRequest)
-		return false
-	}
-	if !auth.ValidCSRF(r, r.FormValue("csrf_token")) {
-		http.Error(w, "invalid csrf token", http.StatusForbidden)
-		return false
-	}
-	return true
+	_, _ = w.Write([]byte("ok"))
 }
 
 func relativeTime(t time.Time) string {

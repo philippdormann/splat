@@ -200,12 +200,12 @@ type requestView struct {
 
 func buildRequestView(raw string) *requestView {
 	var req struct {
-		URL         string          `json:"url"`
-		Method      string          `json:"method"`
-		QueryString string          `json:"query_string"`
+		URL         string            `json:"url"`
+		Method      string            `json:"method"`
+		QueryString string            `json:"query_string"`
 		Headers     map[string]string `json:"headers"`
-		Env         map[string]any  `json:"env"`
-		Data        json.RawMessage `json:"data"`
+		Env         map[string]any    `json:"env"`
+		Data        json.RawMessage   `json:"data"`
 	}
 	if err := json.Unmarshal([]byte(raw), &req); err != nil {
 		return nil

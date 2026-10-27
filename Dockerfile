@@ -1,10 +1,21 @@
 # syntax=docker/dockerfile:1
 
+# --- frontend: Svelte 5 + shadcn-svelte UI built with bun ---
+# (vite outDir is ../web/dist, so the build lands in /app/web/dist)
+FROM ghcr.io/philippdormann/bun:1.4.2 AS frontend
+WORKDIR /app
+COPY frontend/package.json frontend/bun.lock frontend/bunfig.toml ./frontend/
+RUN cd frontend && bun install --frozen-lockfile
+COPY frontend/ ./frontend/
+RUN cd frontend && bun run build
+
+# --- backend: Go binary with the Svelte build embedded ---
 FROM golang:1.26-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+COPY --from=frontend /app/web/dist ./web/dist
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/errgotrack ./cmd/server
 # distroless has no shell to mkdir/chown at runtime, so the data directory is
 # created here (as root, in a stage that has a shell) and copied over with
