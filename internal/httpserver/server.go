@@ -26,6 +26,7 @@ import (
 	"errgotrack/internal/sessions"
 	"errgotrack/internal/sourcemaps"
 	"errgotrack/internal/storage"
+	"errgotrack/internal/teams"
 	"errgotrack/internal/tracing"
 	"errgotrack/web"
 )
@@ -43,6 +44,7 @@ type Server struct {
 	SourceMaps    *sourcemaps.Store
 	APIKeys       *apikeys.Store
 	Sessions      *sessions.Store
+	Teams         *teams.Store
 	Metrics       *metrics.Registry // nil disables /metrics
 	DB            *database.DB
 	Logger        *slog.Logger
@@ -185,6 +187,24 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/api-keys/{id}/rotate", s.requireAdmin(s.apiKeysRotate))
 	s.mux.HandleFunc("POST /api/v1/api-keys/{id}/revoke", s.requireAdmin(s.apiKeysRevoke))
 	s.mux.HandleFunc("DELETE /api/v1/api-keys/{id}", s.requireAdmin(s.apiKeysDelete))
+
+	// Users, teams, and project grants are admin-session-only as well:
+	// whoever can edit membership can read everything.
+	s.mux.HandleFunc("GET /api/v1/users", s.requireAdmin(s.apiUsersList))
+	s.mux.HandleFunc("POST /api/v1/users", s.requireAdmin(s.apiUsersCreate))
+	s.mux.HandleFunc("DELETE /api/v1/users/{id}", s.requireAdmin(s.apiUsersDelete))
+	s.mux.HandleFunc("PUT /api/v1/users/{id}/role", s.requireAdmin(s.apiUsersSetRole))
+	s.mux.HandleFunc("PUT /api/v1/users/{id}/password", s.requireAdmin(s.apiUsersSetPassword))
+	s.mux.HandleFunc("GET /api/v1/teams", s.requireAdmin(s.apiTeamsList))
+	s.mux.HandleFunc("POST /api/v1/teams", s.requireAdmin(s.apiTeamsCreate))
+	s.mux.HandleFunc("DELETE /api/v1/teams/{id}", s.requireAdmin(s.apiTeamsDelete))
+	s.mux.HandleFunc("POST /api/v1/teams/{id}/members", s.requireAdmin(s.apiTeamAddMember))
+	s.mux.HandleFunc("DELETE /api/v1/teams/{id}/members/{userId}", s.requireAdmin(s.apiTeamRemoveMember))
+	s.mux.HandleFunc("POST /api/v1/teams/{id}/projects", s.requireAdmin(s.apiTeamGrantProject))
+	s.mux.HandleFunc("DELETE /api/v1/teams/{id}/projects/{projectId}", s.requireAdmin(s.apiTeamRevokeProject))
+	s.mux.HandleFunc("GET /api/v1/projects/{id}/access", s.requireAdmin(s.apiProjectAccess))
+	s.mux.HandleFunc("POST /api/v1/projects/{id}/access/members", s.requireAdmin(s.apiProjectAddMember))
+	s.mux.HandleFunc("DELETE /api/v1/projects/{id}/access/members/{userId}", s.requireAdmin(s.apiProjectRemoveMember))
 
 	s.mux.HandleFunc("GET /api/v1/openapi.json", s.apiOpenAPI)
 

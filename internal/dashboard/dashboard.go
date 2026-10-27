@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errgotrack/internal/database"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -33,31 +34,47 @@ type Point struct {
 
 func fmtTime(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
 
-func (s *Store) Stats(since, previousSince time.Time) (Stats, error) {
-	var st Stats
+// inClause builds " AND <col> IN (?,?,...)" plus args for an optional
+// project scope. Empty ids mean unscoped (admin callers).
+func inClause(col string, ids []int64) (string, []any) {
+	if len(ids) == 0 {
+		return "", nil
+	}
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, 0, len(ids))
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	return " AND " + col + " IN (" + placeholders + ")", args
+}
 
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM events WHERE timestamp >= ?`, fmtTime(since)).Scan(&st.TotalEvents); err != nil {
+func (s *Store) Stats(since, previousSince time.Time, projectIDs ...int64) (Stats, error) {
+	var st Stats
+	scope, scopeArgs := inClause("project_id", projectIDs)
+
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM events WHERE timestamp >= ?`+scope, append([]any{fmtTime(since)}, scopeArgs...)...).Scan(&st.TotalEvents); err != nil {
 		return st, err
 	}
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM issues WHERE status = 'unresolved'`).Scan(&st.UnresolvedIssues); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM issues WHERE status = 'unresolved'`+scope, scopeArgs...).Scan(&st.UnresolvedIssues); err != nil {
 		return st, err
 	}
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM issues WHERE first_seen >= ?`, fmtTime(since)).Scan(&st.NewIssues); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM issues WHERE first_seen >= ?`+scope, append([]any{fmtTime(since)}, scopeArgs...)...).Scan(&st.NewIssues); err != nil {
 		return st, err
 	}
-	if err := s.db.QueryRow(`SELECT COUNT(DISTINCT project_id) FROM events WHERE timestamp >= ?`, fmtTime(since)).Scan(&st.AffectedProjects); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(DISTINCT project_id) FROM events WHERE timestamp >= ?`+scope, append([]any{fmtTime(since)}, scopeArgs...)...).Scan(&st.AffectedProjects); err != nil {
 		return st, err
 	}
 	todayStart := time.Now().UTC().Truncate(24 * time.Hour)
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM events WHERE timestamp >= ?`, fmtTime(todayStart)).Scan(&st.EventsToday); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM events WHERE timestamp >= ?`+scope, append([]any{fmtTime(todayStart)}, scopeArgs...)...).Scan(&st.EventsToday); err != nil {
 		return st, err
 	}
-	if err := s.db.QueryRow(`SELECT COUNT(DISTINCT issue_id) FROM events WHERE timestamp >= ?`, fmtTime(since)).Scan(&st.UniqueIssues); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(DISTINCT issue_id) FROM events WHERE timestamp >= ?`+scope, append([]any{fmtTime(since)}, scopeArgs...)...).Scan(&st.UniqueIssues); err != nil {
 		return st, err
 	}
 
 	var previousTotal int64
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM events WHERE timestamp >= ? AND timestamp < ?`, fmtTime(previousSince), fmtTime(since)).Scan(&previousTotal); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM events WHERE timestamp >= ? AND timestamp < ?`+scope, append([]any{fmtTime(previousSince), fmtTime(since)}, scopeArgs...)...).Scan(&previousTotal); err != nil {
 		return st, err
 	}
 	switch {
@@ -105,12 +122,13 @@ func pgBucketFormat(since time.Time) string {
 	}
 }
 
-func (s *Store) EventsOverTime(since time.Time) ([]Point, error) {
+func (s *Store) EventsOverTime(since time.Time, projectIDs ...int64) ([]Point, error) {
+	scope, scopeArgs := inClause("project_id", projectIDs)
 	if s.db.IsPostgres() {
 		format := pgBucketFormat(since)
 		rows, err := s.db.Query(`
 			SELECT to_char(timestamp::timestamptz, ?) AS bucket, COUNT(*) FROM events
-			WHERE timestamp >= ? GROUP BY bucket ORDER BY bucket`, format, fmtTime(since))
+			WHERE timestamp >= ?`+scope+` GROUP BY bucket ORDER BY bucket`, append([]any{format, fmtTime(since)}, scopeArgs...)...)
 		if err != nil {
 			return nil, err
 		}
@@ -120,7 +138,7 @@ func (s *Store) EventsOverTime(since time.Time) ([]Point, error) {
 	format := bucketFormat(since)
 	rows, err := s.db.Query(`
 		SELECT strftime(?, timestamp) AS bucket, COUNT(*) FROM events
-		WHERE timestamp >= ? GROUP BY bucket ORDER BY bucket`, format, fmtTime(since))
+		WHERE timestamp >= ?`+scope+` GROUP BY bucket ORDER BY bucket`, append([]any{format, fmtTime(since)}, scopeArgs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -128,10 +146,11 @@ func (s *Store) EventsOverTime(since time.Time) ([]Point, error) {
 	return scanPoints(rows)
 }
 
-func (s *Store) ByProject(since time.Time) ([]Point, error) {
+func (s *Store) ByProject(since time.Time, projectIDs ...int64) ([]Point, error) {
+	scope, scopeArgs := inClause("e.project_id", projectIDs)
 	rows, err := s.db.Query(`
 		SELECT p.name, COUNT(*) FROM events e JOIN projects p ON p.id = e.project_id
-		WHERE e.timestamp >= ? GROUP BY p.id ORDER BY 2 DESC LIMIT 10`, fmtTime(since))
+		WHERE e.timestamp >= ?`+scope+` GROUP BY p.id ORDER BY 2 DESC LIMIT 10`, append([]any{fmtTime(since)}, scopeArgs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -139,10 +158,11 @@ func (s *Store) ByProject(since time.Time) ([]Point, error) {
 	return scanPoints(rows)
 }
 
-func (s *Store) TopExceptionTypes(since time.Time) ([]Point, error) {
+func (s *Store) TopExceptionTypes(since time.Time, projectIDs ...int64) ([]Point, error) {
+	scope, scopeArgs := inClause("project_id", projectIDs)
 	rows, err := s.db.Query(`
 		SELECT COALESCE(NULLIF(exception_type, ''), 'message'), COUNT(*) FROM events
-		WHERE timestamp >= ? GROUP BY 1 ORDER BY 2 DESC LIMIT 10`, fmtTime(since))
+		WHERE timestamp >= ?`+scope+` GROUP BY 1 ORDER BY 2 DESC LIMIT 10`, append([]any{fmtTime(since)}, scopeArgs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -150,10 +170,11 @@ func (s *Store) TopExceptionTypes(since time.Time) ([]Point, error) {
 	return scanPoints(rows)
 }
 
-func (s *Store) ByEnvironment(since time.Time) ([]Point, error) {
+func (s *Store) ByEnvironment(since time.Time, projectIDs ...int64) ([]Point, error) {
+	scope, scopeArgs := inClause("project_id", projectIDs)
 	rows, err := s.db.Query(`
 		SELECT COALESCE(NULLIF(environment, ''), 'unknown'), COUNT(*) FROM events
-		WHERE timestamp >= ? GROUP BY 1 ORDER BY 2 DESC`, fmtTime(since))
+		WHERE timestamp >= ?`+scope+` GROUP BY 1 ORDER BY 2 DESC`, append([]any{fmtTime(since)}, scopeArgs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -167,11 +188,12 @@ func (s *Store) ByEnvironment(since time.Time) ([]Point, error) {
 // issues, not an events-per-status count (an issue keeps its event history
 // once resolved, so counting events would just reflect activity before it
 // was resolved, not how much is still outstanding).
-func (s *Store) IssuesByStatus(since time.Time) ([]Point, error) {
+func (s *Store) IssuesByStatus(since time.Time, projectIDs ...int64) ([]Point, error) {
+	scope, scopeArgs := inClause("i.project_id", projectIDs)
 	rows, err := s.db.Query(`
 		SELECT i.status, COUNT(DISTINCT i.id) FROM issues i
 		JOIN events e ON e.issue_id = i.id
-		WHERE e.timestamp >= ? GROUP BY i.status`, fmtTime(since))
+		WHERE e.timestamp >= ?`+scope+` GROUP BY i.status`, append([]any{fmtTime(since)}, scopeArgs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -181,13 +203,15 @@ func (s *Store) IssuesByStatus(since time.Time) ([]Point, error) {
 
 // NewVsRecurring counts, among events in range, how many belong to issues
 // first seen in-range ("new") versus issues that already existed ("recurring").
-func (s *Store) NewVsRecurring(since time.Time) (newCount, recurringCount int64, err error) {
+func (s *Store) NewVsRecurring(since time.Time, projectIDs ...int64) (newCount, recurringCount int64, err error) {
+	scope, scopeArgs := inClause("e.project_id", projectIDs)
+	args := append([]any{fmtTime(since), fmtTime(since), fmtTime(since)}, scopeArgs...)
 	err = s.db.QueryRow(`
 		SELECT
 			SUM(CASE WHEN i.first_seen >= ? THEN 1 ELSE 0 END),
 			SUM(CASE WHEN i.first_seen < ? THEN 1 ELSE 0 END)
 		FROM events e JOIN issues i ON i.id = e.issue_id
-		WHERE e.timestamp >= ?`, fmtTime(since), fmtTime(since), fmtTime(since)).Scan(&newCount, &recurringCount)
+		WHERE e.timestamp >= ?`+scope, args...).Scan(&newCount, &recurringCount)
 	return
 }
 
@@ -202,11 +226,13 @@ type RecentIssue struct {
 	LastSeenRelative string
 }
 
-func (s *Store) RecentIssues(limit int) ([]RecentIssue, error) {
+func (s *Store) RecentIssues(limit int, projectIDs ...int64) ([]RecentIssue, error) {
+	scope, scopeArgs := inClause("i.project_id", projectIDs)
 	rows, err := s.db.Query(`
 		SELECT i.id, i.title, i.level, p.name, i.environment, i.event_count, i.last_seen
 		FROM issues i JOIN projects p ON p.id = i.project_id
-		ORDER BY i.last_seen DESC LIMIT ?`, limit)
+		WHERE 1=1`+scope+`
+		ORDER BY i.last_seen DESC LIMIT ?`, append(scopeArgs, limit)...)
 	if err != nil {
 		return nil, err
 	}

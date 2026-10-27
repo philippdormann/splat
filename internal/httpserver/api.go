@@ -64,11 +64,16 @@ func decodeJSON(r *http.Request, v any) bool {
 
 func (s *Server) apiMe(w http.ResponseWriter, r *http.Request) {
 	token := auth.SessionTokenFromRequest(r)
-	if _, ok := s.Auth.ValidateSession(token); !ok {
+	userID, ok := s.Auth.ValidateSession(token)
+	if !ok {
 		writeJSON(w, http.StatusOK, map[string]any{"authenticated": false})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"authenticated": true,
+		"username":      s.Auth.UsernameOf(userID),
+		"role":          s.Auth.RoleOf(userID),
+	})
 }
 
 func (s *Server) apiLogin(w http.ResponseWriter, r *http.Request) {
@@ -119,13 +124,32 @@ func (s *Server) apiDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	since, previousSince := rangeToSince(rangeValue)
 
-	stats, err := s.Dashboard.Stats(since, previousSince)
+	// Member sessions see only granted projects; no grants means an empty
+	// dashboard rather than a leak. Admins and Bearer keys are unscoped
+	// here (keys keep their per-endpoint project binding elsewhere).
+	var scope []int64
+	if ids, ok := s.accessScope(r); !ok {
+		scope = []int64{-1}
+	} else if ids != nil {
+		scope = ids
+		if len(scope) == 0 {
+			scope = []int64{-1}
+		}
+	}
+	hasProjects := false
+	if scope == nil {
+		projectList, _ := s.Projects.List()
+		hasProjects = len(projectList) > 0
+	} else {
+		hasProjects = len(scope) > 0 && scope[0] != -1
+	}
+
+	stats, err := s.Dashboard.Stats(since, previousSince, scope...)
 	if err != nil {
 		s.Logger.Error("dashboard stats", "error", err)
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	projectList, _ := s.Projects.List()
 
 	out := map[string]any{
 		"range": rangeValue,
@@ -140,32 +164,32 @@ func (s *Server) apiDashboard(w http.ResponseWriter, r *http.Request) {
 			"eventsDeltaLabel": stats.EventsDeltaLabel,
 		},
 		"hasData":     stats.TotalEvents > 0 || stats.UnresolvedIssues > 0,
-		"hasProjects": len(projectList) > 0,
+		"hasProjects": hasProjects,
 	}
 
 	charts := map[string]any{}
-	if eventsOverTime, _ := s.Dashboard.EventsOverTime(since); eventsOverTime != nil {
+	if eventsOverTime, _ := s.Dashboard.EventsOverTime(since, scope...); eventsOverTime != nil {
 		charts["eventsOverTime"] = pointsJSON(eventsOverTime)
 	}
-	if byProject, _ := s.Dashboard.ByProject(since); byProject != nil {
+	if byProject, _ := s.Dashboard.ByProject(since, scope...); byProject != nil {
 		charts["byProject"] = pointsJSON(byProject)
 	}
-	if topExceptions, _ := s.Dashboard.TopExceptionTypes(since); topExceptions != nil {
+	if topExceptions, _ := s.Dashboard.TopExceptionTypes(since, scope...); topExceptions != nil {
 		charts["topExceptions"] = pointsJSON(topExceptions)
 	}
-	if byEnv, _ := s.Dashboard.ByEnvironment(since); byEnv != nil {
+	if byEnv, _ := s.Dashboard.ByEnvironment(since, scope...); byEnv != nil {
 		charts["byEnvironment"] = pointsJSON(byEnv)
 	}
-	if newCount, recurringCount, _ := s.Dashboard.NewVsRecurring(since); true {
+	if newCount, recurringCount, _ := s.Dashboard.NewVsRecurring(since, scope...); true {
 		charts["newVsRecurring"] = map[string]any{"new": newCount, "recurring": recurringCount}
 	}
-	if byStatus, _ := s.Dashboard.IssuesByStatus(since); byStatus != nil {
+	if byStatus, _ := s.Dashboard.IssuesByStatus(since, scope...); byStatus != nil {
 		charts["byStatus"] = pointsJSON(byStatus)
 	}
 	out["charts"] = charts
 
 	var recent []map[string]any
-	if recents, _ := s.Dashboard.RecentIssues(10); recents != nil {
+	if recents, _ := s.Dashboard.RecentIssues(10, scope...); recents != nil {
 		for _, ri := range recents {
 			recent = append(recent, map[string]any{
 				"id": ri.ID, "title": ri.Title, "level": ri.Level,
@@ -204,6 +228,30 @@ func (s *Server) apiIssuesList(w http.ResponseWriter, r *http.Request) {
 	if p, err := strconv.Atoi(q.Get("page")); err == nil && p > 0 {
 		page = p
 	}
+	// A member session only ever sees granted projects.
+	if ids, ok := s.accessScope(r); !ok {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"issues": []any{}, "total": 0, "page": page, "totalPages": 1,
+			"projects": []any{}, "environments": []string{},
+		})
+		return
+	} else if ids != nil {
+		if f.ProjectID != 0 {
+			allowed := false
+			for _, id := range ids {
+				if id == f.ProjectID {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				writeAPIError(w, http.StatusNotFound, "not found")
+				return
+			}
+		} else {
+			f.ProjectIDs = ids
+		}
+	}
 	f.Offset = (page - 1) * issuesPerPage
 
 	list, total, err := s.Issues.List(f)
@@ -235,6 +283,21 @@ func (s *Server) apiIssuesList(w http.ResponseWriter, r *http.Request) {
 		totalPages = 1
 	}
 	allProjects, _ := s.Projects.List()
+	if ids, ok := s.accessScope(r); !ok {
+		allProjects = nil
+	} else if ids != nil {
+		allowed := make(map[int64]bool, len(ids))
+		for _, id := range ids {
+			allowed[id] = true
+		}
+		filtered := allProjects[:0]
+		for _, p := range allProjects {
+			if allowed[p.ID] {
+				filtered = append(filtered, p)
+			}
+		}
+		allProjects = filtered
+	}
 	projJSON := make([]map[string]any, 0, len(allProjects))
 	for _, p := range allProjects {
 		projJSON = append(projJSON, map[string]any{"id": p.ID, "name": p.Name})
@@ -259,7 +322,7 @@ func (s *Server) apiIssueDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	// 404 (not 403) on cross-project access: a scoped key must not learn
 	// whether other projects' issues exist.
-	if !s.authenticate(r).inProject(issue.ProjectID) {
+	if !s.canAccessProject(r, issue.ProjectID) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -472,7 +535,7 @@ func (s *Server) apiIssueSetStatus(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "invalid status")
 		return
 	}
-	if issue, err := s.Issues.Get(id); err != nil || !s.authenticate(r).inProject(issue.ProjectID) {
+	if issue, err := s.Issues.Get(id); err != nil || !s.canAccessProject(r, issue.ProjectID) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -521,7 +584,7 @@ func (s *Server) issueForNotes(w http.ResponseWriter, r *http.Request) (*issues.
 		return nil, false
 	}
 	issue, err := s.Issues.Get(id)
-	if err != nil || !s.authenticate(r).inProject(issue.ProjectID) {
+	if err != nil || !s.canAccessProject(r, issue.ProjectID) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return nil, false
 	}
@@ -728,6 +791,22 @@ func (s *Server) apiProjectsList(w http.ResponseWriter, r *http.Request) {
 		}
 		list = filtered
 	}
+	// A member session sees only granted projects (direct or via teams).
+	if ids, ok := s.accessScope(r); !ok {
+		list = nil
+	} else if ids != nil {
+		allowed := make(map[int64]bool, len(ids))
+		for _, id := range ids {
+			allowed[id] = true
+		}
+		filtered := list[:0]
+		for _, p := range list {
+			if allowed[p.ID] {
+				filtered = append(filtered, p)
+			}
+		}
+		list = filtered
+	}
 	out := make([]map[string]any, 0, len(list))
 	for _, p := range list {
 		stats, _ := s.Dashboard.ProjectStats(p.ID)
@@ -782,7 +861,7 @@ func (s *Server) apiProjectDetail(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) apiProjectDetailByID(w http.ResponseWriter, r *http.Request, id int64) {
 	p, err := s.Projects.Get(id)
-	if err != nil || !s.authenticate(r).inProject(id) {
+	if err != nil || !s.canAccessProject(r, id) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -915,7 +994,7 @@ func (s *Server) apiProjectTestEvent(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
-	if !s.authenticate(r).inProject(id) {
+	if !s.canAccessProject(r, id) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -944,7 +1023,7 @@ func (s *Server) apiProjectReleases(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
-	if !s.authenticate(r).inProject(id) {
+	if !s.canAccessProject(r, id) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -973,7 +1052,7 @@ func (s *Server) apiProjectSessionSummary(w http.ResponseWriter, r *http.Request
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
-	if !s.authenticate(r).inProject(id) {
+	if !s.canAccessProject(r, id) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -1014,7 +1093,7 @@ func (s *Server) apiProjectOverview(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
-	if !s.authenticate(r).inProject(id) {
+	if !s.canAccessProject(r, id) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -1532,7 +1611,7 @@ func (s *Server) apiSourceMapsList(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
-	if !s.authenticate(r).inProject(id) {
+	if !s.canAccessProject(r, id) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -1558,7 +1637,7 @@ func (s *Server) apiSourceMapsUpload(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
-	if !s.authenticate(r).inProject(id) {
+	if !s.canAccessProject(r, id) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -1621,7 +1700,7 @@ func (s *Server) apiSourceMapsDelete(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
-	if !s.authenticate(r).inProject(id) {
+	if !s.canAccessProject(r, id) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}

@@ -296,7 +296,8 @@ func (s *Store) Get(id int64) (*Issue, error) {
 }
 
 type ListFilter struct {
-	ProjectID   int64 // 0 = all projects
+	ProjectID   int64   // 0 = all projects (or all of ProjectIDs when set)
+	ProjectIDs  []int64 // optional scope: member sessions pass their grants
 	Environment string
 	Status      Status // "" = any
 	Query       string // substring match against title/exception_type
@@ -311,6 +312,12 @@ func (s *Store) List(f ListFilter) ([]*Issue, int, error) {
 	if f.ProjectID != 0 {
 		where += " AND project_id = ?"
 		args = append(args, f.ProjectID)
+	} else if len(f.ProjectIDs) > 0 {
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(f.ProjectIDs)), ",")
+		where += " AND project_id IN (" + placeholders + ")"
+		for _, id := range f.ProjectIDs {
+			args = append(args, id)
+		}
 	}
 	if f.Environment != "" {
 		where += " AND environment = ?"

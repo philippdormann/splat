@@ -27,6 +27,7 @@ import (
 	"errgotrack/internal/sessions"
 	"errgotrack/internal/sourcemaps"
 	"errgotrack/internal/storage"
+	"errgotrack/internal/teams"
 	"errgotrack/internal/tracing"
 )
 
@@ -144,6 +145,7 @@ func main() {
 		SourceMaps:    sourcemaps.NewStore(db),
 		Sessions:      sessions.NewStore(db),
 		APIKeys:       apikeys.NewStore(db),
+		Teams:         teams.NewStore(db),
 		Metrics:       reg,
 		DB:            db,
 		Logger:        logger,

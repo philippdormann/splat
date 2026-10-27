@@ -5,8 +5,16 @@
     "version": "1.0.0",
     "description": "JSON API for the Errgotrack dashboard SPA plus the Sentry-compatible ingestion endpoints. Dashboard endpoints authenticate with the session cookie set by POST /api/v1/login (401 JSON when missing)."
   },
-  "servers": [{ "url": "/" }],
-  "security": [{ "cookieAuth": [] }],
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "security": [
+    {
+      "cookieAuth": []
+    }
+  ],
   "components": {
     "securitySchemes": {
       "cookieAuth": {
@@ -23,109 +31,288 @@
     "schemas": {
       "Error": {
         "type": "object",
-        "required": ["error"],
-        "properties": { "error": { "type": "string" } }
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
       },
       "Point": {
         "type": "object",
-        "required": ["label", "value"],
-        "properties": { "label": { "type": "string" }, "value": { "type": "integer" } }
+        "required": [
+          "label",
+          "value"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "integer"
+          }
+        }
       },
       "Dashboard": {
         "type": "object",
         "properties": {
-          "range": { "type": "string" },
+          "range": {
+            "type": "string"
+          },
           "stats": {
             "type": "object",
             "properties": {
-              "totalEvents": { "type": "integer" },
-              "unresolvedIssues": { "type": "integer" },
-              "newIssues": { "type": "integer" },
-              "affectedProjects": { "type": "integer" },
-              "eventsToday": { "type": "integer" },
-              "uniqueIssues": { "type": "integer" },
-              "eventsDeltaPct": { "type": "number" },
-              "eventsDeltaLabel": { "type": "string" }
+              "totalEvents": {
+                "type": "integer"
+              },
+              "unresolvedIssues": {
+                "type": "integer"
+              },
+              "newIssues": {
+                "type": "integer"
+              },
+              "affectedProjects": {
+                "type": "integer"
+              },
+              "eventsToday": {
+                "type": "integer"
+              },
+              "uniqueIssues": {
+                "type": "integer"
+              },
+              "eventsDeltaPct": {
+                "type": "number"
+              },
+              "eventsDeltaLabel": {
+                "type": "string"
+              }
             }
           },
           "charts": {
             "type": "object",
             "properties": {
-              "eventsOverTime": { "type": "array", "items": { "$ref": "#/components/schemas/Point" } },
-              "byProject": { "type": "array", "items": { "$ref": "#/components/schemas/Point" } },
-              "topExceptions": { "type": "array", "items": { "$ref": "#/components/schemas/Point" } },
-              "byEnvironment": { "type": "array", "items": { "$ref": "#/components/schemas/Point" } },
+              "eventsOverTime": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Point"
+                }
+              },
+              "byProject": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Point"
+                }
+              },
+              "topExceptions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Point"
+                }
+              },
+              "byEnvironment": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Point"
+                }
+              },
               "newVsRecurring": {
                 "type": "object",
-                "properties": { "new": { "type": "integer" }, "recurring": { "type": "integer" } }
+                "properties": {
+                  "new": {
+                    "type": "integer"
+                  },
+                  "recurring": {
+                    "type": "integer"
+                  }
+                }
               },
-              "byStatus": { "type": "array", "items": { "$ref": "#/components/schemas/Point" } }
+              "byStatus": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Point"
+                }
+              }
             }
           },
-          "recentIssues": { "type": "array", "items": { "$ref": "#/components/schemas/IssueListItem" } },
-          "hasData": { "type": "boolean" },
-          "hasProjects": { "type": "boolean" }
+          "recentIssues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IssueListItem"
+            }
+          },
+          "hasData": {
+            "type": "boolean"
+          },
+          "hasProjects": {
+            "type": "boolean"
+          }
         }
       },
       "IssueListItem": {
         "type": "object",
         "properties": {
-          "id": { "type": "integer" },
-          "title": { "type": "string" },
-          "culprit": { "type": "string" },
-          "level": { "type": "string" },
-          "projectName": { "type": "string" },
-          "environment": { "type": "string" },
-          "eventCount": { "type": "integer" },
-          "userCount": { "type": "integer" },
-          "lastSeen": { "type": "string", "format": "date-time" },
-          "lastSeenRelative": { "type": "string" },
-          "sparkline": { "type": "array", "items": { "type": "integer" } }
+          "id": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "culprit": {
+            "type": "string"
+          },
+          "level": {
+            "type": "string"
+          },
+          "projectName": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "eventCount": {
+            "type": "integer"
+          },
+          "userCount": {
+            "type": "integer"
+          },
+          "lastSeen": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeenRelative": {
+            "type": "string"
+          },
+          "sparkline": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
         }
       },
       "IssueList": {
         "type": "object",
         "properties": {
-          "issues": { "type": "array", "items": { "$ref": "#/components/schemas/IssueListItem" } },
-          "total": { "type": "integer" },
-          "page": { "type": "integer" },
-          "totalPages": { "type": "integer" },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IssueListItem"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "totalPages": {
+            "type": "integer"
+          },
           "projects": {
             "type": "array",
             "items": {
               "type": "object",
-              "properties": { "id": { "type": "integer" }, "name": { "type": "string" } }
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                }
+              }
             }
           },
-          "environments": { "type": "array", "items": { "type": "string" } }
+          "environments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       },
       "KeyValue": {
         "type": "object",
-        "required": ["key", "value"],
-        "properties": { "key": { "type": "string" }, "value": { "type": "string" } }
+        "required": [
+          "key",
+          "value"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
       },
       "StackFrame": {
         "type": "object",
         "properties": {
-          "file": { "type": "string" },
-          "line": { "type": "integer" },
-          "col": { "type": "integer" },
-          "function": { "type": "string" },
-          "module": { "type": "string" },
-          "contextLine": { "type": "string" },
-          "preContext": { "type": "array", "items": { "type": "string" } },
-          "postContext": { "type": "array", "items": { "type": "string" } },
-          "vars": { "type": "array", "items": { "$ref": "#/components/schemas/KeyValue" } },
-          "inApp": { "type": "boolean" },
+          "file": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer"
+          },
+          "col": {
+            "type": "integer"
+          },
+          "function": {
+            "type": "string"
+          },
+          "module": {
+            "type": "string"
+          },
+          "contextLine": {
+            "type": "string"
+          },
+          "preContext": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "postContext": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "vars": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KeyValue"
+            }
+          },
+          "inApp": {
+            "type": "boolean"
+          },
           "original": {
-            "type": ["object", "null"],
+            "type": [
+              "object",
+              "null"
+            ],
             "properties": {
-              "source": { "type": "string" },
-              "line": { "type": "integer" },
-              "column": { "type": "integer" },
-              "function": { "type": "string" },
-              "context": { "type": "array", "items": { "type": "string" } }
+              "source": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer"
+              },
+              "column": {
+                "type": "integer"
+              },
+              "function": {
+                "type": "string"
+              },
+              "context": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             }
           }
         }
@@ -136,88 +323,269 @@
           "issue": {
             "type": "object",
             "properties": {
-              "id": { "type": "integer" },
-              "title": { "type": "string" },
-              "exceptionType": { "type": "string" },
-              "exceptionValue": { "type": "string" },
-              "culprit": { "type": "string" },
-              "level": { "type": "string" },
-              "status": { "type": "string", "enum": ["unresolved", "resolved", "ignored", "muted"] },
-              "mutedUntil": { "type": ["string", "null"], "format": "date-time", "description": "Mute expiry, or null when not muted / muted forever." },
-              "resolvedInRelease": { "type": "string", "description": "Release pin for resolve-in-next-release, or empty." },
-              "eventCount": { "type": "integer" },
-              "userCount": { "type": "integer" },
-              "firstSeen": { "type": "string", "format": "date-time" },
-              "lastSeen": { "type": "string", "format": "date-time" },
-              "environment": { "type": "string" },
-              "release": { "type": "string" }
+              "id": {
+                "type": "integer"
+              },
+              "title": {
+                "type": "string"
+              },
+              "exceptionType": {
+                "type": "string"
+              },
+              "exceptionValue": {
+                "type": "string"
+              },
+              "culprit": {
+                "type": "string"
+              },
+              "level": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "unresolved",
+                  "resolved",
+                  "ignored",
+                  "muted"
+                ]
+              },
+              "mutedUntil": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "Mute expiry, or null when not muted / muted forever."
+              },
+              "resolvedInRelease": {
+                "type": "string",
+                "description": "Release pin for resolve-in-next-release, or empty."
+              },
+              "eventCount": {
+                "type": "integer"
+              },
+              "userCount": {
+                "type": "integer"
+              },
+              "firstSeen": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "lastSeen": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "environment": {
+                "type": "string"
+              },
+              "release": {
+                "type": "string"
+              }
             }
           },
           "project": {
             "type": "object",
-            "properties": { "id": { "type": "integer" }, "name": { "type": "string" } }
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
           },
-          "tags": { "type": "array", "items": { "$ref": "#/components/schemas/KeyValue" } },
-          "user": { "type": ["object", "null"] },
-          "sdk": { "type": ["object", "null"] },
-          "request": { "type": ["object", "null"] },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KeyValue"
+            }
+          },
+          "user": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "sdk": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "request": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
           "contexts": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "name": { "type": "string" },
-                "fields": { "type": "array", "items": { "$ref": "#/components/schemas/KeyValue" } }
+                "name": {
+                  "type": "string"
+                },
+                "fields": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KeyValue"
+                  }
+                }
               }
             }
           },
-          "breadcrumbs": { "type": "array", "items": { "type": "object" } },
-          "stacktrace": { "type": "array", "items": { "$ref": "#/components/schemas/StackFrame" } },
-          "events": { "type": "array", "items": { "type": "object" } },
-          "latestEventId": { "type": ["string", "null"] },
-          "currentEventId": { "type": ["string", "null"] },
-          "prevEventId": { "type": ["string", "null"] },
-          "nextEventId": { "type": ["string", "null"] },
-          "rawEvent": { "type": ["object", "null"], "description": "Reconstructed Sentry-shaped event document." },
-          "notes": { "type": "array", "items": { "$ref": "#/components/schemas/IssueNote" } },
-          "traceId": { "type": "string" },
-          "traceURL": { "type": "string" }
+          "breadcrumbs": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "stacktrace": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StackFrame"
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "latestEventId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "currentEventId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prevEventId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nextEventId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rawEvent": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Reconstructed Sentry-shaped event document."
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IssueNote"
+            }
+          },
+          "traceId": {
+            "type": "string"
+          },
+          "traceURL": {
+            "type": "string"
+          }
         }
       },
       "Project": {
         "type": "object",
         "properties": {
-          "id": { "type": "integer" },
-          "name": { "type": "string" },
-          "slug": { "type": "string" },
-          "defaultEnvironment": { "type": "string" },
-          "enabled": { "type": "boolean" },
-          "retentionDays": { "type": "integer", "description": "0 keeps events forever (the default)." },
-          "platform": { "type": "string" },
-          "platformLabel": { "type": "string" },
-          "createdAt": { "type": "string", "format": "date-time" },
-          "events7d": { "type": "integer" },
-          "unresolved": { "type": "integer" }
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "defaultEnvironment": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "retentionDays": {
+            "type": "integer",
+            "description": "0 keeps events forever (the default)."
+          },
+          "platform": {
+            "type": "string"
+          },
+          "platformLabel": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "events7d": {
+            "type": "integer"
+          },
+          "unresolved": {
+            "type": "integer"
+          }
         }
       },
       "ProjectDetail": {
         "type": "object",
         "properties": {
-          "project": { "$ref": "#/components/schemas/Project" },
-          "dsn": { "type": "string" },
+          "project": {
+            "$ref": "#/components/schemas/Project"
+          },
+          "dsn": {
+            "type": "string"
+          },
           "stats": {
             "type": "object",
-            "properties": { "events7d": { "type": "integer" }, "unresolved": { "type": "integer" } }
+            "properties": {
+              "events7d": {
+                "type": "integer"
+              },
+              "unresolved": {
+                "type": "integer"
+              }
+            }
           },
-          "environments": { "type": "array", "items": { "type": "string" } },
-          "platformLabel": { "type": "string" },
-          "platformInstall": { "type": "string" },
-          "platformSnippet": { "type": "string" },
+          "environments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "platformLabel": {
+            "type": "string"
+          },
+          "platformInstall": {
+            "type": "string"
+          },
+          "platformSnippet": {
+            "type": "string"
+          },
           "platforms": {
             "type": "array",
             "items": {
               "type": "object",
-              "properties": { "id": { "type": "string" }, "label": { "type": "string" } }
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              }
             }
           }
         }
@@ -227,47 +595,113 @@
         "properties": {
           "telegram": {
             "type": "object",
-            "properties": { "chatId": { "type": "string" }, "enabled": { "type": "boolean" } }
+            "properties": {
+              "chatId": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              }
+            }
           },
-          "botTokenMasked": { "type": "string" },
+          "botTokenMasked": {
+            "type": "string"
+          },
           "webhooks": {
             "type": "object",
             "additionalProperties": {
               "type": "object",
-              "properties": { "urlMasked": { "type": "string" }, "enabled": { "type": "boolean" } }
+              "properties": {
+                "urlMasked": {
+                  "type": "string"
+                },
+                "enabled": {
+                  "type": "boolean"
+                }
+              }
             }
           },
-          "smtp": { "$ref": "#/components/schemas/SMTPSettings" },
-          "traceURLTemplate": { "type": "string" }
+          "smtp": {
+            "$ref": "#/components/schemas/SMTPSettings"
+          },
+          "traceURLTemplate": {
+            "type": "string"
+          }
         }
       },
       "SMTPSettings": {
         "type": "object",
         "properties": {
-          "host": { "type": "string" },
-          "port": { "type": "integer" },
-          "username": { "type": "string" },
-          "passwordMasked": { "type": "string" },
-          "from": { "type": "string" },
-          "to": { "type": "string" },
-          "useTLS": { "type": "boolean" },
-          "enabled": { "type": "boolean" }
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          },
+          "passwordMasked": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "useTLS": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
         }
       },
       "AlertRule": {
         "type": "object",
         "properties": {
-          "id": { "type": "integer" },
-          "name": { "type": "string" },
-          "projectId": { "type": ["integer", "null"], "description": "Null means all projects." },
-          "environment": { "type": "string" },
-          "notifyNewIssue": { "type": "boolean" },
-          "notifyThreshold": { "type": "integer" },
-          "notifyReopened": { "type": "boolean" },
-          "cooldownSeconds": { "type": "integer" },
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Null means all projects."
+          },
+          "environment": {
+            "type": "string"
+          },
+          "notifyNewIssue": {
+            "type": "boolean"
+          },
+          "notifyThreshold": {
+            "type": "integer"
+          },
+          "notifyReopened": {
+            "type": "boolean"
+          },
+          "cooldownSeconds": {
+            "type": "integer"
+          },
           "channels": {
             "type": "array",
-            "items": { "type": "string", "enum": ["telegram", "slack", "discord", "teams", "sheets", "email"] },
+            "items": {
+              "type": "string",
+              "enum": [
+                "telegram",
+                "slack",
+                "discord",
+                "teams",
+                "sheets",
+                "email"
+              ]
+            },
             "description": "Empty means every enabled channel."
           }
         }
@@ -275,36 +709,71 @@
       "SourceMapMeta": {
         "type": "object",
         "properties": {
-          "id": { "type": "integer" },
-          "release": { "type": "string" },
-          "bundleUrl": { "type": "string" },
-          "sizeBytes": { "type": "integer" },
-          "createdAt": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "integer"
+          },
+          "release": {
+            "type": "string"
+          },
+          "bundleUrl": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "IssueNote": {
         "type": "object",
         "properties": {
-          "id": { "type": "integer" },
-          "issueId": { "type": "integer" },
-          "body": { "type": "string" },
-          "createdAt": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "integer"
+          },
+          "issueId": {
+            "type": "integer"
+          },
+          "body": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "ProjectOverview": {
         "type": "object",
         "properties": {
-          "period": { "type": "string" },
-          "events": { "type": "integer" },
-          "newIssues": { "type": "integer" },
-          "openIssues": { "type": "integer" },
+          "period": {
+            "type": "string"
+          },
+          "events": {
+            "type": "integer"
+          },
+          "newIssues": {
+            "type": "integer"
+          },
+          "openIssues": {
+            "type": "integer"
+          },
           "volumeBySeverity": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "bucket": { "type": "string" },
-                "counts": { "type": "object", "additionalProperties": { "type": "integer" } }
+                "bucket": {
+                  "type": "string"
+                },
+                "counts": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  }
+                }
               }
             }
           },
@@ -313,13 +782,28 @@
             "items": {
               "type": "object",
               "properties": {
-                "id": { "type": "integer" },
-                "title": { "type": "string" },
-                "level": { "type": "string" },
-                "status": { "type": "string" },
-                "eventCount": { "type": "integer" },
-                "lastSeen": { "type": "string", "format": "date-time" },
-                "lastSeenRelative": { "type": "string" }
+                "id": {
+                  "type": "integer"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "level": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "eventCount": {
+                  "type": "integer"
+                },
+                "lastSeen": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "lastSeenRelative": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -328,28 +812,56 @@
       "ReleaseHealth": {
         "type": "object",
         "properties": {
-          "release": { "type": "string" },
-          "events": { "type": "integer" },
-          "issues": { "type": "integer" },
-          "sessions": { "type": "integer" },
-          "users": { "type": "integer" },
-          "crashFreeSessions": { "type": "number" },
-          "crashFreeUsers": { "type": "number" },
-          "firstSeen": { "type": "string" },
-          "lastSeen": { "type": "string" }
+          "release": {
+            "type": "string"
+          },
+          "events": {
+            "type": "integer"
+          },
+          "issues": {
+            "type": "integer"
+          },
+          "sessions": {
+            "type": "integer"
+          },
+          "users": {
+            "type": "integer"
+          },
+          "crashFreeSessions": {
+            "type": "number"
+          },
+          "crashFreeUsers": {
+            "type": "number"
+          },
+          "firstSeen": {
+            "type": "string"
+          },
+          "lastSeen": {
+            "type": "string"
+          }
         }
       },
       "SessionSummary": {
         "type": "object",
         "properties": {
-          "period": { "type": "string" },
+          "period": {
+            "type": "string"
+          },
           "summary": {
             "type": "object",
             "properties": {
-              "totalSessions": { "type": "integer" },
-              "users": { "type": "integer" },
-              "crashFreeSessions": { "type": "number" },
-              "crashFreeUsers": { "type": "number" }
+              "totalSessions": {
+                "type": "integer"
+              },
+              "users": {
+                "type": "integer"
+              },
+              "crashFreeSessions": {
+                "type": "number"
+              },
+              "crashFreeUsers": {
+                "type": "number"
+              }
             }
           },
           "timeseries": {
@@ -357,9 +869,15 @@
             "items": {
               "type": "object",
               "properties": {
-                "bucket": { "type": "string" },
-                "healthy": { "type": "integer" },
-                "crashed": { "type": "integer" }
+                "bucket": {
+                  "type": "string"
+                },
+                "healthy": {
+                  "type": "integer"
+                },
+                "crashed": {
+                  "type": "integer"
+                }
               }
             }
           }
@@ -368,24 +886,54 @@
       "GenericWebhook": {
         "type": "object",
         "properties": {
-          "id": { "type": "integer" },
-          "name": { "type": "string" },
-          "url": { "type": "string" },
-          "hasSecret": { "type": "boolean" },
-          "headers": { "type": "object", "additionalProperties": { "type": "string" } },
-          "enabled": { "type": "boolean" }
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "hasSecret": {
+            "type": "boolean"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          }
         }
       },
       "StorageUsage": {
         "type": "object",
         "properties": {
-          "driver": { "type": "string", "enum": ["sqlite", "postgres"] },
-          "sizeBytes": { "type": "integer" },
+          "driver": {
+            "type": "string",
+            "enum": [
+              "sqlite",
+              "postgres"
+            ]
+          },
+          "sizeBytes": {
+            "type": "integer"
+          },
           "tables": {
             "type": "array",
             "items": {
               "type": "object",
-              "properties": { "name": { "type": "string" }, "rows": { "type": "integer" } }
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "rows": {
+                  "type": "integer"
+                }
+              }
             }
           }
         }
@@ -393,16 +941,52 @@
       "APIKey": {
         "type": "object",
         "properties": {
-          "id": { "type": "integer" },
-          "name": { "type": "string" },
-          "prefix": { "type": "string", "description": "First characters of the secret, for identification." },
-          "projectId": { "type": ["integer", "null"], "description": "Null means all projects." },
-          "scopes": { "type": "array", "items": { "type": "string", "enum": ["ingest", "read", "write"] } },
-          "expiresAt": { "type": "string", "description": "RFC3339, or empty for never." },
-          "revoked": { "type": "boolean" },
-          "lastUsedAt": { "type": "string" },
-          "createdAt": { "type": "string", "format": "date-time" },
-          "secret": { "type": "string", "description": "Only present at creation/rotation. Shown once." }
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string",
+            "description": "First characters of the secret, for identification."
+          },
+          "projectId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Null means all projects."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "ingest",
+                "read",
+                "write"
+              ]
+            }
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "RFC3339, or empty for never."
+          },
+          "revoked": {
+            "type": "boolean"
+          },
+          "lastUsedAt": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "secret": {
+            "type": "string",
+            "description": "Only present at creation/rotation. Shown once."
+          }
         }
       }
     }
@@ -418,15 +1002,36 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["username", "password"],
-                "properties": { "username": { "type": "string" }, "password": { "type": "string" } }
+                "required": [
+                  "username",
+                  "password"
+                ],
+                "properties": {
+                  "username": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                }
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "Logged in; session cookie set." },
-          "401": { "description": "Bad credentials.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+          "200": {
+            "description": "Logged in; session cookie set."
+          },
+          "401": {
+            "description": "Bad credentials.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -434,11 +1039,23 @@
       "get": {
         "summary": "Session status",
         "security": [],
-        "responses": { "200": { "description": "Always 200; authenticated flag tells the truth." } }
+        "responses": {
+          "200": {
+            "description": "Always 200; authenticated flag tells the truth."
+          }
+        }
       }
     },
     "/api/v1/logout": {
-      "post": { "summary": "Log out", "security": [], "responses": { "200": { "description": "Logged out." } } }
+      "post": {
+        "summary": "Log out",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Logged out."
+          }
+        }
+      }
     },
     "/api/v1/dashboard": {
       "get": {
@@ -447,13 +1064,28 @@
           {
             "name": "range",
             "in": "query",
-            "schema": { "type": "string", "enum": ["1h", "24h", "7d", "30d"], "default": "24h" }
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1h",
+                "24h",
+                "7d",
+                "30d"
+              ],
+              "default": "24h"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "Dashboard data.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Dashboard" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dashboard"
+                }
+              }
+            }
           }
         }
       }
@@ -462,17 +1094,66 @@
       "get": {
         "summary": "List issues",
         "parameters": [
-          { "name": "q", "in": "query", "schema": { "type": "string" } },
-          { "name": "project", "in": "query", "schema": { "type": "integer" } },
-          { "name": "environment", "in": "query", "schema": { "type": "string" } },
-          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["unresolved", "resolved", "ignored", "muted"] } },
-          { "name": "sort", "in": "query", "schema": { "type": "string" } },
-          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } }
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "project",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "unresolved",
+                "resolved",
+                "ignored",
+                "muted"
+              ]
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Issue page.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IssueList" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueList"
+                }
+              }
+            }
           }
         }
       }
@@ -486,67 +1167,152 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["ids", "status"],
+                "required": [
+                  "ids",
+                  "status"
+                ],
                 "properties": {
-                  "ids": { "type": "array", "items": { "type": "integer" } },
-                  "status": { "type": "string", "enum": ["unresolved", "resolved", "ignored", "muted"] }
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "unresolved",
+                      "resolved",
+                      "ignored",
+                      "muted"
+                    ]
+                  }
                 }
               }
             }
           }
         },
-        "responses": { "200": { "description": "Updated." } }
+        "responses": {
+          "200": {
+            "description": "Updated."
+          }
+        }
       }
     },
     "/api/v1/issues/{id}": {
       "get": {
         "summary": "Issue detail",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
-          { "name": "event", "in": "query", "description": "Event ID; defaults to latest.", "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "event",
+            "in": "query",
+            "description": "Event ID; defaults to latest.",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Issue with event detail.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IssueDetail" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueDetail"
+                }
+              }
+            }
           },
-          "404": { "description": "Not found." }
+          "404": {
+            "description": "Not found."
+          }
         }
       }
     },
     "/api/v1/issues/{id}/status": {
       "post": {
         "summary": "Set issue status",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["status"],
+                "required": [
+                  "status"
+                ],
                 "properties": {
-                  "status": { "type": "string", "enum": ["unresolved", "resolved", "ignored", "muted"] },
-                  "mutedUntil": { "type": "string", "description": "RFC3339 expiry for status muted; empty mutes forever." },
-                  "resolveInRelease": { "type": "boolean", "description": "With status resolved: pin to the issue's current release and reopen only on a different release." }
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "unresolved",
+                      "resolved",
+                      "ignored",
+                      "muted"
+                    ]
+                  },
+                  "mutedUntil": {
+                    "type": "string",
+                    "description": "RFC3339 expiry for status muted; empty mutes forever."
+                  },
+                  "resolveInRelease": {
+                    "type": "boolean",
+                    "description": "With status resolved: pin to the issue's current release and reopen only on a different release."
+                  }
                 }
               }
             }
           }
         },
-        "responses": { "200": { "description": "Updated." } }
+        "responses": {
+          "200": {
+            "description": "Updated."
+          }
+        }
       }
     },
     "/api/v1/issues/{id}/notes": {
       "get": {
         "summary": "List issue notes",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Notes, oldest first.",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/IssueNote" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IssueNote"
+                  }
+                }
               }
             }
           }
@@ -554,15 +1320,30 @@
       },
       "post": {
         "summary": "Add issue note (10 KiB max)",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["body"],
-                "properties": { "body": { "type": "string" } }
+                "required": [
+                  "body"
+                ],
+                "properties": {
+                  "body": {
+                    "type": "string"
+                  }
+                }
               }
             }
           }
@@ -570,7 +1351,13 @@
         "responses": {
           "201": {
             "description": "Created.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IssueNote" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueNote"
+                }
+              }
+            }
           }
         }
       }
@@ -579,10 +1366,28 @@
       "delete": {
         "summary": "Delete issue note (scoped to the issue)",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
-          { "name": "noteId", "in": "path", "required": true, "schema": { "type": "integer" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "noteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
         ],
-        "responses": { "200": { "description": "Deleted." } }
+        "responses": {
+          "200": {
+            "description": "Deleted."
+          }
+        }
       }
     },
     "/api/v1/projects": {
@@ -593,7 +1398,12 @@
             "description": "Projects.",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Project" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Project"
+                  }
+                }
               }
             }
           }
@@ -607,13 +1417,27 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["name", "slug"],
+                "required": [
+                  "name",
+                  "slug"
+                ],
                 "properties": {
-                  "name": { "type": "string" },
-                  "slug": { "type": "string" },
-                  "defaultEnvironment": { "type": "string" },
-                  "platform": { "type": "string" },
-                  "retentionDays": { "type": "integer", "description": "0 keeps events forever (the default)." }
+                  "name": {
+                    "type": "string"
+                  },
+                  "slug": {
+                    "type": "string"
+                  },
+                  "defaultEnvironment": {
+                    "type": "string"
+                  },
+                  "platform": {
+                    "type": "string"
+                  },
+                  "retentionDays": {
+                    "type": "integer",
+                    "description": "0 keeps events forever (the default)."
+                  }
                 }
               }
             }
@@ -622,26 +1446,58 @@
         "responses": {
           "200": {
             "description": "Created; returns full detail.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectDetail" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDetail"
+                }
+              }
+            }
           },
-          "409": { "description": "Slug taken." }
+          "409": {
+            "description": "Slug taken."
+          }
         }
       }
     },
     "/api/v1/projects/{id}": {
       "get": {
         "summary": "Project detail",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Project detail.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectDetail" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDetail"
+                }
+              }
+            }
           }
         }
       },
       "patch": {
         "summary": "Update project",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -649,11 +1505,22 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "name": { "type": "string" },
-                  "defaultEnvironment": { "type": "string" },
-                  "platform": { "type": "string" },
-                  "retentionDays": { "type": "integer", "description": "0 keeps events forever (the default)." },
-                  "enabled": { "type": "boolean" }
+                  "name": {
+                    "type": "string"
+                  },
+                  "defaultEnvironment": {
+                    "type": "string"
+                  },
+                  "platform": {
+                    "type": "string"
+                  },
+                  "retentionDays": {
+                    "type": "integer",
+                    "description": "0 keeps events forever (the default)."
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
                 }
               }
             }
@@ -662,24 +1529,58 @@
         "responses": {
           "200": {
             "description": "Updated detail.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectDetail" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDetail"
+                }
+              }
+            }
           }
         }
       },
       "delete": {
         "summary": "Delete project",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "Deleted." } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted."
+          }
+        }
       }
     },
     "/api/v1/projects/{id}/rotate": {
       "post": {
         "summary": "Rotate project DSN key",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Updated detail with new DSN.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectDetail" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDetail"
+                }
+              }
+            }
           }
         }
       }
@@ -687,20 +1588,49 @@
     "/api/v1/platforms": {
       "get": {
         "summary": "Setup snippet platforms",
-        "responses": { "200": { "description": "Platform id/label/language triples." } }
+        "responses": {
+          "200": {
+            "description": "Platform id/label/language triples."
+          }
+        }
       }
     },
     "/api/v1/projects/{id}/overview": {
       "get": {
         "summary": "Project overview bento (counters, severity volume, top issues)",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
-          { "name": "period", "in": "query", "schema": { "type": "string", "enum": ["24h", "7d", "30d"], "default": "24h" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "24h",
+                "7d",
+                "30d"
+              ],
+              "default": "24h"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Overview data.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectOverview" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOverview"
+                }
+              }
+            }
           }
         }
       }
@@ -708,13 +1638,27 @@
     "/api/v1/projects/{id}/releases": {
       "get": {
         "summary": "Per-release rollup (events, issues, sessions, crash-free rates)",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Releases, most recently active first.",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ReleaseHealth" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReleaseHealth"
+                  }
+                }
               }
             }
           }
@@ -725,13 +1669,38 @@
       "get": {
         "summary": "Crash-free summary plus session-health timeseries",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
-          { "name": "period", "in": "query", "schema": { "type": "string", "enum": ["24h", "7d", "30d"], "default": "24h" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "24h",
+                "7d",
+                "30d"
+              ],
+              "default": "24h"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Session summary.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionSummary" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionSummary"
+                }
+              }
+            }
           }
         }
       }
@@ -739,7 +1708,16 @@
     "/api/v1/projects/{id}/test-event": {
       "post": {
         "summary": "Ingest a synthetic test event through the real pipeline",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "{issueId} of the grouped test issue.",
@@ -747,7 +1725,11 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "issueId": { "type": "integer" } }
+                  "properties": {
+                    "issueId": {
+                      "type": "integer"
+                    }
+                  }
                 }
               }
             }
@@ -758,13 +1740,27 @@
     "/api/v1/projects/{id}/sourcemaps": {
       "get": {
         "summary": "List source maps",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Source maps.",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/SourceMapMeta" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SourceMapMeta"
+                  }
+                }
               }
             }
           }
@@ -772,18 +1768,37 @@
       },
       "post": {
         "summary": "Upload source map (upsert per release + bundle URL)",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["bundleUrl", "content"],
+                "required": [
+                  "bundleUrl",
+                  "content"
+                ],
                 "properties": {
-                  "release": { "type": "string" },
-                  "bundleUrl": { "type": "string" },
-                  "content": { "type": "string", "description": "Raw .map JSON text, max 10 MiB." }
+                  "release": {
+                    "type": "string"
+                  },
+                  "bundleUrl": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "Raw .map JSON text, max 10 MiB."
+                  }
                 }
               }
             },
@@ -791,9 +1806,16 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "release": { "type": "string" },
-                  "bundleUrl": { "type": "string" },
-                  "file": { "type": "string", "format": "binary" }
+                  "release": {
+                    "type": "string"
+                  },
+                  "bundleUrl": {
+                    "type": "string"
+                  },
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
                 }
               }
             }
@@ -802,7 +1824,13 @@
         "responses": {
           "201": {
             "description": "Stored.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SourceMapMeta" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceMapMeta"
+                }
+              }
+            }
           }
         }
       }
@@ -811,10 +1839,28 @@
       "delete": {
         "summary": "Delete source map",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
-          { "name": "mapId", "in": "path", "required": true, "schema": { "type": "integer" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "mapId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
         ],
-        "responses": { "200": { "description": "Deleted." } }
+        "responses": {
+          "200": {
+            "description": "Deleted."
+          }
+        }
       }
     },
     "/api/v1/settings": {
@@ -823,7 +1869,13 @@
         "responses": {
           "200": {
             "description": "Settings (secrets masked).",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
           }
         }
       }
@@ -838,9 +1890,16 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "botToken": { "type": "string", "description": "Blank keeps the stored secret." },
-                  "chatId": { "type": "string" },
-                  "enabled": { "type": "boolean" }
+                  "botToken": {
+                    "type": "string",
+                    "description": "Blank keeps the stored secret."
+                  },
+                  "chatId": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
                 }
               }
             }
@@ -849,7 +1908,13 @@
         "responses": {
           "200": {
             "description": "Updated settings.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
           }
         }
       }
@@ -857,13 +1922,26 @@
     "/api/v1/settings/telegram/test": {
       "post": {
         "summary": "Send Telegram test",
-        "responses": { "200": { "description": "{ok, message}." } }
+        "responses": {
+          "200": {
+            "description": "{ok, message}."
+          }
+        }
       }
     },
     "/api/v1/settings/webhooks/{channel}": {
       "put": {
         "summary": "Save channel webhook (slack, discord, teams, sheets)",
-        "parameters": [{ "name": "channel", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "parameters": [
+          {
+            "name": "channel",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -871,8 +1949,13 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "url": { "type": "string", "description": "Blank keeps the stored URL." },
-                  "enabled": { "type": "boolean" }
+                  "url": {
+                    "type": "string",
+                    "description": "Blank keeps the stored URL."
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
                 }
               }
             }
@@ -881,7 +1964,13 @@
         "responses": {
           "200": {
             "description": "Updated settings.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
           }
         }
       }
@@ -889,8 +1978,21 @@
     "/api/v1/settings/webhooks/{channel}/test": {
       "post": {
         "summary": "Send channel test",
-        "parameters": [{ "name": "channel", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "{ok, message}." } }
+        "parameters": [
+          {
+            "name": "channel",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ok, message}."
+          }
+        }
       }
     },
     "/api/v1/settings/generic-webhooks": {
@@ -901,7 +2003,12 @@
             "description": "Generic webhooks.",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/GenericWebhook" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GenericWebhook"
+                  }
+                }
               }
             }
           }
@@ -915,13 +2022,29 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["url"],
+                "required": [
+                  "url"
+                ],
                 "properties": {
-                  "name": { "type": "string" },
-                  "url": { "type": "string" },
-                  "secret": { "type": "string", "description": "HMAC-SHA256 signing secret; blank means unsigned." },
-                  "headers": { "type": "object", "additionalProperties": { "type": "string" } },
-                  "enabled": { "type": "boolean" }
+                  "name": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "secret": {
+                    "type": "string",
+                    "description": "HMAC-SHA256 signing secret; blank means unsigned."
+                  },
+                  "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
                 }
               }
             }
@@ -930,7 +2053,13 @@
         "responses": {
           "201": {
             "description": "Created.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GenericWebhook" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericWebhook"
+                }
+              }
+            }
           }
         }
       }
@@ -938,7 +2067,16 @@
     "/api/v1/settings/generic-webhooks/{id}": {
       "put": {
         "summary": "Update generic webhook (blank secret keeps the stored one)",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -946,11 +2084,24 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "name": { "type": "string" },
-                  "url": { "type": "string" },
-                  "secret": { "type": "string" },
-                  "headers": { "type": "object", "additionalProperties": { "type": "string" } },
-                  "enabled": { "type": "boolean" }
+                  "name": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "secret": {
+                    "type": "string"
+                  },
+                  "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
                 }
               }
             }
@@ -959,21 +2110,53 @@
         "responses": {
           "200": {
             "description": "Updated.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GenericWebhook" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericWebhook"
+                }
+              }
+            }
           }
         }
       },
       "delete": {
         "summary": "Delete generic webhook",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "Deleted." } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted."
+          }
+        }
       }
     },
     "/api/v1/settings/generic-webhooks/{id}/test": {
       "post": {
         "summary": "Send generic webhook test",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "{ok, message}." } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ok, message}."
+          }
+        }
       }
     },
     "/api/v1/settings/tracing": {
@@ -985,7 +2168,11 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": { "urlTemplate": { "type": "string" } }
+                "properties": {
+                  "urlTemplate": {
+                    "type": "string"
+                  }
+                }
               }
             }
           }
@@ -993,7 +2180,13 @@
         "responses": {
           "200": {
             "description": "Updated settings.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
           }
         }
       }
@@ -1008,14 +2201,31 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "host": { "type": "string" },
-                  "port": { "type": "integer" },
-                  "username": { "type": "string" },
-                  "password": { "type": "string", "description": "Blank or masked keeps the stored secret." },
-                  "from": { "type": "string" },
-                  "to": { "type": "string" },
-                  "useTLS": { "type": "boolean" },
-                  "enabled": { "type": "boolean" }
+                  "host": {
+                    "type": "string"
+                  },
+                  "port": {
+                    "type": "integer"
+                  },
+                  "username": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string",
+                    "description": "Blank or masked keeps the stored secret."
+                  },
+                  "from": {
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  },
+                  "useTLS": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
                 }
               }
             }
@@ -1024,7 +2234,13 @@
         "responses": {
           "200": {
             "description": "Updated settings.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
           }
         }
       }
@@ -1032,7 +2248,11 @@
     "/api/v1/settings/smtp/test": {
       "post": {
         "summary": "Send SMTP test",
-        "responses": { "200": { "description": "{ok, message}." } }
+        "responses": {
+          "200": {
+            "description": "{ok, message}."
+          }
+        }
       }
     },
     "/api/v1/rules": {
@@ -1043,7 +2263,12 @@
             "description": "Rules.",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/AlertRule" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AlertRule"
+                  }
+                }
               }
             }
           }
@@ -1054,13 +2279,23 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/AlertRule" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertRule"
+              }
+            }
           }
         },
         "responses": {
           "201": {
             "description": "Created.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AlertRule" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertRule"
+                }
+              }
+            }
           }
         }
       }
@@ -1068,24 +2303,56 @@
     "/api/v1/rules/{id}": {
       "put": {
         "summary": "Update alert rule",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/AlertRule" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertRule"
+              }
+            }
           }
         },
         "responses": {
           "200": {
             "description": "Updated.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AlertRule" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertRule"
+                }
+              }
+            }
           }
         }
       },
       "delete": {
         "summary": "Delete alert rule",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "Deleted." } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted."
+          }
+        }
       }
     },
     "/api/v1/storage": {
@@ -1094,7 +2361,13 @@
         "responses": {
           "200": {
             "description": "Driver, size and table counts.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StorageUsage" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageUsage"
+                }
+              }
+            }
           }
         }
       }
@@ -1102,13 +2375,21 @@
     "/api/v1/storage/sweep": {
       "post": {
         "summary": "Run retention sweep now",
-        "responses": { "200": { "description": "{deleted, byProject}." } }
+        "responses": {
+          "200": {
+            "description": "{deleted, byProject}."
+          }
+        }
       }
     },
     "/api/v1/storage/vacuum": {
       "post": {
         "summary": "Vacuum the database",
-        "responses": { "200": { "description": "{ok}." } }
+        "responses": {
+          "200": {
+            "description": "{ok}."
+          }
+        }
       }
     },
     "/api/v1/api-keys": {
@@ -1119,7 +2400,12 @@
             "description": "Keys; secrets never included.",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/APIKey" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/APIKey"
+                  }
+                }
               }
             }
           }
@@ -1134,10 +2420,30 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "name": { "type": "string" },
-                  "projectId": { "type": ["integer", "null"] },
-                  "scopes": { "type": "array", "items": { "type": "string", "enum": ["ingest", "read", "write"] } },
-                  "expiresAt": { "type": "string", "description": "RFC3339, or empty for never." }
+                  "name": {
+                    "type": "string"
+                  },
+                  "projectId": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "scopes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "ingest",
+                        "read",
+                        "write"
+                      ]
+                    }
+                  },
+                  "expiresAt": {
+                    "type": "string",
+                    "description": "RFC3339, or empty for never."
+                  }
                 }
               }
             }
@@ -1146,7 +2452,13 @@
         "responses": {
           "201": {
             "description": "Created, including the one-time secret.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/APIKey" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIKey"
+                }
+              }
+            }
           }
         }
       }
@@ -1154,11 +2466,26 @@
     "/api/v1/api-keys/{id}/rotate": {
       "post": {
         "summary": "Rotate API key (admin session only; old secret dies)",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Replacement key with new one-time secret.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/APIKey" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIKey"
+                }
+              }
+            }
           }
         }
       }
@@ -1166,43 +2493,85 @@
     "/api/v1/api-keys/{id}/revoke": {
       "post": {
         "summary": "Revoke API key (admin session only)",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "Revoked." } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked."
+          }
+        }
       }
     },
     "/api/v1/api-keys/{id}": {
       "delete": {
         "summary": "Delete API key (admin session only)",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "Deleted." } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted."
+          }
+        }
       }
     },
     "/api/v1/openapi.json": {
       "get": {
         "summary": "This OpenAPI document",
         "security": [],
-        "responses": { "200": { "description": "OpenAPI 3.1 JSON." } }
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 JSON."
+          }
+        }
       }
     },
     "/robots.txt": {
       "get": {
         "summary": "Crawler deny-all (the app is private internal tooling)",
         "security": [],
-        "responses": { "200": { "description": "Plain-text robots file." } }
+        "responses": {
+          "200": {
+            "description": "Plain-text robots file."
+          }
+        }
       }
     },
     "/favicon.svg": {
       "get": {
         "summary": "App icon",
         "security": [],
-        "responses": { "200": { "description": "SVG favicon." } }
+        "responses": {
+          "200": {
+            "description": "SVG favicon."
+          }
+        }
       }
     },
     "/healthz": {
       "get": {
         "summary": "Liveness check (process is up; does not touch the database)",
         "security": [],
-        "responses": { "200": { "description": "{status: ok}." } }
+        "responses": {
+          "200": {
+            "description": "{status: ok}."
+          }
+        }
       }
     },
     "/readyz": {
@@ -1210,8 +2579,12 @@
         "summary": "Readiness check (database reachable)",
         "security": [],
         "responses": {
-          "200": { "description": "{status, db, version, uptimeSeconds}." },
-          "503": { "description": "Database unreachable." }
+          "200": {
+            "description": "{status, db, version, uptimeSeconds}."
+          },
+          "503": {
+            "description": "Database unreachable."
+          }
         }
       }
     },
@@ -1219,14 +2592,178 @@
       "get": {
         "summary": "Public build metadata (version, go version, db driver, uptime)",
         "security": [],
-        "responses": { "200": { "description": "Build metadata." } }
+        "responses": {
+          "200": {
+            "description": "Build metadata."
+          }
+        }
       }
     },
     "/metrics": {
       "get": {
         "summary": "Prometheus metrics (only when ERRGOTRACK_METRICS is enabled)",
         "security": [],
-        "responses": { "200": { "description": "Prometheus text exposition. 404 when disabled." } }
+        "responses": {
+          "200": {
+            "description": "Prometheus text exposition. 404 when disabled."
+          }
+        }
+      }
+    },
+    "/api/v1/users": {
+      "get": {
+        "summary": "List users (admin session only)",
+        "responses": {
+          "200": {
+            "description": "Users with instance roles."
+          }
+        }
+      },
+      "post": {
+        "summary": "Create user (admin session only)",
+        "responses": {
+          "201": {
+            "description": "Created."
+          }
+        }
+      }
+    },
+    "/api/v1/users/{id}": {
+      "delete": {
+        "summary": "Delete user (admin session only; never the last user or self)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted."
+          }
+        }
+      }
+    },
+    "/api/v1/users/{id}/role": {
+      "put": {
+        "summary": "Set instance role (admin session only; never demote the last admin)",
+        "responses": {
+          "200": {
+            "description": "Updated."
+          }
+        }
+      }
+    },
+    "/api/v1/users/{id}/password": {
+      "put": {
+        "summary": "Reset password (admin session only)",
+        "responses": {
+          "200": {
+            "description": "Updated."
+          }
+        }
+      }
+    },
+    "/api/v1/teams": {
+      "get": {
+        "summary": "List teams with members and projects (admin session only)",
+        "responses": {
+          "200": {
+            "description": "Teams."
+          }
+        }
+      },
+      "post": {
+        "summary": "Create team (admin session only)",
+        "responses": {
+          "201": {
+            "description": "Created."
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{id}": {
+      "delete": {
+        "summary": "Delete team (admin session only; grants cascade)",
+        "responses": {
+          "200": {
+            "description": "Deleted."
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{id}/members": {
+      "post": {
+        "summary": "Add team member (admin session only)",
+        "responses": {
+          "200": {
+            "description": "Added."
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{id}/members/{userId}": {
+      "delete": {
+        "summary": "Remove team member (admin session only)",
+        "responses": {
+          "200": {
+            "description": "Removed."
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{id}/projects": {
+      "post": {
+        "summary": "Grant project to team (admin session only)",
+        "responses": {
+          "200": {
+            "description": "Granted."
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{id}/projects/{projectId}": {
+      "delete": {
+        "summary": "Revoke project from team (admin session only)",
+        "responses": {
+          "200": {
+            "description": "Revoked."
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/access": {
+      "get": {
+        "summary": "Project access list (admin session only)",
+        "responses": {
+          "200": {
+            "description": "Direct member ids and granted teams."
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/access/members": {
+      "post": {
+        "summary": "Grant user directly to project (admin session only)",
+        "responses": {
+          "200": {
+            "description": "Granted."
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/access/members/{userId}": {
+      "delete": {
+        "summary": "Remove direct project grant (admin session only)",
+        "responses": {
+          "200": {
+            "description": "Removed."
+          }
+        }
       }
     }
   }
