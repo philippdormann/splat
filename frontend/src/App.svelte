@@ -27,6 +27,7 @@
   import CommandPalette from "$lib/components/CommandPalette.svelte";
 
   let authed: boolean | null = null;
+  let isAdmin = false;
   let path = window.location.pathname;
   let sidebarOpen = false;
   let paletteOpen = false;
@@ -58,6 +59,7 @@
     try {
       const me = await api.me();
       authed = me.authenticated;
+      isAdmin = me.role === "admin";
       if (authed) loadNavProjects();
     } catch {
       authed = false;
@@ -74,6 +76,7 @@
   async function logout() {
     await api.logout();
     authed = false;
+    isAdmin = false;
     navigate("/login");
   }
 
@@ -116,7 +119,7 @@
 {#if authed === null}
   <p class="p-6 text-sm text-muted-foreground">Loading…</p>
 {:else if !authed}
-  <Login onLoggedIn={() => { authed = true; loadNavProjects(); navigate("/"); }} />
+  <Login onLoggedIn={async () => { authed = true; try { isAdmin = (await api.me()).role === "admin"; } catch { isAdmin = false; } loadNavProjects(); navigate("/"); }} />
 {:else}
   <CommandPalette bind:open={paletteOpen} {navigate} {logout} />
   <div class="flex min-h-screen">
@@ -150,13 +153,17 @@
                 </DropdownMenu.Item>
               {/each}
             {/if}
-            <DropdownMenu.Separator />
-            <DropdownMenu.Item onSelect={() => navigate("/projects/new")}>
-              <Plus class="h-4 w-4" /><span>New project</span>
-            </DropdownMenu.Item>
+            {#if isAdmin}
+              <DropdownMenu.Separator />
+              <DropdownMenu.Item onSelect={() => navigate("/projects/new")}>
+                <Plus class="h-4 w-4" /><span>New project</span>
+              </DropdownMenu.Item>
+            {/if}
           </DropdownMenu.Content>
         </DropdownMenu.Root>
-        <a href="/settings" class={navClass(path === "/settings")} on:click|preventDefault={() => navigate("/settings")}><Settings class="h-4 w-4" /> Settings</a>
+        {#if isAdmin}
+          <a href="/settings" class={navClass(path === "/settings")} on:click|preventDefault={() => navigate("/settings")}><Settings class="h-4 w-4" /> Settings</a>
+        {/if}
       </nav>
       <div class="mt-8">
         <button class={navClass(false)} on:click={logout}><LogOut class="h-4 w-4" /> Log out</button>

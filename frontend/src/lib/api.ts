@@ -34,7 +34,7 @@ export class ApiError extends Error {
 }
 
 export const api = {
-  me: () => req<{ authenticated: boolean; username?: string }>("/api/v1/me"),
+  me: () => req<{ authenticated: boolean; username?: string; role?: string }>("/api/v1/me"),
   login: (username: string, password: string) =>
     req<{ ok: boolean }>("/api/v1/login", {
       method: "POST",
@@ -248,6 +248,64 @@ export const api = {
     }),
   deleteAPIKey: (id: number) =>
     req<{ ok: boolean }>(`/api/v1/api-keys/${id}`, { method: "DELETE" }),
+
+  users: () => req<User[]>("/api/v1/users"),
+  createUser: (input: { username: string; password: string; role?: string }) =>
+    req<User>("/api/v1/users", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  deleteUser: (id: number) =>
+    req<{ ok: boolean }>(`/api/v1/users/${id}`, { method: "DELETE" }),
+  setUserRole: (id: number, role: string) =>
+    req<{ ok: boolean }>(`/api/v1/users/${id}/role`, {
+      method: "PUT",
+      body: JSON.stringify({ role }),
+    }),
+  setUserPassword: (id: number, password: string) =>
+    req<{ ok: boolean }>(`/api/v1/users/${id}/password`, {
+      method: "PUT",
+      body: JSON.stringify({ password }),
+    }),
+
+  teams: () => req<Team[]>("/api/v1/teams"),
+  createTeam: (input: { name: string; slug?: string }) =>
+    req<Team>("/api/v1/teams", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  deleteTeam: (id: number) =>
+    req<{ ok: boolean }>(`/api/v1/teams/${id}`, { method: "DELETE" }),
+  addTeamMember: (teamId: number, userId: number) =>
+    req<{ ok: boolean }>(`/api/v1/teams/${teamId}/members`, {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    }),
+  removeTeamMember: (teamId: number, userId: number) =>
+    req<{ ok: boolean }>(`/api/v1/teams/${teamId}/members/${userId}`, {
+      method: "DELETE",
+    }),
+  grantTeamProject: (teamId: number, projectId: number) =>
+    req<{ ok: boolean }>(`/api/v1/teams/${teamId}/projects`, {
+      method: "POST",
+      body: JSON.stringify({ projectId }),
+    }),
+  revokeTeamProject: (teamId: number, projectId: number) =>
+    req<{ ok: boolean }>(`/api/v1/teams/${teamId}/projects/${projectId}`, {
+      method: "DELETE",
+    }),
+
+  projectAccess: (id: number | string) =>
+    req<ProjectAccess>(`/api/v1/projects/${id}/access`),
+  grantProjectMember: (id: number | string, userId: number) =>
+    req<{ ok: boolean }>(`/api/v1/projects/${id}/access/members`, {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    }),
+  revokeProjectMember: (id: number | string, userId: number) =>
+    req<{ ok: boolean }>(`/api/v1/projects/${id}/access/members/${userId}`, {
+      method: "DELETE",
+    }),
 };
 
 export interface Point {
@@ -539,4 +597,25 @@ export interface APIKey {
   lastUsedAt: string;
   createdAt: string;
   secret?: string;
+}
+
+export interface User {
+  id: number;
+  username: string;
+  role: string;
+  createdAt: string;
+}
+
+export interface Team {
+  id: number;
+  name: string;
+  slug: string;
+  createdAt: string;
+  memberIds: number[];
+  projectIds: number[];
+}
+
+export interface ProjectAccess {
+  memberIds: number[];
+  teams: { id: number; name: string; slug: string }[];
 }

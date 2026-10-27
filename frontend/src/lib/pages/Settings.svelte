@@ -1,13 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput, type APIKey, type GenericWebhook } from "$lib/api";
+  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput, type APIKey, type GenericWebhook, type User, type Team } from "$lib/api";
   import Card from "$lib/components/card.svelte";
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
   import { toast } from "svelte-sonner";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import Dialog from "$lib/components/Dialog.svelte";
-  import { Bell, KeyRound, Database, SlidersHorizontal, ScrollText } from "lucide-svelte";
+  import { Bell, KeyRound, Database, SlidersHorizontal, ScrollText, Users } from "lucide-svelte";
 
   let tab = "general";
   const tabs = [
@@ -15,6 +15,7 @@
     { id: "notifications", label: "Notifications", icon: Bell },
     { id: "rules", label: "Alert rules", icon: ScrollText },
     { id: "keys", label: "API keys", icon: KeyRound },
+    { id: "users", label: "Users & Teams", icon: Users },
     { id: "storage", label: "Storage", icon: Database },
   ];
 
@@ -32,6 +33,17 @@
   let keys: APIKey[] = [];
   let newKey = { name: "", projectId: null as number | null, scopes: ["read"] as string[], expiresAt: "" };
   let freshSecret = "";
+  let users: User[] = [];
+  let teams: Team[] = [];
+  let newUser = { username: "", password: "", role: "member" };
+  let newTeam = { name: "", slug: "" };
+  let resetPw: { id: number; username: string; password: string } | null = null;
+  let teamAddUser: Record<number, number | null> = {};
+  let teamAddProject: Record<number, number | null> = {};
+
+  function usernameOf(id: number): string {
+    return users.find((u) => u.id === id)?.username ?? `User ${id}`;
+  }
 
   const channels = ["slack", "discord", "teams", "sheets"];
   const allChannels = ["telegram", "slack", "discord", "teams", "sheets", "email", "generic"];
@@ -182,6 +194,12 @@
       projects = await api.projects();
       keys = await api.apiKeys();
       generic = data.genericWebhooks ?? [];
+      try {
+        users = await api.users();
+        teams = await api.teams();
+      } catch (e) {
+        toast.error(`Could not load users/teams: ${e instanceof Error ? e.message : e}`);
+      }
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load settings.";
     }
@@ -327,6 +345,125 @@
   function copySecret() {
     navigator.clipboard.writeText(freshSecret);
     toast.success("Secret copied to clipboard.");
+  }
+
+  async function reloadUsersTeams() {
+    users = await api.users();
+    teams = await api.teams();
+  }
+
+  async function createUser(e: Event) {
+    e.preventDefault();
+    try {
+      await api.createUser(newUser);
+      newUser = { username: "", password: "", role: "member" };
+      await reloadUsersTeams();
+      toast.success("User created.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not create user.");
+    }
+  }
+
+  async function deleteUser(id: number, username: string) {
+    confirmBox = {
+      title: `Delete user “${username}”?`,
+      description: "Their sessions end immediately and their grants disappear.",
+      label: "Delete",
+      run: async () => {
+        await api.deleteUser(id);
+        await reloadUsersTeams();
+        toast.success("User deleted.");
+      },
+    };
+  }
+
+  async function changeRole(id: number, role: string) {
+    try {
+      await api.setUserRole(id, role);
+      await reloadUsersTeams();
+      toast.success("Role updated.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not change role.");
+    }
+  }
+
+  async function saveResetPassword(e: Event) {
+    e.preventDefault();
+    if (!resetPw) return;
+    try {
+      await api.setUserPassword(resetPw.id, resetPw.password);
+      resetPw = null;
+      toast.success("Password reset.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not reset password.");
+    }
+  }
+
+  async function createTeam(e: Event) {
+    e.preventDefault();
+    try {
+      await api.createTeam(newTeam);
+      newTeam = { name: "", slug: "" };
+      await reloadUsersTeams();
+      toast.success("Team created.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not create team.");
+    }
+  }
+
+  async function deleteTeam(id: number, name: string) {
+    confirmBox = {
+      title: `Delete team “${name}”?`,
+      description: "Memberships and project grants through this team disappear. Users keep direct grants.",
+      label: "Delete",
+      run: async () => {
+        await api.deleteTeam(id);
+        await reloadUsersTeams();
+        toast.success("Team deleted.");
+      },
+    };
+  }
+
+  async function addTeamMember(teamId: number) {
+    const userId = teamAddUser[teamId];
+    if (!userId) return;
+    try {
+      await api.addTeamMember(teamId, userId);
+      await reloadUsersTeams();
+      toast.success("Member added.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not add member.");
+    }
+  }
+
+  async function removeTeamMember(teamId: number, userId: number) {
+    try {
+      await api.removeTeamMember(teamId, userId);
+      await reloadUsersTeams();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not remove member.");
+    }
+  }
+
+  async function grantTeamProject(teamId: number) {
+    const projectId = teamAddProject[teamId];
+    if (!projectId) return;
+    try {
+      await api.grantTeamProject(teamId, projectId);
+      await reloadUsersTeams();
+      toast.success("Project granted.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not grant project.");
+    }
+  }
+
+  async function revokeTeamProject(teamId: number, projectId: number) {
+    try {
+      await api.revokeTeamProject(teamId, projectId);
+      await reloadUsersTeams();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not revoke grant.");
+    }
   }
 
   // Single shared confirmation dialog for every destructive action below.
@@ -646,6 +783,130 @@
         </form>
       </div>
     </Card>
+        {:else if tab === "users"}
+    <Card cls="p-4">
+      <div class="space-y-4">
+        <div>
+          <p class="text-sm font-medium">Users</p>
+          <p class="text-xs text-muted-foreground">Admins bypass every check. Members only see projects granted to them directly or through a team.</p>
+        </div>
+        {#if users.length}
+          <div class="divide-y divide-border rounded-md border border-border">
+            {#each users as u}
+              <div class="flex flex-wrap items-center justify-between gap-2 p-2 text-xs">
+                <span>
+                  <span class="font-medium">{u.username}</span>
+                  <span class="text-muted-foreground"> · {u.role}</span>
+                </span>
+                <span class="flex items-center gap-2">
+                  <select class="h-8 rounded-md border border-input bg-background px-2 text-xs" value={u.role} on:change={(e) => changeRole(u.id, (e.target as HTMLSelectElement).value)}>
+                    <option value="member">member</option>
+                    <option value="admin">admin</option>
+                  </select>
+                  <Button size="sm" variant="outline" on:click={() => (resetPw = { id: u.id, username: u.username, password: "" })}>Reset password</Button>
+                  <Button size="sm" variant="outline" on:click={() => deleteUser(u.id, u.username)}>Delete</Button>
+                </span>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <p class="text-xs text-muted-foreground">No users yet.</p>
+        {/if}
+        <form on:submit={createUser} class="space-y-3 rounded-md border border-border p-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div class="space-y-1"><label class="text-xs">Username</label><Input bind:value={newUser.username} placeholder="jane" autocomplete="off" /></div>
+            <div class="space-y-1"><label class="text-xs">Password (min 8 chars)</label><Input type="password" bind:value={newUser.password} placeholder="••••••••" autocomplete="new-password" /></div>
+            <div class="space-y-1"><label class="text-xs">Role</label>
+              <select class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={newUser.role}>
+                <option value="member">member</option>
+                <option value="admin">admin</option>
+              </select>
+            </div>
+          </div>
+          <Button type="submit" size="sm">Create user</Button>
+        </form>
+      </div>
+    </Card>
+    <Card cls="p-4">
+      <div class="space-y-4">
+        <div>
+          <p class="text-sm font-medium">Teams</p>
+          <p class="text-xs text-muted-foreground">Group users, then grant whole teams to projects. A member sees a project with a direct grant or any team grant.</p>
+        </div>
+        {#if teams.length}
+          <div class="space-y-3">
+            {#each teams as t}
+              <div class="rounded-md border border-border p-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <p class="text-sm font-medium">{t.name} <span class="font-mono text-xs text-muted-foreground">{t.slug}</span></p>
+                  <Button size="sm" variant="outline" on:click={() => deleteTeam(t.id, t.name)}>Delete</Button>
+                </div>
+                <div class="mt-2">
+                  <p class="text-xs text-muted-foreground">Members ({t.memberIds.length})</p>
+                  <div class="mt-1 flex flex-wrap gap-1">
+                    {#each t.memberIds as uid}
+                      <span class="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs">
+                        {usernameOf(uid)}
+                        <button class="text-muted-foreground hover:text-foreground" aria-label="Remove {usernameOf(uid)}" on:click={() => removeTeamMember(t.id, uid)}>✕</button>
+                      </span>
+                    {:else}
+                      <span class="text-xs text-muted-foreground">No members yet.</span>
+                    {/each}
+                  </div>
+                  <div class="mt-2 flex gap-2">
+                    <select class="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs" bind:value={teamAddUser[t.id]}>
+                      <option value={null}>Add member…</option>
+                      {#each users.filter((u) => !t.memberIds.includes(u.id)) as u}<option value={u.id}>{u.username}</option>{/each}
+                    </select>
+                    <Button size="sm" variant="outline" on:click={() => addTeamMember(t.id)}>Add</Button>
+                  </div>
+                </div>
+                <div class="mt-2">
+                  <p class="text-xs text-muted-foreground">Projects ({t.projectIds.length})</p>
+                  <div class="mt-1 flex flex-wrap gap-1">
+                    {#each t.projectIds as pid}
+                      <span class="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs">
+                        {projectName(pid)}
+                        <button class="text-muted-foreground hover:text-foreground" aria-label="Revoke {projectName(pid)}" on:click={() => revokeTeamProject(t.id, pid)}>✕</button>
+                      </span>
+                    {:else}
+                      <span class="text-xs text-muted-foreground">No project grants yet.</span>
+                    {/each}
+                  </div>
+                  <div class="mt-2 flex gap-2">
+                    <select class="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs" bind:value={teamAddProject[t.id]}>
+                      <option value={null}>Grant project…</option>
+                      {#each projects.filter((p) => !t.projectIds.includes(p.id)) as p}<option value={p.id}>{p.name}</option>{/each}
+                    </select>
+                    <Button size="sm" variant="outline" on:click={() => grantTeamProject(t.id)}>Grant</Button>
+                  </div>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <p class="text-xs text-muted-foreground">No teams yet.</p>
+        {/if}
+        <form on:submit={createTeam} class="space-y-3 rounded-md border border-border p-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div class="space-y-1"><label class="text-xs">Name</label><Input bind:value={newTeam.name} placeholder="Backend" autocomplete="off" /></div>
+            <div class="space-y-1"><label class="text-xs">Slug (optional)</label><Input bind:value={newTeam.slug} placeholder="backend" autocomplete="off" /></div>
+          </div>
+          <Button type="submit" size="sm">Create team</Button>
+        </form>
+      </div>
+    </Card>
+    {#if resetPw}
+      <Dialog open={true} title={`Reset password for ${resetPw.username}`} onClose={() => (resetPw = null)}>
+        <form on:submit={saveResetPassword} class="space-y-3">
+          <div class="space-y-1"><label class="text-xs">New password (min 8 chars)</label><Input type="password" bind:value={resetPw.password} autocomplete="new-password" /></div>
+          <div class="flex gap-2">
+            <Button type="submit" size="sm">Save password</Button>
+            <Button size="sm" variant="outline" on:click={() => (resetPw = null)}>Cancel</Button>
+          </div>
+        </form>
+      </Dialog>
+    {/if}
         {:else if tab === "storage"}
     <Card cls="p-4">
       <div class="space-y-3">

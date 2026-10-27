@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type ProjectDetail, type SourceMapMeta } from "$lib/api";
+  import { api, type ProjectDetail, type SourceMapMeta, type ProjectAccess, type User } from "$lib/api";
   import Card from "$lib/components/card.svelte";
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
@@ -28,6 +28,49 @@
   let rotateBusy = false;
   let deleteBusy = false;
   let testBusy = false;
+  let isAdmin = false;
+  let access: ProjectAccess | null = null;
+  let accessUsers: User[] = [];
+  let grantUserId: number | null = null;
+
+  async function loadAccess() {
+    try {
+      const me = await api.me();
+      isAdmin = me.role === "admin";
+      if (isAdmin) {
+        const [a, u] = await Promise.all([api.projectAccess(id), api.users()]);
+        access = a;
+        accessUsers = u;
+      }
+    } catch {
+      // Non-admins get 401 here; the card simply stays hidden.
+    }
+  }
+
+  async function grantAccess() {
+    if (!grantUserId) return;
+    try {
+      await api.grantProjectMember(id, grantUserId);
+      grantUserId = null;
+      access = await api.projectAccess(id);
+      toast.success("Access granted.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not grant access.");
+    }
+  }
+
+  async function revokeAccess(userId: number) {
+    try {
+      await api.revokeProjectMember(id, userId);
+      access = await api.projectAccess(id);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not revoke access.");
+    }
+  }
+
+  function accessUsername(uid: number): string {
+    return accessUsers.find((u) => u.id === uid)?.username ?? `User ${uid}`;
+  }
 
   async function sendTestEvent() {
     testBusy = true;
@@ -46,6 +89,7 @@
     try {
       data = await api.project(id);
       maps = await api.sourceMaps(id);
+      await loadAccess();
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load project.";
     }
@@ -269,5 +313,44 @@
         {/if}
       </div>
     </Card>
+
+    {#if isAdmin && access}
+      <Card cls="p-4">
+        <div class="space-y-3">
+          <p class="text-sm font-medium">Access</p>
+          <p class="text-xs text-muted-foreground">Admins see everything. Members need a direct grant below or a team grant (manage teams under Settings → Users & Teams).</p>
+          <div>
+            <p class="text-xs text-muted-foreground">Direct members ({access.memberIds.length})</p>
+            <div class="mt-1 flex flex-wrap gap-1">
+              {#each access.memberIds as uid}
+                <span class="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs">
+                  {accessUsername(uid)}
+                  <button class="text-muted-foreground hover:text-foreground" aria-label="Revoke {accessUsername(uid)}" on:click={() => revokeAccess(uid)}>✕</button>
+                </span>
+              {:else}
+                <span class="text-xs text-muted-foreground">No direct grants.</span>
+              {/each}
+            </div>
+            <div class="mt-2 flex gap-2">
+              <select class="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs" bind:value={grantUserId}>
+                <option value={null}>Grant user…</option>
+                {#each accessUsers.filter((u) => !(access?.memberIds ?? []).includes(u.id)) as u}<option value={u.id}>{u.username} ({u.role})</option>{/each}
+              </select>
+              <Button size="sm" variant="outline" on:click={grantAccess}>Grant</Button>
+            </div>
+          </div>
+          <div>
+            <p class="text-xs text-muted-foreground">Teams ({access.teams.length})</p>
+            <div class="mt-1 flex flex-wrap gap-1">
+              {#each access.teams as t}
+                <span class="rounded-md bg-muted px-2 py-0.5 text-xs">{t.name} <span class="font-mono text-muted-foreground">{t.slug}</span></span>
+              {:else}
+                <span class="text-xs text-muted-foreground">No team grants.</span>
+              {/each}
+            </div>
+          </div>
+        </div>
+      </Card>
+    {/if}
   </div>
 {/if}
