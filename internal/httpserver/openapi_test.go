@@ -22,6 +22,15 @@ func TestOpenAPICoversRoutes(t *testing.T) {
 	}
 	for _, tc := range []struct{ method, path string }{
 		{"post", "/api/v1/login"},
+		{"post", "/api/v1/login/2fa"},
+		{"get", "/api/v1/2fa/status"},
+		{"post", "/api/v1/2fa/setup/begin"},
+		{"post", "/api/v1/2fa/setup/confirm"},
+		{"post", "/api/v1/2fa/disable"},
+		{"post", "/api/v1/2fa/recovery-codes/regenerate"},
+		{"post", "/api/v1/users/{id}/2fa/reset"},
+		{"get", "/api/v1/settings/security"},
+		{"put", "/api/v1/settings/security"},
 		{"get", "/api/v1/me"},
 		{"get", "/api/v1/dashboard"},
 		{"get", "/api/v1/issues"},

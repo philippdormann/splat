@@ -139,8 +139,22 @@ func (s *Server) routes() {
 	// JSON API for the Svelte SPA. Session cookie or Bearer API key;
 	// read vs write API-key scopes enforced per endpoint.
 	s.mux.Handle("POST /api/v1/login", rateLimit(loginLimiter, http.HandlerFunc(s.apiLogin)))
+	s.mux.Handle("POST /api/v1/login/2fa", rateLimit(loginLimiter, http.HandlerFunc(s.apiLogin2FA)))
 	s.mux.HandleFunc("GET /api/v1/me", s.apiMe)
 	s.mux.HandleFunc("POST /api/v1/logout", s.apiLogout)
+
+	// Two-factor self-service: any session (the challenge authorizes
+	// enrollment inline during login when enforcement requires it).
+	s.mux.HandleFunc("GET /api/v1/2fa/status", s.requireAPIAuth(s.api2FAStatus))
+	s.mux.HandleFunc("POST /api/v1/2fa/setup/begin", s.api2FASetupBegin)
+	s.mux.HandleFunc("POST /api/v1/2fa/setup/confirm", s.api2FASetupConfirm)
+	s.mux.HandleFunc("POST /api/v1/2fa/disable", s.api2FADisable)
+	s.mux.HandleFunc("POST /api/v1/2fa/recovery-codes/regenerate", s.api2FARegenerateCodes)
+
+	// Instance security policy (2FA enforcement): same visibility as the
+	// other instance settings.
+	s.mux.HandleFunc("GET /api/v1/settings/security", s.requireInstance(s.apiSecurityGet))
+	s.mux.HandleFunc("PUT /api/v1/settings/security", s.requireInstance(s.apiSecuritySave))
 
 	s.mux.HandleFunc("GET /api/v1/dashboard", s.requireScope(s.apiDashboard))
 
@@ -210,6 +224,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /api/v1/users/{id}", s.requireAdmin(s.apiUsersDelete))
 	s.mux.HandleFunc("PUT /api/v1/users/{id}/role", s.requireAdmin(s.apiUsersSetRole))
 	s.mux.HandleFunc("PUT /api/v1/users/{id}/password", s.requireAdmin(s.apiUsersSetPassword))
+	s.mux.HandleFunc("POST /api/v1/users/{id}/2fa/reset", s.requireAdmin(s.apiUsersReset2FA))
 	s.mux.HandleFunc("GET /api/v1/teams", s.requireAdmin(s.apiTeamsList))
 	s.mux.HandleFunc("POST /api/v1/teams", s.requireAdmin(s.apiTeamsCreate))
 	s.mux.HandleFunc("DELETE /api/v1/teams/{id}", s.requireAdmin(s.apiTeamsDelete))
@@ -248,7 +263,7 @@ func (s *Server) routes() {
 		"GET /issues", "GET /issues/{id}",
 		"GET /projects", "GET /projects/new", "GET /projects/{id}",
 		"GET /projects/{id}/releases", "GET /projects/{id}/releases/{release}", "GET /projects/{id}/traces/{traceId}",
-		"GET /settings",
+		"GET /settings", "GET /security",
 	} {
 		s.mux.HandleFunc(route, s.serveSPA)
 	}

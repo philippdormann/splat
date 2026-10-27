@@ -74,6 +74,8 @@ func (s *Server) apiMe(w http.ResponseWriter, r *http.Request) {
 		"authenticated": true,
 		"username":      s.Auth.UsernameOf(userID),
 		"role":          s.Auth.RoleOf(userID),
+		"totpEnabled":   s.Auth.TOTPEnabled(userID),
+		"totpRequired":  s.Auth.TOTPRequired(),
 	})
 }
 
@@ -93,6 +95,27 @@ func (s *Server) apiLogin(w http.ResponseWriter, r *http.Request) {
 	userID, err := s.Auth.Authenticate(input.Username, input.Password)
 	if err != nil {
 		writeAPIError(w, http.StatusUnauthorized, "invalid username or password")
+		return
+	}
+	// Second factor enforced: password success mints a short-lived
+	// signed challenge for the 2FA step instead of a session. Under
+	// instance-wide enforcement users without a factor enroll inline.
+	if s.Auth.TOTPEnabled(userID) {
+		challenge, err := s.Auth.IssueLoginChallenge(userID)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"twoFactorRequired": true, "challenge": challenge})
+		return
+	}
+	if s.Auth.TOTPRequired() {
+		challenge, err := s.Auth.IssueLoginChallenge(userID)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"twoFactorRequired": true, "enrollRequired": true, "challenge": challenge})
 		return
 	}
 	token, expires, err := s.Auth.CreateSession(userID)

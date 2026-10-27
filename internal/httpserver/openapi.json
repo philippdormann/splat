@@ -1020,7 +1020,7 @@
         },
         "responses": {
           "200": {
-            "description": "Logged in; session cookie set."
+            "description": "Logged in; session cookie set. With 2FA enabled (or required), returns a login challenge for the second step instead."
           },
           "401": {
             "description": "Bad credentials.",
@@ -1053,6 +1053,217 @@
         "responses": {
           "200": {
             "description": "Logged out."
+          }
+        }
+      }
+    },
+    "/api/v1/login/2fa": {
+      "post": {
+        "summary": "Complete two-step login with a TOTP or recovery code",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "challenge",
+                  "code"
+                ],
+                "properties": {
+                  "challenge": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verified; session cookie set."
+          },
+          "401": {
+            "description": "Bad code or expired challenge."
+          },
+          "403": {
+            "description": "2FA setup required on this instance."
+          }
+        }
+      }
+    },
+    "/api/v1/2fa/status": {
+      "get": {
+        "summary": "Current user's 2FA status",
+        "responses": {
+          "200": {
+            "description": "Enabled/required flags and unused recovery code count."
+          }
+        }
+      }
+    },
+    "/api/v1/2fa/setup/begin": {
+      "post": {
+        "summary": "Start 2FA setup; returns provisioning URI, QR image and secret",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "challenge": {
+                    "type": "string",
+                    "description": "Login challenge; authorizes first-time enrollment during login"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Provisioning data."
+          }
+        }
+      }
+    },
+    "/api/v1/2fa/setup/confirm": {
+      "post": {
+        "summary": "Verify setup code; enables 2FA and returns recovery codes (once)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "challenge": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Enabled; recovery codes shown once."
+          },
+          "400": {
+            "description": "Invalid code."
+          }
+        }
+      }
+    },
+    "/api/v1/2fa/disable": {
+      "post": {
+        "summary": "Disable own 2FA (password proof required)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "password"
+                ],
+                "properties": {
+                  "password": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Disabled."
+          },
+          "400": {
+            "description": "2FA is required on this instance."
+          }
+        }
+      }
+    },
+    "/api/v1/2fa/recovery-codes/regenerate": {
+      "post": {
+        "summary": "Replace own recovery codes (password proof required)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "password"
+                ],
+                "properties": {
+                  "password": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "New codes, shown once."
+          }
+        }
+      }
+    },
+    "/api/v1/users/{id}/2fa/reset": {
+      "post": {
+        "summary": "Reset a user's 2FA - lockout recovery (admin session only)",
+        "responses": {
+          "200": {
+            "description": "Second factor removed."
+          }
+        }
+      }
+    },
+    "/api/v1/settings/security": {
+      "get": {
+        "summary": "Instance security policy",
+        "responses": {
+          "200": {
+            "description": "2FA enforcement flag."
+          }
+        }
+      },
+      "put": {
+        "summary": "Set instance security policy",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "require2fa": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated."
           }
         }
       }

@@ -14,7 +14,7 @@ import (
 // granted to them directly or through a team.
 
 func rbacUserJSON(u auth.User) map[string]any {
-	return map[string]any{"id": u.ID, "username": u.Username, "role": u.Role, "createdAt": u.CreatedAt}
+	return map[string]any{"id": u.ID, "username": u.Username, "role": u.Role, "createdAt": u.CreatedAt, "totpEnabled": u.TOTPEnabled}
 }
 
 func (s *Server) apiUsersList(w http.ResponseWriter, r *http.Request) {
