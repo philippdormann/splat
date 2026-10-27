@@ -23,6 +23,7 @@ import (
 	"errgotrack/internal/notifications"
 	"errgotrack/internal/projects"
 	"errgotrack/internal/retention"
+	"errgotrack/internal/sessions"
 	"errgotrack/internal/sourcemaps"
 	"errgotrack/internal/storage"
 	"errgotrack/internal/tracing"
@@ -117,6 +118,7 @@ func main() {
 		Retention:     sweeper,
 		Storage:       storage.NewStore(db, dbPath),
 		SourceMaps:    sourcemaps.NewStore(db),
+		Sessions:      sessions.NewStore(db),
 		APIKeys:       apikeys.NewStore(db),
 		DB:            db,
 		Logger:        logger,

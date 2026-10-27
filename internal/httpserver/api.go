@@ -717,11 +717,92 @@ func (s *Server) apiPlatforms(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, platformsJSON())
 }
 
+func overviewPeriod(r *http.Request) (string, time.Time) {
+	period := r.URL.Query().Get("period")
+	since := time.Now().Add(-24 * time.Hour)
+	switch period {
+	case "7d":
+		since = time.Now().Add(-7 * 24 * time.Hour)
+	case "30d":
+		since = time.Now().Add(-30 * 24 * time.Hour)
+	default:
+		period = "24h"
+	}
+	return period, since
+}
+
+// apiProjectReleases lists every release seen by a project with event,
+// issue and session-health rollups, most recently active first.
+func (s *Server) apiProjectReleases(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if _, err := s.Projects.Get(id); err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if !s.authenticate(r).inProject(id) {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if s.Sessions == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "sessions not configured")
+		return
+	}
+	rel, err := s.Sessions.Releases(id)
+	if err != nil {
+		s.Logger.Error("project releases", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, rel)
+}
+
+// apiProjectSessionSummary returns crash-free rates plus the health
+// timeseries for the overview tiles.
+func (s *Server) apiProjectSessionSummary(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if _, err := s.Projects.Get(id); err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if !s.authenticate(r).inProject(id) {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if s.Sessions == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "sessions not configured")
+		return
+	}
+	period, since := overviewPeriod(r)
+	sum, err := s.Sessions.CrashFree(id, "", since)
+	if err != nil {
+		s.Logger.Error("session summary", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	series, err := s.Sessions.HealthTimeseries(id, since)
+	if err != nil {
+		s.Logger.Error("session timeseries", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"period": period, "summary": sum, "timeseries": series,
+	})
+}
+
 // apiProjectOverview serves the per-project bento dashboard: counters,
 // severity-stacked volume and top issues for a 24h/7d/30d window.
-// Session health, crash-free rates and latency are deliberately absent:
-// errgotrack is an error tracker and does not collect sessions or
-// transactions - the UI renders honest empty states for those tiles.
+// Latency is deliberately absent: errgotrack is an error tracker and does
+// not collect transactions - the UI renders an honest empty state for it.
+// Session health has its own endpoint below.
 func (s *Server) apiProjectOverview(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -736,16 +817,7 @@ func (s *Server) apiProjectOverview(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
-	period := r.URL.Query().Get("period")
-	since := time.Now().Add(-24 * time.Hour)
-	switch period {
-	case "7d":
-		since = time.Now().Add(-7 * 24 * time.Hour)
-	case "30d":
-		since = time.Now().Add(-30 * 24 * time.Hour)
-	default:
-		period = "24h"
-	}
+	period, since := overviewPeriod(r)
 
 	events, err := s.Dashboard.ProjectEvents(id, since)
 	if err != nil {

@@ -4,6 +4,6 @@
 </script>
 
 <Card cls="h-full p-4">
-  <div class="mb-2 h-3 w-28 animate-pulse rounded bg-muted" />
-  <div class="w-full animate-pulse rounded bg-muted" style="height: {height}px" />
+  <div class="mb-2 h-3 w-28 animate-pulse rounded bg-muted"></div>
+  <div class="w-full animate-pulse rounded bg-muted" style="height: {height}px"></div>
 </Card>

@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from "svelte";
   import { Chart, registerables } from "chart.js";
   import { Activity, HeartPulse, Timer, Trophy, Zap, CircleDot, Gauge } from "lucide-svelte";
-  import { api, type ProjectOverview } from "$lib/api";
+  import { api, type ProjectOverview, type SessionSummary } from "$lib/api";
   import Button from "$lib/components/button.svelte";
   import Tile from "$lib/components/Tile.svelte";
   import TileSkeleton from "$lib/components/TileSkeleton.svelte";
@@ -30,10 +30,23 @@
 
   let period = "24h";
   let data: ProjectOverview | null = null;
+  let sessions: SessionSummary | null = null;
   let error = "";
   let charts: Chart[] = [];
 
   const dark = () => document.documentElement.classList.contains("dark");
+
+  function tierColor(pct: number | null): string {
+    if (pct === null || pct === undefined) return "text-muted-foreground";
+    if (pct >= 99) return "text-green-600 dark:text-green-400";
+    if (pct >= 95) return "text-amber-600 dark:text-amber-400";
+    return "text-destructive";
+  }
+
+  function fmtPct(pct: number | null): string {
+    if (pct === null || pct === undefined) return "—";
+    return `${pct.toFixed(1)}%`;
+  }
 
   function levelDatasets() {
     if (!data) return [];
@@ -59,17 +72,21 @@
     });
   }
 
+  function drawChart(id: string, cfg: unknown) {
+    const el = document.getElementById(id) as HTMLCanvasElement | null;
+    if (!el) return;
+    const prev = charts.find((c) => c.canvas.id === id);
+    prev?.destroy();
+    charts = charts.filter((c) => c.canvas.id !== id);
+    charts.push(new Chart(el, cfg as never));
+  }
+
   function draw() {
     if (!data) return;
-    const el = document.getElementById("ov-volume") as HTMLCanvasElement | null;
-    if (!el) return;
-    const prev = charts.find((c) => c.canvas.id === "ov-volume");
-    prev?.destroy();
-    charts = charts.filter((c) => c.canvas.id !== "ov-volume");
     const grid = dark() ? "#3f3f46" : "#e4e4e7";
     const tick = dark() ? "#a1a1aa" : "#71717a";
-    charts.push(
-      new Chart(el, {
+    if (data.volumeBySeverity.length) {
+      drawChart("ov-volume", {
         type: "line",
         data: { labels: data.volumeBySeverity.map((b) => b.bucket), datasets: levelDatasets() },
         options: {
@@ -79,14 +96,38 @@
             x: { stacked: true, grid: { display: false }, ticks: { color: tick, maxTicksLimit: 8 } },
           },
         },
-      } as never),
-    );
+      });
+    }
+    if (sessions && sessions.timeseries.length) {
+      drawChart("ov-sessions", {
+        type: "line",
+        data: {
+          labels: sessions.timeseries.map((p) => p.bucket),
+          datasets: [
+            { label: "Healthy", data: sessions.timeseries.map((p) => p.healthy), borderColor: "#16a34a", backgroundColor: "#16a34a55", fill: true, tension: 0.25, pointRadius: 0, stack: "sess" },
+            { label: "Crashed", data: sessions.timeseries.map((p) => p.crashed), borderColor: "#dc2626", backgroundColor: "#dc262655", fill: true, tension: 0.25, pointRadius: 0, stack: "sess" },
+          ],
+        },
+        options: {
+          plugins: { legend: { position: "bottom", labels: { color: tick, boxWidth: 12 } } },
+          scales: {
+            y: { stacked: true, beginAtZero: true, grid: { color: grid }, ticks: { color: tick, precision: 0 } },
+            x: { stacked: true, grid: { display: false }, ticks: { color: tick, maxTicksLimit: 8 } },
+          },
+        },
+      });
+    }
   }
 
   async function load() {
     error = "";
     try {
-      data = await api.projectOverview(projectId, period);
+      const [ov, sess] = await Promise.all([
+        api.projectOverview(projectId, period),
+        api.projectSessionSummary(projectId, period),
+      ]);
+      data = ov;
+      sessions = sess;
       queueMicrotask(draw);
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load overview.";
@@ -138,8 +179,15 @@
         <div class="min-w-0 sm:col-span-2">
           <Tile icon={HeartPulse}>
             <span slot="title">Crash-free sessions</span>
-            <span slot="subtitle">Needs session data, which errgotrack does not collect.</span>
-            <p class="py-4 text-center text-sm text-muted-foreground">No session data — errgotrack tracks errors, not release health.</p>
+            {#if sessions && sessions.summary.totalSessions > 0}
+              <div class="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                <p class="text-3xl font-extrabold tabular-nums {tierColor(sessions.summary.crashFreeSessions)}">{fmtPct(sessions.summary.crashFreeSessions)}</p>
+                <p class="text-sm text-muted-foreground">sessions · <span class="{tierColor(sessions.summary.crashFreeUsers)} font-semibold">{fmtPct(sessions.summary.crashFreeUsers)}</span> users</p>
+              </div>
+              <p class="mt-1 text-xs text-muted-foreground">{sessions.summary.totalSessions.toLocaleString()} sessions · {sessions.summary.users.toLocaleString()} users</p>
+            {:else}
+              <p class="py-4 text-center text-sm text-muted-foreground">No sessions yet — enable session tracking in your SDK to see release health.</p>
+            {/if}
           </Tile>
         </div>
       </div>
@@ -147,8 +195,11 @@
       <div class="min-w-0 xl:col-span-3">
         <Tile icon={Gauge}>
           <span slot="title">Session health</span>
-          <span slot="subtitle">Needs session data, which errgotrack does not collect.</span>
-          <p class="py-10 text-center text-sm text-muted-foreground">No session data — errgotrack tracks errors, not release health.</p>
+          {#if sessions && sessions.timeseries.length}
+            <canvas id="ov-sessions" height="220"></canvas>
+          {:else}
+            <p class="py-10 text-center text-sm text-muted-foreground">No sessions yet — enable session tracking in your SDK to see release health.</p>
+          {/if}
         </Tile>
       </div>
 

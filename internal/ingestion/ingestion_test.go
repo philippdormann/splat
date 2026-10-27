@@ -16,6 +16,7 @@ import (
 	"errgotrack/internal/issues"
 	"errgotrack/internal/notifications"
 	"errgotrack/internal/projects"
+	"errgotrack/internal/sessions"
 )
 
 func newTestHandler(t testing.TB) (*Handler, *projects.Project) {
@@ -38,6 +39,7 @@ func newTestHandler(t testing.TB) (*Handler, *projects.Project) {
 		Issues:        issues.NewStore(db),
 		Events:        events.NewStore(db),
 		Notifications: notifications.NewStore(db, logger),
+		Sessions:      sessions.NewStore(db),
 		Logger:        logger,
 		PublicURL:     "http://localhost:8080",
 	}
@@ -350,5 +352,46 @@ func TestEnvelopePersistsFullPythonSDKEventShape(t *testing.T) {
 	// SDK actually sent is never silently altered.
 	if !strings.Contains(ev.RequestJSON, "secret-token") {
 		t.Fatal("expected the raw request JSON to still contain the full payload prior to any display-time redaction")
+	}
+}
+
+func TestEnvelopeStoresSessionItems(t *testing.T) {
+	h, p := newTestHandler(t)
+	srv := httptest.NewServer(mux(h))
+	defer srv.Close()
+
+	header, _ := json.Marshal(map[string]any{"event_id": "ssssssssssssssssssssssssssssssss"})
+	sessItem, _ := json.Marshal(map[string]any{"type": "session"})
+	sess, _ := json.Marshal(map[string]any{
+		"sid": "sid-1", "did": "user-9", "status": "crashed",
+		"attrs": map[string]any{"release": "9.9", "environment": "production"},
+	})
+	aggrItem, _ := json.Marshal(map[string]any{"type": "sessions"})
+	aggr, _ := json.Marshal(map[string]any{
+		"attrs":      map[string]any{"release": "9.9", "environment": "production"},
+		"aggregates": []map[string]any{{"started": "2026-10-27T10:00:00Z", "exited": 4, "crashed": 1}},
+	})
+	body := strings.Join([]string{string(header), string(sessItem), string(sess), string(aggrItem), string(aggr), ""}, "\n")
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/"+strconv.FormatInt(p.ID, 10)+"/envelope/", strings.NewReader(body))
+	req.Header.Set("X-Sentry-Auth", "Sentry sentry_version=7, sentry_key="+p.PublicKey)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+
+	sum, err := h.Sessions.CrashFree(p.ID, "9.9", time.Now().Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("crashfree: %v", err)
+	}
+	// 1 individual (crashed) + 5 aggregated (4 exited, 1 crashed).
+	if sum.TotalSessions != 6 {
+		t.Fatalf("sessions = %d, want 6", sum.TotalSessions)
+	}
+	if sum.TotalUsers != 1 || sum.CrashFreeUsers != 0 {
+		t.Fatalf("users = %d crash-free = %v", sum.TotalUsers, sum.CrashFreeUsers)
 	}
 }

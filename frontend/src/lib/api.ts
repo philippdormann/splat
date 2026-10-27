@@ -100,6 +100,12 @@ export const api = {
   projectOverview: (id: number | string, period: string) =>
     req<ProjectOverview>(`/api/v1/projects/${id}/overview?period=${encodeURIComponent(period)}`),
 
+  projectReleases: (id: number | string) =>
+    req<ReleaseHealth[]>(`/api/v1/projects/${id}/releases`),
+
+  projectSessionSummary: (id: number | string, period: string) =>
+    req<SessionSummary>(`/api/v1/projects/${id}/sessions/summary?period=${encodeURIComponent(period)}`),
+
   sourceMaps: (projectId: number | string) =>
     req<SourceMapMeta[]>(`/api/v1/projects/${projectId}/sourcemaps`),
   uploadSourceMap: (projectId: number | string, input: { release: string; bundleUrl: string; content: string }) =>
@@ -401,6 +407,29 @@ export interface ProjectOverview {
     lastSeen: string;
     lastSeenRelative: string;
   }[];
+}
+
+export interface ReleaseHealth {
+  release: string;
+  events: number;
+  issues: number;
+  sessions: number;
+  users: number;
+  crashFreeSessions: number;
+  crashFreeUsers: number;
+  firstSeen: string;
+  lastSeen: string;
+}
+
+export interface SessionSummary {
+  period: string;
+  summary: {
+    totalSessions: number;
+    users: number;
+    crashFreeSessions: number;
+    crashFreeUsers: number;
+  };
+  timeseries: { bucket: string; healthy: number; crashed: number }[];
 }
 
 export interface SourceMapMeta {

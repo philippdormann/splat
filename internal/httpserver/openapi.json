@@ -312,6 +312,46 @@
           }
         }
       },
+      "ReleaseHealth": {
+        "type": "object",
+        "properties": {
+          "release": { "type": "string" },
+          "events": { "type": "integer" },
+          "issues": { "type": "integer" },
+          "sessions": { "type": "integer" },
+          "users": { "type": "integer" },
+          "crashFreeSessions": { "type": "number" },
+          "crashFreeUsers": { "type": "number" },
+          "firstSeen": { "type": "string" },
+          "lastSeen": { "type": "string" }
+        }
+      },
+      "SessionSummary": {
+        "type": "object",
+        "properties": {
+          "period": { "type": "string" },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "totalSessions": { "type": "integer" },
+              "users": { "type": "integer" },
+              "crashFreeSessions": { "type": "number" },
+              "crashFreeUsers": { "type": "number" }
+            }
+          },
+          "timeseries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "bucket": { "type": "string" },
+                "healthy": { "type": "integer" },
+                "crashed": { "type": "integer" }
+              }
+            }
+          }
+        }
+      },
       "GenericWebhook": {
         "type": "object",
         "properties": {
@@ -600,6 +640,37 @@
           "200": {
             "description": "Overview data.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectOverview" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/releases": {
+      "get": {
+        "summary": "Per-release rollup (events, issues, sessions, crash-free rates)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": {
+            "description": "Releases, most recently active first.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ReleaseHealth" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/sessions/summary": {
+      "get": {
+        "summary": "Crash-free summary plus session-health timeseries",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "period", "in": "query", "schema": { "type": "string", "enum": ["24h", "7d", "30d"], "default": "24h" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session summary.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionSummary" } } }
           }
         }
       }

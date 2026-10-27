@@ -9,7 +9,7 @@
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import PlatformIcon from "$lib/components/PlatformIcon.svelte";
   import ProjectOverview from "$lib/pages/ProjectOverview.svelte";
-  import { ArrowLeft, Copy, RefreshCw, Trash2, Upload, Check } from "lucide-svelte";
+  import { ArrowLeft, Copy, RefreshCw, Trash2, Upload, Check, Rocket } from "lucide-svelte";
 
   export let id: string;
   export let navigate: (path: string) => void;
@@ -142,6 +142,7 @@
           </div>
         </div>
       </div>
+      <Button size="sm" variant="outline" on:click={() => navigate(`/projects/${id}/releases`)}><Rocket class="h-4 w-4" /> Releases</Button>
       <Button size="sm" variant="destructive" on:click={() => (confirmDeleteProject = true)}><Trash2 class="h-4 w-4" /> Delete</Button>
     </div>
 

@@ -6,8 +6,10 @@
 // Reference: https://develop.sentry.dev/sdk/store/
 //
 // Unsupported on purpose: transactions/performance items, attachments,
-// sessions, client reports, replays, profiles, metrics. These item types are
+// client reports, replays, profiles, metrics. These item types are
 // parsed enough to skip over safely but their payloads are discarded.
+// Sessions ("session"/"sessions" items) ARE stored - see
+// internal/sessions - for release-health aggregation.
 package sentryprotocol
 
 import (

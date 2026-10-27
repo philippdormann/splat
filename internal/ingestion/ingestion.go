@@ -22,6 +22,7 @@ import (
 	"errgotrack/internal/notifications"
 	"errgotrack/internal/projects"
 	"errgotrack/internal/sentryprotocol"
+	"errgotrack/internal/sessions"
 )
 
 const maxBodyBytes = 2 << 20 // 2MiB: generous for a Django traceback + breadcrumbs, small enough to bound memory per request
@@ -32,6 +33,7 @@ type Handler struct {
 	Issues        *issues.Store
 	Events        *events.Store
 	Notifications *notifications.Store
+	Sessions      *sessions.Store // optional: nil disables session tracking
 	Logger        *slog.Logger
 	PublicURL     string
 }
@@ -60,8 +62,24 @@ func (h *Handler) Envelope(w http.ResponseWriter, r *http.Request) {
 
 	eventID := env.Header.EventID
 	for _, item := range env.Items {
-		if item.Header.Type != "event" && item.Header.Type != "" {
-			continue // transactions, sessions, attachments, client_reports, etc: accepted, not stored
+		switch item.Header.Type {
+		case "session":
+			if h.Sessions != nil {
+				if err := h.Sessions.UpsertSession(project.ID, item.Payload); err != nil {
+					h.Logger.Warn("session item parse failed", "project", project.Slug, "error", err)
+				}
+			}
+			continue
+		case "sessions":
+			if h.Sessions != nil {
+				if err := h.Sessions.AddAggregates(project.ID, item.Payload); err != nil {
+					h.Logger.Warn("session aggregates parse failed", "project", project.Slug, "error", err)
+				}
+			}
+			continue
+		case "event", "":
+		default:
+			continue // transactions, attachments, client_reports, etc: accepted, not stored
 		}
 		ev, err := sentryprotocol.ParseEventPayload(item.Payload)
 		if err != nil {

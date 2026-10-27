@@ -18,6 +18,7 @@
   import Projects from "$lib/pages/Projects.svelte";
   import ProjectDetail from "$lib/pages/ProjectDetail.svelte";
   import ProjectNew from "$lib/pages/ProjectNew.svelte";
+  import Releases from "$lib/pages/Releases.svelte";
   import SettingsPage from "$lib/pages/Settings.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
 
@@ -133,7 +134,11 @@
         {:else if path === "/projects/new"}
           <ProjectNew {navigate} />
         {:else if path.startsWith("/projects/")}
-          <ProjectDetail id={path.slice("/projects/".length)} {navigate} />
+          {#if path.endsWith("/releases")}
+            <Releases id={path.slice("/projects/".length, -"/releases".length)} {navigate} />
+          {:else}
+            <ProjectDetail id={path.slice("/projects/".length)} {navigate} />
+          {/if}
         {:else if path === "/settings"}
           <SettingsPage />
         {:else if path === "/login"}

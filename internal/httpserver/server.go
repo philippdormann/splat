@@ -22,6 +22,7 @@ import (
 	"errgotrack/internal/notifications"
 	"errgotrack/internal/projects"
 	"errgotrack/internal/retention"
+	"errgotrack/internal/sessions"
 	"errgotrack/internal/sourcemaps"
 	"errgotrack/internal/storage"
 	"errgotrack/internal/tracing"
@@ -40,6 +41,7 @@ type Server struct {
 	Storage       *storage.Store
 	SourceMaps    *sourcemaps.Store
 	APIKeys       *apikeys.Store
+	Sessions      *sessions.Store
 	DB            *database.DB
 	Logger        *slog.Logger
 	PublicURL     string
@@ -66,6 +68,7 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) routes() {
 	ingest := &ingestion.Handler{
 		Projects:      s.Projects,
+		Sessions:      s.Sessions,
 		APIKeys:       s.APIKeys,
 		Issues:        s.Issues,
 		Events:        s.Events,
@@ -104,6 +107,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /api/v1/projects/{id}", s.requireInstance(s.apiProjectDelete))
 	s.mux.HandleFunc("GET /api/v1/platforms", s.requireScope(s.apiPlatforms))
 	s.mux.HandleFunc("GET /api/v1/projects/{id}/overview", s.requireScope(s.apiProjectOverview))
+	s.mux.HandleFunc("GET /api/v1/projects/{id}/releases", s.requireScope(s.apiProjectReleases))
+	s.mux.HandleFunc("GET /api/v1/projects/{id}/sessions/summary", s.requireScope(s.apiProjectSessionSummary))
 
 	s.mux.HandleFunc("GET /api/v1/settings", s.requireInstance(s.apiSettings))
 	s.mux.HandleFunc("PUT /api/v1/settings/telegram", s.requireInstance(s.apiSettingsSaveTelegram))
@@ -155,6 +160,7 @@ func (s *Server) routes() {
 		"GET /{$}", "GET /login",
 		"GET /issues", "GET /issues/{id}",
 		"GET /projects", "GET /projects/new", "GET /projects/{id}",
+		"GET /projects/{id}/releases",
 		"GET /settings",
 	} {
 		s.mux.HandleFunc(route, s.serveSPA)
