@@ -22,6 +22,7 @@ import (
 	"errgotrack/internal/notifications"
 	"errgotrack/internal/projects"
 	"errgotrack/internal/retention"
+	"errgotrack/internal/storage"
 	"errgotrack/internal/tracing"
 )
 
@@ -92,6 +93,13 @@ func main() {
 
 	notif := notifications.NewStore(db, logger)
 
+	sweeper := retention.NewSweeper(db, logger)
+
+	dbPath := ""
+	if cfg.DBDriver != "postgres" {
+		dbPath = cfg.DatabasePath
+	}
+
 	srv, err := httpserver.New(&httpserver.Server{
 		Auth:          authStore,
 		Projects:      projects.NewStore(db),
@@ -100,6 +108,8 @@ func main() {
 		Notifications: notif,
 		Dashboard:     dashboard.NewStore(db),
 		Tracing:       tracing.NewStore(db),
+		Retention:     sweeper,
+		Storage:       storage.NewStore(db, dbPath),
 		Logger:        logger,
 		PublicURL:     cfg.PublicURL,
 		CookieSecure:  strings.HasPrefix(cfg.PublicURL, "https://"),
@@ -114,7 +124,6 @@ func main() {
 
 	go notif.RunWorker(ctx, 5*time.Second)
 
-	sweeper := retention.NewSweeper(db, logger)
 	go sweeper.Run(ctx, cfg.RetentionSweep)
 
 	httpSrv := &http.Server{

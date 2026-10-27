@@ -770,6 +770,53 @@ func (s *Server) apiSettingsSaveTracing(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, s.apiSettingsData())
 }
 
+// --- storage ---
+
+func (s *Server) apiStorageUsage(w http.ResponseWriter, r *http.Request) {
+	if s.Storage == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "storage reporting not configured")
+		return
+	}
+	u, err := s.Storage.Usage(r.Context())
+	if err != nil {
+		s.Logger.Error("storage usage", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, u)
+}
+
+func (s *Server) apiStorageSweep(w http.ResponseWriter, r *http.Request) {
+	if s.Retention == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "retention sweeper not configured")
+		return
+	}
+	deleted, byProject, err := s.Retention.SweepNow(r.Context())
+	if err != nil {
+		s.Logger.Error("manual retention sweep", "error", err)
+	}
+	out := map[string]any{"deleted": deleted}
+	bp := map[string]int64{}
+	for id, n := range byProject {
+		bp[strconv.FormatInt(id, 10)] = n
+	}
+	out["byProject"] = bp
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) apiStorageVacuum(w http.ResponseWriter, r *http.Request) {
+	if s.Storage == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "storage reporting not configured")
+		return
+	}
+	if err := s.Storage.Vacuum(r.Context()); err != nil {
+		s.Logger.Error("vacuum", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "vacuum failed: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 // resolveIssueEvent returns the requested event (?event=id) or the latest
 // event for the issue when no explicit id is given.
 func (s *Server) resolveIssueEvent(issueID int64, eventID string) (*events.Event, error) {

@@ -123,6 +123,18 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ urlTemplate }),
     }),
+
+  storage: () => req<StorageUsage>("/api/v1/storage"),
+  storageSweep: () =>
+    req<{ deleted: number; byProject: Record<string, number> }>(
+      "/api/v1/storage/sweep",
+      { method: "POST", body: "{}" },
+    ),
+  storageVacuum: () =>
+    req<{ ok: boolean }>("/api/v1/storage/vacuum", {
+      method: "POST",
+      body: "{}",
+    }),
 };
 
 export interface Point {
@@ -279,4 +291,10 @@ export interface SettingsData {
   botTokenMasked: string;
   webhooks: Record<string, { urlMasked: string; enabled: boolean }>;
   traceURLTemplate: string;
+}
+
+export interface StorageUsage {
+  driver: string;
+  sizeBytes: number;
+  tables: { name: string; rows: number }[];
 }

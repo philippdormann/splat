@@ -17,6 +17,8 @@ import (
 	"errgotrack/internal/issues"
 	"errgotrack/internal/notifications"
 	"errgotrack/internal/projects"
+	"errgotrack/internal/retention"
+	"errgotrack/internal/storage"
 	"errgotrack/internal/tracing"
 	"errgotrack/web"
 )
@@ -29,6 +31,8 @@ type Server struct {
 	Notifications *notifications.Store
 	Dashboard     *dashboard.Store
 	Tracing       *tracing.Store
+	Retention     *retention.Sweeper
+	Storage       *storage.Store
 	Logger        *slog.Logger
 	PublicURL     string
 	CookieSecure  bool
@@ -89,6 +93,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/v1/settings/webhooks/{channel}", s.requireAPIAuth(s.apiSettingsSaveWebhook))
 	s.mux.HandleFunc("POST /api/v1/settings/webhooks/{channel}/test", s.requireAPIAuth(s.apiSettingsTestWebhook))
 	s.mux.HandleFunc("PUT /api/v1/settings/tracing", s.requireAPIAuth(s.apiSettingsSaveTracing))
+
+	s.mux.HandleFunc("GET /api/v1/storage", s.requireAPIAuth(s.apiStorageUsage))
+	s.mux.HandleFunc("POST /api/v1/storage/sweep", s.requireAPIAuth(s.apiStorageSweep))
+	s.mux.HandleFunc("POST /api/v1/storage/vacuum", s.requireAPIAuth(s.apiStorageVacuum))
 
 	// Built Svelte assets (fingerprinted files under /assets/).
 	dist := web.Sub()

@@ -37,10 +37,27 @@ func (s *Sweeper) Run(ctx context.Context, interval time.Duration) {
 }
 
 func (s *Sweeper) sweepOnce(ctx context.Context) {
+	deleted, _, err := s.SweepNow(ctx)
+	if err != nil {
+		s.logger.Error("retention sweep", "error", err)
+		return
+	}
+	if deleted > 0 {
+		s.logger.Info("retention sweep deleted events", "count", deleted)
+	}
+}
+
+// SweepNow deletes expired events once across all projects and reports how
+// many rows went away per project. It is the same bounded-batch loop the
+// background worker runs, exposed so the storage API can offer a "clean up
+// now" button with honest feedback.
+func (s *Sweeper) SweepNow(ctx context.Context) (deleted int64, byProject map[int64]int64, err error) {
+	byProject = map[int64]int64{}
+	var firstErr error
 	rows, err := s.db.QueryContext(ctx, `SELECT id, retention_days FROM projects WHERE retention_days > 0`)
 	if err != nil {
 		s.logger.Error("retention: list projects", "error", err)
-		return
+		return 0, byProject, err
 	}
 	type project struct {
 		id   int64
@@ -63,18 +80,26 @@ func (s *Sweeper) sweepOnce(ctx context.Context) {
 					SELECT pk FROM events WHERE project_id = ? AND timestamp < ? LIMIT ?
 				)`, p.id, cutoff, batchSize)
 			if err != nil {
+				// One project's failure must not abort the whole sweep;
+				// remember it, log it, move on to the next project.
 				s.logger.Error("retention: delete batch", "error", err, "project_id", p.id)
+				if firstErr == nil {
+					firstErr = err
+				}
 				break
 			}
 			n, _ := res.RowsAffected()
+			deleted += n
+			byProject[p.id] += n
 			if n < batchSize {
 				break
 			}
 			select {
 			case <-ctx.Done():
-				return
+				return deleted, byProject, ctx.Err()
 			default:
 			}
 		}
 	}
+	return deleted, byProject, firstErr
 }
