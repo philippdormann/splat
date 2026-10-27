@@ -171,9 +171,7 @@ useful for confirming the server itself works before wiring up anything.
 
 ## Configuration
 
-All configuration is environment variables (see `internal/config/config.go`).
-Pre-rename `ERRGOTRACK_*` names are still honored as fallback with lower
-precedence, so existing setups keep working unedited:
+All configuration is environment variables (see `internal/config/config.go`):
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -452,22 +450,6 @@ marked `Secure`.
 **Upgrading:** stop the container/process, replace the binary/image, start
 it again - migrations in `internal/database/migrations/` run automatically
 and are idempotent.
-
-**Upgrading from errgotrack:** rename your environment (`ERRGOTRACK_*` →
-`SPLAT_*`; the old names still work as fallback, new names win on
-conflict), then move the data once - the defaults changed:
-
-```bash
-# SQLite file (inside the data volume / data dir):
-mv /data/errgotrack.db /data/splat.db
-# Docker Compose volume (compose now uses splat-data):
-docker run --rm -v errgotrack_errgotrack-data:/from -v splat-data:/to \
-  alpine sh -c "cp /from/errgotrack.db /to/splat.db && chown 65532:65532 /to/splat.db"
-```
-
-Two more one-time effects: all sessions log out (cookie names changed),
-and generic-webhook receivers must accept `X-Splat-Signature` instead of
-`X-Errgotrack-Signature`.
 
 **Backup (SQLite):** the entire database is one file (plus its `-wal`/`-shm`
 sidecars while running). Simplest safe backup:

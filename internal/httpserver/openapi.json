@@ -2601,7 +2601,7 @@
     },
     "/metrics": {
       "get": {
-        "summary": "Prometheus metrics (only when ERRGOTRACK_METRICS is enabled)",
+        "summary": "Prometheus metrics (only when SPLAT_METRICS is enabled)",
         "security": [],
         "responses": {
           "200": {
