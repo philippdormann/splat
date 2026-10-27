@@ -384,14 +384,20 @@
     };
   }
 
-  async function changeRole(id: number, role: string) {
-    try {
-      await api.setUserRole(id, role);
-      await reloadUsersTeams();
-      toast.success("Role updated.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not change role.");
-    }
+  async function changeRole(id: number, username: string, role: string) {
+    // Demotion is impossible server-side; the select only ever offers
+    // promotion, which deserves an explicit confirmation.
+    if (role !== "admin") return;
+    confirmBox = {
+      title: `Promote “${username}” to admin?`,
+      description: "Admins bypass every access check and can manage users, teams, keys, and all projects. This cannot be undone by demotion.",
+      label: "Promote to admin",
+      run: async () => {
+        await api.setUserRole(id, role);
+        await reloadUsersTeams();
+        toast.success("User promoted.");
+      },
+    };
   }
 
   async function saveResetPassword(e: Event) {
@@ -444,13 +450,17 @@
     }
   }
 
-  async function removeTeamMember(teamId: number, userId: number) {
-    try {
-      await api.removeTeamMember(teamId, userId);
-      await reloadUsersTeams();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not remove member.");
-    }
+  async function removeTeamMember(teamId: number, teamName: string, userId: number) {
+    confirmBox = {
+      title: `Remove ${usernameOf(userId)} from “${teamName}”?`,
+      description: "They lose every project grant they held through this team (direct grants are kept).",
+      label: "Remove",
+      run: async () => {
+        await api.removeTeamMember(teamId, userId);
+        await reloadUsersTeams();
+        toast.success("Member removed.");
+      },
+    };
   }
 
   async function grantTeamProject(teamId: number) {
@@ -465,13 +475,17 @@
     }
   }
 
-  async function revokeTeamProject(teamId: number, projectId: number) {
-    try {
-      await api.revokeTeamProject(teamId, projectId);
-      await reloadUsersTeams();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not revoke grant.");
-    }
+  async function revokeTeamProject(teamId: number, teamName: string, projectId: number) {
+    confirmBox = {
+      title: `Revoke ${projectName(projectId)} from “${teamName}”?`,
+      description: "Every member who held this project only through the team loses access immediately.",
+      label: "Revoke",
+      run: async () => {
+        await api.revokeTeamProject(teamId, projectId);
+        await reloadUsersTeams();
+        toast.success("Grant revoked.");
+      },
+    };
   }
 
   // Single shared confirmation dialog for every destructive action below.
@@ -817,16 +831,17 @@
                   <span class="text-muted-foreground"> · {u.role}</span>
                 </span>
                 <span class="flex items-center gap-2">
-                  <select
-                    class="h-8 rounded-md border border-input bg-background px-2 text-xs disabled:cursor-not-allowed disabled:opacity-50"
-                    value={u.role}
-                    disabled={isSelf}
-                    title={isSelf ? "You cannot change your own role" : "Change role"}
-                    on:change={(e) => changeRole(u.id, (e.target as HTMLSelectElement).value)}
-                  >
-                    <option value="member">member</option>
-                    <option value="admin">admin</option>
-                  </select>
+                  {#if u.role === "admin"}
+                    <span class="text-xs text-muted-foreground" title="Admins cannot be demoted">admin</span>
+                  {:else}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={isSelf}
+                      title={isSelf ? "You cannot change your own role" : "Promote to admin"}
+                      on:click={() => changeRole(u.id, u.username, "admin")}
+                    >Promote</Button>
+                  {/if}
                   <Button size="sm" variant="outline" on:click={() => (resetPw = { id: u.id, username: u.username, password: "" })}>Reset password</Button>
                   <Button
                     size="sm"
@@ -885,7 +900,7 @@
                     {#each t.memberIds as uid}
                       <span class="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs">
                         {usernameOf(uid)}
-                        <button class="text-muted-foreground hover:text-foreground" aria-label="Remove {usernameOf(uid)}" on:click={() => removeTeamMember(t.id, uid)}>✕</button>
+                        <button class="text-muted-foreground hover:text-foreground" aria-label="Remove {usernameOf(uid)}" on:click={() => removeTeamMember(t.id, t.name, uid)}>✕</button>
                       </span>
                     {:else}
                       <span class="text-xs text-muted-foreground">No members yet.</span>
@@ -905,7 +920,7 @@
                     {#each t.projectIds as pid}
                       <span class="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs">
                         {projectName(pid)}
-                        <button class="text-muted-foreground hover:text-foreground" aria-label="Revoke {projectName(pid)}" on:click={() => revokeTeamProject(t.id, pid)}>✕</button>
+                        <button class="text-muted-foreground hover:text-foreground" aria-label="Revoke {projectName(pid)}" on:click={() => revokeTeamProject(t.id, t.name, pid)}>✕</button>
                       </span>
                     {:else}
                       <span class="text-xs text-muted-foreground">No project grants yet.</span>
