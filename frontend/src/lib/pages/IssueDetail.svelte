@@ -25,10 +25,20 @@
   let noteBody = "";
   let noteBusy = false;
   let confirmDeleteNote: number | null = null;
+  let localSpans: number | null = null;
 
   async function load() {
     try {
       data = await api.issue(id, selectedEvent ?? undefined);
+      localSpans = null;
+      if (data.traceId) {
+        try {
+          const t = await api.projectTrace(data.project.id, data.traceId);
+          localSpans = t.spans.length;
+        } catch {
+          localSpans = null;
+        }
+      }
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load issue.";
     }
@@ -117,7 +127,11 @@
   }
 
   onMount(load);
-</script>
+
+  $: tracePath =
+    data && data.traceId
+      ? `/projects/${data.project.id}/traces/${encodeURIComponent(data.traceId)}`
+      : "";</script>
 
 {#if error}
   <p class="text-sm text-destructive">{error}</p>
@@ -181,6 +195,9 @@
       <Card cls="flex flex-wrap items-center gap-2 p-3 text-sm">
         <span class="text-muted-foreground">trace_id</span>
         <code class="font-mono text-xs">{data.traceId}</code>
+        {#if localSpans !== null && tracePath}
+          <Button size="sm" variant="outline" on:click={() => navigate(tracePath)}>View trace ({localSpans} spans)</Button>
+        {/if}
         {#if data.traceURL}<a class="text-primary hover:underline" href={data.traceURL} target="_blank" rel="noreferrer">Open in tracing backend</a>{/if}
       </Card>
     {/if}

@@ -121,6 +121,23 @@ export const api = {
   projectReleases: (id: number | string) =>
     req<ReleaseHealth[]>(`/api/v1/projects/${id}/releases`),
 
+  projectLogs: (id: number | string, params?: { level?: string; q?: string; trace?: string; limit?: number; offset?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.level) qs.set("level", params.level);
+    if (params?.q) qs.set("q", params.q);
+    if (params?.trace) qs.set("trace", params.trace);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.offset) qs.set("offset", String(params.offset));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return req<LogEntry[]>(`/api/v1/projects/${id}/logs${suffix}`);
+  },
+
+  projectTraces: (id: number | string, limit?: number) =>
+    req<TraceTransaction[]>(`/api/v1/projects/${id}/traces${limit ? `?limit=${limit}` : ""}`),
+
+  projectTrace: (id: number | string, traceId: string) =>
+    req<TraceDetail>(`/api/v1/projects/${id}/traces/${encodeURIComponent(traceId)}`),
+
   projectSessionSummary: (id: number | string, period: string) =>
     req<SessionSummary>(`/api/v1/projects/${id}/sessions/summary?period=${encodeURIComponent(period)}`),
 
@@ -619,4 +636,51 @@ export interface Team {
 export interface ProjectAccess {
   memberIds: number[];
   teams: { id: number; name: string; slug: string }[];
+}
+
+export interface LogEntry {
+  id: number;
+  timestamp: string;
+  level: string;
+  message: string;
+  traceId: string;
+  spanId: string;
+  release: string;
+  environment: string;
+  attributes: Record<string, unknown>;
+}
+
+export interface TraceTransaction {
+  id: number;
+  eventId: string;
+  name: string;
+  traceId: string;
+  spanId: string;
+  status: string;
+  release: string;
+  environment: string;
+  start: string;
+  end: string;
+  durationMs: number;
+  spanCount: number;
+}
+
+export interface TraceSpan {
+  id: number;
+  traceId: string;
+  spanId: string;
+  parentSpanId: string;
+  op: string;
+  description: string;
+  status: string;
+  start: string;
+  end: string;
+  durationMs: number;
+}
+
+export interface TraceDetail {
+  traceId: string;
+  transactions: TraceTransaction[];
+  spans: TraceSpan[];
+  logs: LogEntry[];
 }

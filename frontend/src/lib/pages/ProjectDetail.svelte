@@ -10,7 +10,9 @@
   import Dialog from "$lib/components/Dialog.svelte";
   import PlatformIcon from "$lib/components/PlatformIcon.svelte";
   import ProjectOverview from "$lib/pages/ProjectOverview.svelte";
-  import { ArrowLeft, Copy, RefreshCw, Trash2, Upload, Check, Rocket, FlaskConical, LayoutDashboard, Terminal, SlidersHorizontal, Users } from "lucide-svelte";
+  import ProjectLogs from "$lib/pages/ProjectLogs.svelte";
+  import ProjectTraces from "$lib/pages/ProjectTraces.svelte";
+  import { ArrowLeft, Copy, RefreshCw, Trash2, Upload, Check, Rocket, FlaskConical, LayoutDashboard, Terminal, SlidersHorizontal, Users, ScrollText, Activity } from "lucide-svelte";
 
   export let id: string;
   export let navigate: (path: string) => void;
@@ -41,6 +43,8 @@
     { id: "setup", label: "Setup", icon: Terminal },
     { id: "settings", label: "Settings", icon: SlidersHorizontal },
     { id: "sourcemaps", label: "Source maps", icon: Upload },
+    { id: "logs", label: "Logs", icon: ScrollText },
+    { id: "traces", label: "Traces", icon: Activity },
     { id: "access", label: "Access", icon: Users, adminOnly: true },
   ];
   let ptab = "overview";
@@ -346,6 +350,10 @@
         {/if}
       </div>
     </Card>
+        {:else if ptab === "logs"}
+    <ProjectLogs projectId={id} {navigate} />
+        {:else if ptab === "traces"}
+    <ProjectTraces projectId={id} {navigate} />
         {:else if ptab === "access"}
     {#if isAdmin && access}
       <Card cls="p-4">
