@@ -181,6 +181,25 @@ export const api = {
       method: "POST",
       body: "{}",
     }),
+
+  apiKeys: () => req<APIKey[]>("/api/v1/api-keys"),
+  createAPIKey: (input: { name: string; projectId?: number | null; scopes?: string[]; expiresAt?: string }) =>
+    req<APIKey>("/api/v1/api-keys", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  rotateAPIKey: (id: number) =>
+    req<APIKey>(`/api/v1/api-keys/${id}/rotate`, {
+      method: "POST",
+      body: "{}",
+    }),
+  revokeAPIKey: (id: number) =>
+    req<{ ok: boolean }>(`/api/v1/api-keys/${id}/revoke`, {
+      method: "POST",
+      body: "{}",
+    }),
+  deleteAPIKey: (id: number) =>
+    req<{ ok: boolean }>(`/api/v1/api-keys/${id}`, { method: "DELETE" }),
 };
 
 export interface Point {
@@ -394,4 +413,17 @@ export interface SMTPSettings {
   to: string;
   useTLS: boolean;
   enabled: boolean;
+}
+
+export interface APIKey {
+  id: number;
+  name: string;
+  prefix: string;
+  projectId: number | null;
+  scopes: string[];
+  expiresAt: string;
+  revoked: boolean;
+  lastUsedAt: string;
+  createdAt: string;
+  secret?: string;
 }

@@ -308,6 +308,14 @@ cookie auth, `401` JSON when missing), documented by the embedded OpenAPI
 command palette (navigation, actions, project search); `Shift+I/P/S` jump
 to Issues/Projects/Settings.
 
+**API keys** (`Authorization: Bearer egt_…`, managed in Settings, admin
+session only) cover automation without a browser session: `ingest` posts
+events to the Sentry endpoints without a DSN key, `read`/`write` use the
+management API. Keys are optionally bound to one project (confined to that
+project's ingestion and reads; instance routes stay admin/unbound) and can
+expire. Only SHA256 hashes are stored - the secret is shown once at
+creation/rotation; rotate, revoke, or delete any time.
+
 ## Benchmark
 
 ```

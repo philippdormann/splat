@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 
+	"errgotrack/internal/apikeys"
 	"errgotrack/internal/auth"
 	"errgotrack/internal/dashboard"
 	"errgotrack/internal/events"
@@ -48,16 +49,6 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeAPIError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
-}
-
-func (s *Server) requireAPIAuth(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := s.Auth.ValidateSession(auth.SessionTokenFromRequest(r)); !ok {
-			writeAPIError(w, http.StatusUnauthorized, "unauthorized")
-			return
-		}
-		next(w, r)
-	}
 }
 
 func decodeJSON(r *http.Request, v any) bool {
@@ -203,6 +194,11 @@ func (s *Server) apiIssuesList(w http.ResponseWriter, r *http.Request) {
 	if id, err := strconv.ParseInt(q.Get("project"), 10, 64); err == nil {
 		f.ProjectID = id
 	}
+	// A project-bound key only ever sees its own project, regardless of
+	// the query parameter it sends.
+	if a := s.authenticate(r); !a.admin && a.key != nil && a.key.ProjectID.Valid {
+		f.ProjectID = a.key.ProjectID.Int64
+	}
 	page := 1
 	if p, err := strconv.Atoi(q.Get("page")); err == nil && p > 0 {
 		page = p
@@ -256,6 +252,12 @@ func (s *Server) apiIssueDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	issue, err := s.Issues.Get(id)
 	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	// 404 (not 403) on cross-project access: a scoped key must not learn
+	// whether other projects' issues exist.
+	if !s.authenticate(r).inProject(issue.ProjectID) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -378,6 +380,10 @@ func (s *Server) apiIssueSetStatus(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "invalid status")
 		return
 	}
+	if issue, err := s.Issues.Get(id); err != nil || !s.authenticate(r).inProject(issue.ProjectID) {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
 	if err := s.Issues.SetStatus(id, status); err != nil {
 		s.Logger.Error("set issue status", "error", err)
 	}
@@ -385,6 +391,11 @@ func (s *Server) apiIssueSetStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) apiIssuesBulk(w http.ResponseWriter, r *http.Request) {
+	// Bulk spans projects, so project-bound keys are refused outright.
+	if a := s.authenticate(r); !a.admin && a.key != nil && a.key.ProjectID.Valid {
+		writeAPIError(w, http.StatusForbidden, "project-bound keys cannot bulk-update across projects")
+		return
+	}
 	var input struct {
 		IDs    []int64 `json:"ids"`
 		Status string  `json:"status"`
@@ -502,6 +513,16 @@ func (s *Server) apiProjectsList(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	// A project-bound key sees only its own project, not the fleet.
+	if a := s.authenticate(r); !a.admin && a.key != nil && a.key.ProjectID.Valid {
+		filtered := list[:0]
+		for _, p := range list {
+			if p.ID == a.key.ProjectID.Int64 {
+				filtered = append(filtered, p)
+			}
+		}
+		list = filtered
+	}
 	out := make([]map[string]any, 0, len(list))
 	for _, p := range list {
 		stats, _ := s.Dashboard.ProjectStats(p.ID)
@@ -542,7 +563,7 @@ func (s *Server) apiProjectCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Notifications.UpsertDefaultRule(p.ID)
-	s.apiProjectDetailByID(w, p.ID)
+	s.apiProjectDetailByID(w, r, p.ID)
 }
 
 func (s *Server) apiProjectDetail(w http.ResponseWriter, r *http.Request) {
@@ -551,12 +572,12 @@ func (s *Server) apiProjectDetail(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
-	s.apiProjectDetailByID(w, id)
+	s.apiProjectDetailByID(w, r, id)
 }
 
-func (s *Server) apiProjectDetailByID(w http.ResponseWriter, id int64) {
+func (s *Server) apiProjectDetailByID(w http.ResponseWriter, r *http.Request, id int64) {
 	p, err := s.Projects.Get(id)
-	if err != nil {
+	if err != nil || !s.authenticate(r).inProject(id) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -626,7 +647,7 @@ func (s *Server) apiProjectUpdate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	s.apiProjectDetailByID(w, id)
+	s.apiProjectDetailByID(w, r, id)
 }
 
 func (s *Server) apiProjectRotate(w http.ResponseWriter, r *http.Request) {
@@ -641,7 +662,7 @@ func (s *Server) apiProjectRotate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = key
-	s.apiProjectDetailByID(w, id)
+	s.apiProjectDetailByID(w, r, id)
 }
 
 func (s *Server) apiProjectDelete(w http.ResponseWriter, r *http.Request) {
@@ -996,6 +1017,10 @@ func (s *Server) apiSourceMapsList(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
+	if !s.authenticate(r).inProject(id) {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
 	if s.SourceMaps == nil {
 		writeAPIError(w, http.StatusServiceUnavailable, "source maps not configured")
 		return
@@ -1015,6 +1040,10 @@ func (s *Server) apiSourceMapsList(w http.ResponseWriter, r *http.Request) {
 func (s *Server) apiSourceMapsUpload(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if !s.authenticate(r).inProject(id) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -1077,6 +1106,10 @@ func (s *Server) apiSourceMapsDelete(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
+	if !s.authenticate(r).inProject(id) {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
 	mapID, err := strconv.ParseInt(r.PathValue("mapId"), 10, 64)
 	if err != nil {
 		writeAPIError(w, http.StatusNotFound, "not found")
@@ -1100,6 +1133,106 @@ func (s *Server) apiOpenAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(openAPIDoc)
+}
+
+// --- api keys (admin session only) ---
+
+func apiKeyJSON(k apikeys.Key) map[string]any {
+	out := map[string]any{
+		"id": k.ID, "name": k.Name, "prefix": k.Prefix,
+		"projectId": k.ProjectIDJSON(), "scopes": k.Scopes,
+		"expiresAt": k.ExpiresAt, "revoked": k.Revoked,
+		"lastUsedAt": k.LastUsed, "createdAt": k.CreatedAt,
+	}
+	if k.Secret != "" {
+		out["secret"] = k.Secret
+	}
+	return out
+}
+
+func (s *Server) apiKeysList(w http.ResponseWriter, r *http.Request) {
+	keys, err := s.APIKeys.List()
+	if err != nil {
+		s.Logger.Error("list api keys", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	out := make([]map[string]any, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, apiKeyJSON(k))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) apiKeysCreate(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Name      string   `json:"name"`
+		ProjectID *int64   `json:"projectId"`
+		Scopes    []string `json:"scopes"`
+		ExpiresAt string   `json:"expiresAt"`
+	}
+	if !decodeJSON(r, &input) {
+		writeAPIError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	var projectID sql.NullInt64
+	if input.ProjectID != nil {
+		if _, err := s.Projects.Get(*input.ProjectID); err != nil {
+			writeAPIError(w, http.StatusBadRequest, "unknown project")
+			return
+		}
+		projectID = sql.NullInt64{Int64: *input.ProjectID, Valid: true}
+	}
+	k, err := s.APIKeys.Create(input.Name, projectID, input.Scopes, input.ExpiresAt)
+	if err != nil {
+		s.Logger.Error("create api key", "error", err)
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, apiKeyJSON(k))
+}
+
+func (s *Server) apiKeysRotate(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	k, err := s.APIKeys.Rotate(id)
+	if err != nil {
+		s.Logger.Error("rotate api key", "error", err)
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, apiKeyJSON(k))
+}
+
+func (s *Server) apiKeysRevoke(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if err := s.APIKeys.Revoke(id); err != nil {
+		s.Logger.Error("revoke api key", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) apiKeysDelete(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if err := s.APIKeys.Delete(id); err != nil {
+		s.Logger.Error("delete api key", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 // resolveIssueEvent returns the requested event (?event=id) or the latest

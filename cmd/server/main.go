@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"errgotrack/internal/apikeys"
 	"errgotrack/internal/auth"
 	"errgotrack/internal/config"
 	"errgotrack/internal/dashboard"
@@ -112,6 +113,7 @@ func main() {
 		Retention:     sweeper,
 		Storage:       storage.NewStore(db, dbPath),
 		SourceMaps:    sourcemaps.NewStore(db),
+		APIKeys:       apikeys.NewStore(db),
 		Logger:        logger,
 		PublicURL:     cfg.PublicURL,
 		CookieSecure:  strings.HasPrefix(cfg.PublicURL, "https://"),

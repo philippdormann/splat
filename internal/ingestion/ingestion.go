@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"errgotrack/internal/apikeys"
 	"errgotrack/internal/events"
 	"errgotrack/internal/issues"
 	"errgotrack/internal/notifications"
@@ -27,6 +28,7 @@ const maxBodyBytes = 2 << 20 // 2MiB: generous for a Django traceback + breadcru
 
 type Handler struct {
 	Projects      *projects.Store
+	APIKeys       *apikeys.Store // optional: Bearer fallback for DSN-less ingestion
 	Issues        *issues.Store
 	Events        *events.Store
 	Notifications *notifications.Store
@@ -131,11 +133,16 @@ func (h *Handler) readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool
 
 func (h *Handler) resolveProject(w http.ResponseWriter, r *http.Request, authKey string) (*projects.Project, bool) {
 	if authKey == "" {
-		http.Error(w, `{"error":"missing authentication"}`, http.StatusUnauthorized)
-		return nil, false
+		// No DSN credential at all: a Bearer API key with ingest scope
+		// authenticates by path project id instead.
+		return h.resolveProjectByKey(w, r)
 	}
 	project, err := h.Projects.GetByPublicKey(authKey)
 	if err != nil {
+		// Wrong DSN key, but maybe a Bearer API key was also sent.
+		if p, ok := h.resolveProjectByKey(w, r); ok {
+			return p, true
+		}
 		http.Error(w, `{"error":"invalid project key"}`, http.StatusUnauthorized)
 		return nil, false
 	}
@@ -152,6 +159,39 @@ func (h *Handler) resolveProject(w http.ResponseWriter, r *http.Request, authKey
 			return nil, false
 		}
 	}
+	return project, true
+}
+
+// resolveProjectByKey authenticates ingestion with a Bearer API key instead
+// of the DSN public key. The path's numeric project id selects the project,
+// so the key's project binding (if any) is enforced against it - a key
+// bound to project A cannot ingest into project B.
+func (h *Handler) resolveProjectByKey(w http.ResponseWriter, r *http.Request) (*projects.Project, bool) {
+	secret := apikeys.BearerToken(r)
+	if secret == "" || h.APIKeys == nil {
+		http.Error(w, `{"error":"missing authentication"}`, http.StatusUnauthorized)
+		return nil, false
+	}
+	k, err := h.APIKeys.Validate(secret)
+	if err != nil || !k.HasScope(apikeys.ScopeIngest) {
+		http.Error(w, `{"error":"invalid project key"}`, http.StatusUnauthorized)
+		return nil, false
+	}
+	id, err := strconv.ParseInt(r.PathValue("project"), 10, 64)
+	if err != nil {
+		http.Error(w, `{"error":"invalid project id"}`, http.StatusUnauthorized)
+		return nil, false
+	}
+	if k.ProjectID.Valid && k.ProjectID.Int64 != id {
+		http.Error(w, `{"error":"key not valid for this project"}`, http.StatusForbidden)
+		return nil, false
+	}
+	project, err := h.Projects.Get(id)
+	if err != nil || !project.Enabled {
+		http.Error(w, `{"error":"invalid project key"}`, http.StatusUnauthorized)
+		return nil, false
+	}
+	h.APIKeys.TouchLastUsed(k.ID)
 	return project, true
 }
 

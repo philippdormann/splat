@@ -13,6 +13,11 @@
         "type": "apiKey",
         "in": "cookie",
         "name": "errgotrack_session"
+      },
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "API key secret (egt_...). Scopes: ingest (event ingestion), read (GET API), write (mutating API). A key bound to a project is confined to that project's ingestion and reads; instance routes (settings, rules, storage, key management) need the admin session or an unbound key, and key management needs the admin session."
       }
     },
     "schemas": {
@@ -283,6 +288,21 @@
               "properties": { "name": { "type": "string" }, "rows": { "type": "integer" } }
             }
           }
+        }
+      },
+      "APIKey": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "prefix": { "type": "string", "description": "First characters of the secret, for identification." },
+          "projectId": { "type": ["integer", "null"], "description": "Null means all projects." },
+          "scopes": { "type": "array", "items": { "type": "string", "enum": ["ingest", "read", "write"] } },
+          "expiresAt": { "type": "string", "description": "RFC3339, or empty for never." },
+          "revoked": { "type": "boolean" },
+          "lastUsedAt": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "secret": { "type": "string", "description": "Only present at creation/rotation. Shown once." }
         }
       }
     }
@@ -789,6 +809,72 @@
       "post": {
         "summary": "Vacuum the database",
         "responses": { "200": { "description": "{ok}." } }
+      }
+    },
+    "/api/v1/api-keys": {
+      "get": {
+        "summary": "List API keys (admin session only)",
+        "responses": {
+          "200": {
+            "description": "Keys; secrets never included.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/APIKey" } }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create API key (admin session only; secret shown once)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "projectId": { "type": ["integer", "null"] },
+                  "scopes": { "type": "array", "items": { "type": "string", "enum": ["ingest", "read", "write"] } },
+                  "expiresAt": { "type": "string", "description": "RFC3339, or empty for never." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created, including the one-time secret.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/APIKey" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/api-keys/{id}/rotate": {
+      "post": {
+        "summary": "Rotate API key (admin session only; old secret dies)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": {
+            "description": "Replacement key with new one-time secret.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/APIKey" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/api-keys/{id}/revoke": {
+      "post": {
+        "summary": "Revoke API key (admin session only)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Revoked." } }
+      }
+    },
+    "/api/v1/api-keys/{id}": {
+      "delete": {
+        "summary": "Delete API key (admin session only)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Deleted." } }
       }
     },
     "/api/v1/openapi.json": {

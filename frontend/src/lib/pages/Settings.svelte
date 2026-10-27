@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput } from "$lib/api";
+  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput, type APIKey } from "$lib/api";
   import Card from "$lib/components/card.svelte";
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
@@ -17,9 +17,13 @@
   let projects: { id: number; name: string }[] = [];
   let editingRule: (AlertRuleInput & { id?: number }) | null = null;
   let smtp = { host: "", port: 587, username: "", password: "", from: "", to: "", useTLS: true, enabled: false };
+  let keys: APIKey[] = [];
+  let newKey = { name: "", projectId: null as number | null, scopes: ["read"] as string[], expiresAt: "" };
+  let freshSecret = "";
 
   const channels = ["slack", "discord", "teams", "sheets"];
   const allChannels = ["telegram", "slack", "discord", "teams", "sheets", "email"];
+  const allScopes = ["ingest", "read", "write"];
 
   function formatBytes(n: number): string {
     if (n < 1024) return `${n} B`;
@@ -78,6 +82,7 @@
       await loadStorage();
       rules = await api.rules();
       projects = await api.projects();
+      keys = await api.apiKeys();
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load settings.";
     }
@@ -146,6 +151,55 @@
     e.preventDefault();
     data = await api.saveSMTP(smtp);
     notice = "SMTP settings saved.";
+  }
+
+  function toggleScope(scope: string) {
+    newKey.scopes = newKey.scopes.includes(scope)
+      ? newKey.scopes.filter((s) => s !== scope)
+      : [...newKey.scopes, scope];
+  }
+
+  async function createKey(e: Event) {
+    e.preventDefault();
+    let expires = newKey.expiresAt.trim();
+    // Accept a plain date as shorthand for midnight UTC.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(expires)) expires += "T00:00:00Z";
+    const k = await api.createAPIKey({
+      name: newKey.name,
+      projectId: newKey.projectId,
+      scopes: newKey.scopes,
+      expiresAt: expires || undefined,
+    });
+    freshSecret = k.secret ?? "";
+    keys = await api.apiKeys();
+    newKey = { name: "", projectId: null, scopes: ["read"], expiresAt: "" };
+    notice = "API key created — copy the secret now, it will never be shown again.";
+  }
+
+  async function rotateKey(id: number) {
+    if (!confirm("Rotate this key? The old secret stops working immediately.")) return;
+    const k = await api.rotateAPIKey(id);
+    freshSecret = k.secret ?? "";
+    keys = await api.apiKeys();
+    notice = "Key rotated — copy the new secret now.";
+  }
+
+  async function revokeKey(id: number) {
+    await api.revokeAPIKey(id);
+    keys = await api.apiKeys();
+    notice = "Key revoked.";
+  }
+
+  async function deleteKey(id: number) {
+    if (!confirm("Permanently delete this key?")) return;
+    await api.deleteAPIKey(id);
+    keys = await api.apiKeys();
+    notice = "Key deleted.";
+  }
+
+  function copySecret() {
+    navigator.clipboard.writeText(freshSecret);
+    notice = "Secret copied to clipboard.";
   }
 </script>
 
@@ -278,6 +332,66 @@
             </div>
           </form>
         {/if}
+      </div>
+    </Card>
+
+    <Card cls="p-4">
+      <div class="space-y-3">
+        <p class="text-sm font-medium">API keys</p>
+        <p class="text-xs text-muted-foreground">Bearer tokens for automation: <span class="font-mono">ingest</span> posts events without a DSN, <span class="font-mono">read</span>/<span class="font-mono">write</span> use the management API without a session. Optionally bound to one project and with an expiry. Secrets are shown once — only hashes are stored.</p>
+        {#if freshSecret}
+          <div class="space-y-2 rounded-md border border-border bg-muted p-3">
+            <p class="text-xs font-medium">Copy this secret now — it will never be shown again:</p>
+            <code class="block overflow-x-auto font-mono text-xs">{freshSecret}</code>
+            <div class="flex gap-2">
+              <Button size="sm" variant="outline" on:click={copySecret}>Copy</Button>
+              <Button size="sm" variant="outline" on:click={() => (freshSecret = "")}>Done</Button>
+            </div>
+          </div>
+        {/if}
+        {#if keys.length === 0}
+          <p class="text-xs text-muted-foreground">No API keys yet.</p>
+        {:else}
+          <div class="divide-y divide-border rounded-md border border-border">
+            {#each keys as k}
+              <div class="flex flex-wrap items-center justify-between gap-2 p-2 text-xs">
+                <span>
+                  <span class="font-medium">{k.name || "(unnamed)"}</span>
+                  {#if k.revoked}<span class="text-destructive"> · revoked</span>{/if}
+                  <span class="block font-mono text-muted-foreground">{k.prefix}… · {k.scopes.join(", ")} · {k.projectId === null ? "all projects" : projectName(k.projectId)}{k.expiresAt ? ` · expires ${k.expiresAt}` : ""}{k.lastUsedAt ? ` · used ${k.lastUsedAt}` : " · never used"}</span>
+                </span>
+                <span class="flex gap-2">
+                  {#if !k.revoked}
+                    <Button size="sm" variant="outline" on:click={() => rotateKey(k.id)}>Rotate</Button>
+                    <Button size="sm" variant="outline" on:click={() => revokeKey(k.id)}>Revoke</Button>
+                  {/if}
+                  <Button size="sm" variant="outline" on:click={() => deleteKey(k.id)}>Delete</Button>
+                </span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+        <form on:submit={createKey} class="space-y-3 rounded-md border border-border p-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div class="space-y-1"><label class="text-xs">Name</label><Input bind:value={newKey.name} placeholder="CI deploy key" /></div>
+            <div class="space-y-1"><label class="text-xs">Project</label>
+              <select class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={newKey.projectId}>
+                <option value={null}>All projects</option>
+                {#each projects as p}<option value={p.id}>{p.name}</option>{/each}
+              </select>
+            </div>
+            <div class="space-y-1"><label class="text-xs">Expires (optional, YYYY-MM-DD)</label><Input bind:value={newKey.expiresAt} placeholder="" /></div>
+          </div>
+          <div class="space-y-1">
+            <p class="text-xs">Scopes</p>
+            <div class="flex flex-wrap gap-3 text-sm">
+              {#each allScopes as s}
+                <label class="flex items-center gap-1.5"><input type="checkbox" checked={newKey.scopes.includes(s)} on:change={() => toggleScope(s)} /> {s}</label>
+              {/each}
+            </div>
+          </div>
+          <Button type="submit" size="sm">Create key</Button>
+        </form>
       </div>
     </Card>
 

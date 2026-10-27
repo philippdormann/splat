@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"errgotrack/internal/apikeys"
 	"errgotrack/internal/auth"
 	"errgotrack/internal/dashboard"
 	"errgotrack/internal/events"
@@ -35,6 +36,7 @@ type Server struct {
 	Retention     *retention.Sweeper
 	Storage       *storage.Store
 	SourceMaps    *sourcemaps.Store
+	APIKeys       *apikeys.Store
 	Logger        *slog.Logger
 	PublicURL     string
 	CookieSecure  bool
@@ -55,6 +57,7 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) routes() {
 	ingest := &ingestion.Handler{
 		Projects:      s.Projects,
+		APIKeys:       s.APIKeys,
 		Issues:        s.Issues,
 		Events:        s.Events,
 		Notifications: s.Notifications,
@@ -69,47 +72,56 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/{project}/store/", rateLimit(limiter, http.HandlerFunc(ingest.Store)))
 	s.mux.HandleFunc("GET /healthz", s.healthz)
 
-	// JSON API for the Svelte SPA.
+	// JSON API for the Svelte SPA. Session cookie or Bearer API key;
+	// read vs write API-key scopes enforced per endpoint.
 	s.mux.Handle("POST /api/v1/login", rateLimit(loginLimiter, http.HandlerFunc(s.apiLogin)))
 	s.mux.HandleFunc("GET /api/v1/me", s.apiMe)
 	s.mux.HandleFunc("POST /api/v1/logout", s.apiLogout)
 
-	s.mux.HandleFunc("GET /api/v1/dashboard", s.requireAPIAuth(s.apiDashboard))
+	s.mux.HandleFunc("GET /api/v1/dashboard", s.requireScope(s.apiDashboard))
 
-	s.mux.HandleFunc("GET /api/v1/issues", s.requireAPIAuth(s.apiIssuesList))
-	s.mux.HandleFunc("POST /api/v1/issues/bulk", s.requireAPIAuth(s.apiIssuesBulk))
-	s.mux.HandleFunc("GET /api/v1/issues/{id}", s.requireAPIAuth(s.apiIssueDetail))
-	s.mux.HandleFunc("POST /api/v1/issues/{id}/status", s.requireAPIAuth(s.apiIssueSetStatus))
+	s.mux.HandleFunc("GET /api/v1/issues", s.requireScope(s.apiIssuesList))
+	s.mux.HandleFunc("POST /api/v1/issues/bulk", s.requireScope(s.apiIssuesBulk))
+	s.mux.HandleFunc("GET /api/v1/issues/{id}", s.requireScope(s.apiIssueDetail))
+	s.mux.HandleFunc("POST /api/v1/issues/{id}/status", s.requireScope(s.apiIssueSetStatus))
 
-	s.mux.HandleFunc("GET /api/v1/projects", s.requireAPIAuth(s.apiProjectsList))
-	s.mux.HandleFunc("POST /api/v1/projects", s.requireAPIAuth(s.apiProjectCreate))
-	s.mux.HandleFunc("GET /api/v1/projects/{id}", s.requireAPIAuth(s.apiProjectDetail))
-	s.mux.HandleFunc("PATCH /api/v1/projects/{id}", s.requireAPIAuth(s.apiProjectUpdate))
-	s.mux.HandleFunc("POST /api/v1/projects/{id}/rotate", s.requireAPIAuth(s.apiProjectRotate))
-	s.mux.HandleFunc("DELETE /api/v1/projects/{id}", s.requireAPIAuth(s.apiProjectDelete))
-	s.mux.HandleFunc("GET /api/v1/platforms", s.requireAPIAuth(s.apiPlatforms))
+	s.mux.HandleFunc("GET /api/v1/projects", s.requireScope(s.apiProjectsList))
+	s.mux.HandleFunc("POST /api/v1/projects", s.requireInstance(s.apiProjectCreate))
+	s.mux.HandleFunc("GET /api/v1/projects/{id}", s.requireScope(s.apiProjectDetail))
+	s.mux.HandleFunc("PATCH /api/v1/projects/{id}", s.requireScope(s.apiProjectUpdate))
+	s.mux.HandleFunc("POST /api/v1/projects/{id}/rotate", s.requireInstance(s.apiProjectRotate))
+	s.mux.HandleFunc("DELETE /api/v1/projects/{id}", s.requireInstance(s.apiProjectDelete))
+	s.mux.HandleFunc("GET /api/v1/platforms", s.requireScope(s.apiPlatforms))
 
-	s.mux.HandleFunc("GET /api/v1/settings", s.requireAPIAuth(s.apiSettings))
-	s.mux.HandleFunc("PUT /api/v1/settings/telegram", s.requireAPIAuth(s.apiSettingsSaveTelegram))
-	s.mux.HandleFunc("POST /api/v1/settings/telegram/test", s.requireAPIAuth(s.apiSettingsTestTelegram))
-	s.mux.HandleFunc("PUT /api/v1/settings/webhooks/{channel}", s.requireAPIAuth(s.apiSettingsSaveWebhook))
-	s.mux.HandleFunc("POST /api/v1/settings/webhooks/{channel}/test", s.requireAPIAuth(s.apiSettingsTestWebhook))
-	s.mux.HandleFunc("PUT /api/v1/settings/tracing", s.requireAPIAuth(s.apiSettingsSaveTracing))
-	s.mux.HandleFunc("PUT /api/v1/settings/smtp", s.requireAPIAuth(s.apiSettingsSaveSMTP))
-	s.mux.HandleFunc("POST /api/v1/settings/smtp/test", s.requireAPIAuth(s.apiSettingsTestSMTP))
+	s.mux.HandleFunc("GET /api/v1/settings", s.requireInstance(s.apiSettings))
+	s.mux.HandleFunc("PUT /api/v1/settings/telegram", s.requireInstance(s.apiSettingsSaveTelegram))
+	s.mux.HandleFunc("POST /api/v1/settings/telegram/test", s.requireInstance(s.apiSettingsTestTelegram))
+	s.mux.HandleFunc("PUT /api/v1/settings/webhooks/{channel}", s.requireInstance(s.apiSettingsSaveWebhook))
+	s.mux.HandleFunc("POST /api/v1/settings/webhooks/{channel}/test", s.requireInstance(s.apiSettingsTestWebhook))
+	s.mux.HandleFunc("PUT /api/v1/settings/tracing", s.requireInstance(s.apiSettingsSaveTracing))
+	s.mux.HandleFunc("PUT /api/v1/settings/smtp", s.requireInstance(s.apiSettingsSaveSMTP))
+	s.mux.HandleFunc("POST /api/v1/settings/smtp/test", s.requireInstance(s.apiSettingsTestSMTP))
 
-	s.mux.HandleFunc("GET /api/v1/rules", s.requireAPIAuth(s.apiRulesList))
-	s.mux.HandleFunc("POST /api/v1/rules", s.requireAPIAuth(s.apiRulesCreate))
-	s.mux.HandleFunc("PUT /api/v1/rules/{id}", s.requireAPIAuth(s.apiRulesUpdate))
-	s.mux.HandleFunc("DELETE /api/v1/rules/{id}", s.requireAPIAuth(s.apiRulesDelete))
+	s.mux.HandleFunc("GET /api/v1/rules", s.requireInstance(s.apiRulesList))
+	s.mux.HandleFunc("POST /api/v1/rules", s.requireInstance(s.apiRulesCreate))
+	s.mux.HandleFunc("PUT /api/v1/rules/{id}", s.requireInstance(s.apiRulesUpdate))
+	s.mux.HandleFunc("DELETE /api/v1/rules/{id}", s.requireInstance(s.apiRulesDelete))
 
-	s.mux.HandleFunc("GET /api/v1/storage", s.requireAPIAuth(s.apiStorageUsage))
-	s.mux.HandleFunc("POST /api/v1/storage/sweep", s.requireAPIAuth(s.apiStorageSweep))
-	s.mux.HandleFunc("POST /api/v1/storage/vacuum", s.requireAPIAuth(s.apiStorageVacuum))
+	s.mux.HandleFunc("GET /api/v1/storage", s.requireInstance(s.apiStorageUsage))
+	s.mux.HandleFunc("POST /api/v1/storage/sweep", s.requireInstance(s.apiStorageSweep))
+	s.mux.HandleFunc("POST /api/v1/storage/vacuum", s.requireInstance(s.apiStorageVacuum))
 
-	s.mux.HandleFunc("GET /api/v1/projects/{id}/sourcemaps", s.requireAPIAuth(s.apiSourceMapsList))
-	s.mux.HandleFunc("POST /api/v1/projects/{id}/sourcemaps", s.requireAPIAuth(s.apiSourceMapsUpload))
-	s.mux.HandleFunc("DELETE /api/v1/projects/{id}/sourcemaps/{mapId}", s.requireAPIAuth(s.apiSourceMapsDelete))
+	s.mux.HandleFunc("GET /api/v1/projects/{id}/sourcemaps", s.requireScope(s.apiSourceMapsList))
+	s.mux.HandleFunc("POST /api/v1/projects/{id}/sourcemaps", s.requireScope(s.apiSourceMapsUpload))
+	s.mux.HandleFunc("DELETE /api/v1/projects/{id}/sourcemaps/{mapId}", s.requireScope(s.apiSourceMapsDelete))
+
+	// API key management is admin-session-only: keys must never mint,
+	// rotate or revoke keys (privilege escalation by construction).
+	s.mux.HandleFunc("GET /api/v1/api-keys", s.requireAdmin(s.apiKeysList))
+	s.mux.HandleFunc("POST /api/v1/api-keys", s.requireAdmin(s.apiKeysCreate))
+	s.mux.HandleFunc("POST /api/v1/api-keys/{id}/rotate", s.requireAdmin(s.apiKeysRotate))
+	s.mux.HandleFunc("POST /api/v1/api-keys/{id}/revoke", s.requireAdmin(s.apiKeysRevoke))
+	s.mux.HandleFunc("DELETE /api/v1/api-keys/{id}", s.requireAdmin(s.apiKeysDelete))
 
 	s.mux.HandleFunc("GET /api/v1/openapi.json", s.apiOpenAPI)
 

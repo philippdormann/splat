@@ -53,6 +53,11 @@ func TestOpenAPICoversRoutes(t *testing.T) {
 		{"get", "/api/v1/storage"},
 		{"post", "/api/v1/storage/sweep"},
 		{"post", "/api/v1/storage/vacuum"},
+		{"get", "/api/v1/api-keys"},
+		{"post", "/api/v1/api-keys"},
+		{"post", "/api/v1/api-keys/{id}/rotate"},
+		{"post", "/api/v1/api-keys/{id}/revoke"},
+		{"delete", "/api/v1/api-keys/{id}"},
 		{"get", "/api/v1/openapi.json"},
 		{"get", "/healthz"},
 	} {
