@@ -24,6 +24,7 @@ import (
 	"errgotrack/internal/metrics"
 	"errgotrack/internal/notifications"
 	"errgotrack/internal/projects"
+	"errgotrack/internal/repolink"
 	"errgotrack/internal/retention"
 	"errgotrack/internal/sessions"
 	"errgotrack/internal/sourcemaps"
@@ -150,6 +151,7 @@ func main() {
 		Teams:         teams.NewStore(db),
 		Logs:          logs.NewStore(db),
 		Traces:        traces.NewStore(db),
+		RepoLinks:     repolink.NewStore(db),
 		Metrics:       reg,
 		DB:            db,
 		Logger:        logger,

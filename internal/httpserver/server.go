@@ -23,6 +23,7 @@ import (
 	"errgotrack/internal/metrics"
 	"errgotrack/internal/notifications"
 	"errgotrack/internal/projects"
+	"errgotrack/internal/repolink"
 	"errgotrack/internal/retention"
 	"errgotrack/internal/sessions"
 	"errgotrack/internal/sourcemaps"
@@ -49,6 +50,7 @@ type Server struct {
 	Teams         *teams.Store
 	Logs          *logs.Store
 	Traces        *traces.Store
+	RepoLinks     *repolink.Store
 	Metrics       *metrics.Registry // nil disables /metrics
 	DB            *database.DB
 	Logger        *slog.Logger
@@ -217,6 +219,17 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/projects/{id}/access", s.requireAdmin(s.apiProjectAccess))
 	s.mux.HandleFunc("POST /api/v1/projects/{id}/access/members", s.requireAdmin(s.apiProjectAddMember))
 	s.mux.HandleFunc("DELETE /api/v1/projects/{id}/access/members/{userId}", s.requireAdmin(s.apiProjectRemoveMember))
+
+	// Repository integration: config read needs project access, config
+	// write/test are admin-only (a forge token posts as its owner).
+	// Creating/unlinking external issues needs project access.
+	s.mux.HandleFunc("GET /api/v1/projects/{id}/repo", s.requireScope(s.apiProjectRepoGet))
+	s.mux.HandleFunc("PUT /api/v1/projects/{id}/repo", s.requireAdmin(s.apiProjectRepoSave))
+	s.mux.HandleFunc("DELETE /api/v1/projects/{id}/repo", s.requireAdmin(s.apiProjectRepoDelete))
+	s.mux.HandleFunc("POST /api/v1/projects/{id}/repo/test", s.requireAdmin(s.apiProjectRepoTest))
+	s.mux.HandleFunc("GET /api/v1/issues/{id}/links", s.requireScope(s.apiIssueLinksList))
+	s.mux.HandleFunc("POST /api/v1/issues/{id}/links", s.requireScope(s.apiIssueLinksCreate))
+	s.mux.HandleFunc("DELETE /api/v1/issues/{id}/links/{linkId}", s.requireScope(s.apiIssueLinksDelete))
 
 	s.mux.HandleFunc("GET /api/v1/openapi.json", s.apiOpenAPI)
 

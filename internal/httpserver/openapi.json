@@ -2875,6 +2875,148 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{id}/repo": {
+      "get": {
+        "summary": "Linked repository (project access required)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Repo config with masked token, or null."
+          }
+        }
+      },
+      "put": {
+        "summary": "Link repository (admin session only; token blank keeps stored secret)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved."
+          }
+        }
+      },
+      "delete": {
+        "summary": "Unlink repository (admin session only; links are kept)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unlinked."
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/repo/test": {
+      "post": {
+        "summary": "Test forge connection (admin session only)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok/message result."
+          }
+        }
+      }
+    },
+    "/api/v1/issues/{id}/links": {
+      "get": {
+        "summary": "External issues of an errgotrack issue",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Links, oldest first."
+          }
+        }
+      },
+      "post": {
+        "summary": "File this issue on the linked forge",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created link."
+          }
+        }
+      }
+    },
+    "/api/v1/issues/{id}/links/{linkId}": {
+      "delete": {
+        "summary": "Unlink an external issue (the forge issue itself is untouched)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "linkId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unlinked."
+          }
+        }
+      }
     }
   }
 }

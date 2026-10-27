@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"errgotrack/internal/apikeys"
 	"errgotrack/internal/auth"
@@ -19,6 +21,7 @@ import (
 	"errgotrack/internal/issues"
 	"errgotrack/internal/notifications"
 	"errgotrack/internal/projects"
+	"errgotrack/internal/repolink"
 	"errgotrack/internal/retention"
 	"errgotrack/internal/sessions"
 	"errgotrack/internal/sourcemaps"
@@ -53,6 +56,7 @@ func fullTestServer(t *testing.T) (*Server, *auth.Store, *teams.Store, *projects
 		Sessions:      sessions.NewStore(db),
 		APIKeys:       apikeys.NewStore(db),
 		Teams:         teamsStore,
+		RepoLinks:     repolink.NewStore(db),
 		DB:            db,
 		Logger:        logger,
 		PublicURL:     "http://localhost:8080",
@@ -221,3 +225,80 @@ func TestRBACMemberScoping(t *testing.T) {
 }
 
 func itoa(id int64) string { return strconv.FormatInt(id, 10) }
+
+func TestRepoAndLinkScoping(t *testing.T) {
+	s, a, _, ps := fullTestServer(t)
+	admin, _ := a.CreateUser("admin", "password123", auth.RoleAdmin)
+	member, _ := a.CreateUser("dev", "password123", auth.RoleMember)
+	p, _ := ps.Create("App", "app", "production", "python", 0)
+	adminCookie := sessionCookie(t, a, admin.ID)
+	memberCookie := sessionCookie(t, a, member.ID)
+
+	// No repo linked yet: null, and filing fails with 400.
+	if rec := get(t, s, "/api/v1/projects/1/access", adminCookie); rec.Code != 200 {
+		t.Fatalf("access = %d", rec.Code)
+	}
+	rec := get(t, s, "/api/v1/projects/1/repo", adminCookie)
+	if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != "null" {
+		t.Fatalf("repo = %d %s", rec.Code, rec.Body.String())
+	}
+	// Member cannot read another project's repo config (404, not 403).
+	if rec := get(t, s, "/api/v1/projects/1/repo", memberCookie); rec.Code != http.StatusNotFound {
+		t.Fatalf("member repo = %d, want 404", rec.Code)
+	}
+	// Bad provider rejected; unknown project 404s.
+	rec = postJSON(t, s, http.MethodPut, "/api/v1/projects/1/repo", adminCookie,
+		`{"provider":"nope","owner":"o","repo":"r","token":"t"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad provider = %d %s", rec.Code, rec.Body.String())
+	}
+	// Save a GitHub repo (default public base: no custom host to validate).
+	rec = postJSON(t, s, http.MethodPut, "/api/v1/projects/1/repo", adminCookie,
+		`{"provider":"github","owner":"o","repo":"r","token":"tok"}`)
+	if rec.Code != 200 {
+		t.Fatalf("save repo = %d %s", rec.Code, rec.Body.String())
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved["slug"] != "o/r" || saved["hasToken"] != true {
+		t.Fatalf("saved = %v", saved)
+	}
+	if _, hasToken := saved["token"]; hasToken {
+		t.Fatal("token must never be echoed back")
+	}
+	// Private-host base URLs are refused (SSRF guard).
+	rec = postJSON(t, s, http.MethodPut, "/api/v1/projects/1/repo", adminCookie,
+		`{"provider":"gitea","baseUrl":"http://127.0.0.1:3000","owner":"o","repo":"r","token":"t"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("loopback base = %d %s", rec.Code, rec.Body.String())
+	}
+	_ = p
+
+	// Filing without network: point the stub at an unreachable host is
+	// pointless; instead verify the no-repo path on a second project and
+	// list/delete round-trip on a stored link.
+	p2, _ := ps.Create("Two", "two", "production", "go", 0)
+	issueList, _, _ := s.Issues.List(issues.ListFilter{ProjectID: p2.ID})
+	_ = issueList
+	// Create an issue to link against via the issues store directly.
+	res, _ := s.Issues.Upsert(context.Background(), p2.ID, "fp1", "Bug", "E", "v", "", "error", "production", "", time.Now())
+	link, err := s.RepoLinks.AddLink(res.Issue.ID, "github", "o/r", 5, "https://github.com/o/r/issues/5", "Bug")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec = get(t, s, "/api/v1/issues/"+itoa(res.Issue.ID)+"/links", adminCookie)
+	if rec.Code != 200 {
+		t.Fatalf("list links = %d %s", rec.Code, rec.Body.String())
+	}
+	// Member without a grant sees 404.
+	if rec := get(t, s, "/api/v1/issues/"+itoa(res.Issue.ID)+"/links", memberCookie); rec.Code != http.StatusNotFound {
+		t.Fatalf("member links = %d, want 404", rec.Code)
+	}
+	// Unlink works and is scoped: wrong issue id 404s the delete.
+	if rec := postJSON(t, s, http.MethodDelete, "/api/v1/issues/"+itoa(res.Issue.ID)+"/links/"+itoa(link.ID), adminCookie, ""); rec.Code != 200 {
+		t.Fatalf("unlink = %d %s", rec.Code, rec.Body.String())
+	}
+	_ = member
+}

@@ -445,6 +445,20 @@ func (s *Server) apiIssueDetail(w http.ResponseWriter, r *http.Request) {
 			}
 			return out
 		}(),
+		"links": func() []map[string]any {
+			if s.RepoLinks == nil {
+				return []map[string]any{}
+			}
+			links, err := s.RepoLinks.Links(issue.ID)
+			if err != nil {
+				return []map[string]any{}
+			}
+			out := make([]map[string]any, 0, len(links))
+			for _, l := range links {
+				out = append(out, linkJSON(l))
+			}
+			return out
+		}(),
 		"traceId":  traceID,
 		"traceURL": tracing.BuildURL(traceTmpl, traceID),
 	})
