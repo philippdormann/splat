@@ -423,7 +423,9 @@ docker compose -f compose.sqlite.yaml up -d --build
 docker compose -f compose.postgres.yaml up -d --build
 ```
 
-Runs as a non-root user on a `distroless/static` base image, SQLite data on
+Runs as a non-root user (uid 65532) on a `scratch` runtime image built
+from `golang:1.27.3-alpine3.24` - no OS layer, so no OS CVEs to track,
+with the CA bundle copied in for HTTPS notifications. SQLite data on
 a named volume (or set `ERRGOTRACK_DB_DRIVER=postgres` +
 `ERRGOTRACK_DATABASE_URL` in `.env` to use the bundled `postgres` service
 instead - SQLite stays the default), health-checked via the binary's own
