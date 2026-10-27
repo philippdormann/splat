@@ -1,8 +1,13 @@
 name: Docker image
 
 # Runs the test suite, then builds the Docker image on every push. The
-# image is only *pushed* to the registry on main/tags - PR builds still
-# build (catching a broken Dockerfile early) but don't publish anything.
+# image is only *pushed* to ghcr.io/philippdormann/errgotrack on main/tags -
+# PR builds still build (catching a broken Dockerfile early) but don't
+# publish anything.
+#
+# Tagging:
+#   main branch -> :latest + :sha-<short>
+#   tag v1.2.3  -> :1.2.3 + :1.2 + :1 + :latest + :sha-<short>
 on:
   push:
     branches: [main]
@@ -16,7 +21,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: philippdormann/errgotrack
 
 jobs:
   test:
@@ -28,12 +33,21 @@ jobs:
           go-version-file: go.mod
       - run: go test -race ./...
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: |
+          if [ -d frontend ]; then
+            cd frontend && bun install --frozen-lockfile && bun run check && bun run build
+          fi
 
   build-and-push:
     needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
 
@@ -51,14 +65,17 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,format=short
+            type=raw,value=latest
+            type=sha,format=short,prefix=sha-
             type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
 
       - name: Build (and push on main/tags)
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
