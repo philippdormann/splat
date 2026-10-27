@@ -96,9 +96,9 @@
             {#each releases as r}
               <Table.Row>
                 <Table.Cell>
-                  <span class="inline-flex items-center gap-1.5 font-mono text-xs font-semibold">
+                  <button class="inline-flex items-center gap-1.5 font-mono text-xs font-semibold hover:underline" on:click={() => navigate(`/projects/${id}/releases/${encodeURIComponent(r.release)}`)}>
                     <Rocket class="text-muted-foreground size-3.5" />{r.release}
-                  </span>
+                  </button>
                 </Table.Cell>
                 <Table.Cell class="text-right tabular-nums">{r.events.toLocaleString()}</Table.Cell>
                 <Table.Cell class="text-right tabular-nums">{r.issues.toLocaleString()}</Table.Cell>

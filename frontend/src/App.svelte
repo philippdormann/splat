@@ -23,6 +23,7 @@
   import ProjectDetail from "$lib/pages/ProjectDetail.svelte";
   import ProjectNew from "$lib/pages/ProjectNew.svelte";
   import Releases from "$lib/pages/Releases.svelte";
+  import ReleaseDetail from "$lib/pages/ReleaseDetail.svelte";
   import TraceDetail from "$lib/pages/TraceDetail.svelte";
   import SettingsPage from "$lib/pages/Settings.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
@@ -191,7 +192,10 @@
         {:else if path === "/projects/new"}
           <ProjectNew {navigate} />
         {:else if path.startsWith("/projects/")}
-          {#if path.endsWith("/releases")}
+          {#if path.includes("/releases/")}
+            {@const relParts = path.slice("/projects/".length).split("/releases/")}
+            <ReleaseDetail id={relParts[0]} release={decodeURIComponent(relParts[1] ?? "")} {navigate} />
+          {:else if path.endsWith("/releases")}
             <Releases id={path.slice("/projects/".length, -"/releases".length)} {navigate} />
           {:else if path.includes("/traces/")}
             {@const parts = path.slice("/projects/".length).split("/traces/")}

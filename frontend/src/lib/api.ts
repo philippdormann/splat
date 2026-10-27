@@ -121,6 +121,9 @@ export const api = {
   projectReleases: (id: number | string) =>
     req<ReleaseHealth[]>(`/api/v1/projects/${id}/releases`),
 
+  projectRelease: (id: number | string, release: string) =>
+    req<ReleaseDetail>(`/api/v1/projects/${id}/releases/${encodeURIComponent(release)}`),
+
   projectLogs: (id: number | string, params?: { level?: string; q?: string; trace?: string; limit?: number; offset?: number }) => {
     const qs = new URLSearchParams();
     if (params?.level) qs.set("level", params.level);
@@ -552,6 +555,25 @@ export interface ReleaseHealth {
   crashFreeUsers: number;
   firstSeen: string;
   lastSeen: string;
+}
+
+export interface ReleaseDetail {
+  release: string;
+  summary: ReleaseHealth;
+  windowStart: string;
+  windowEnd: string | null;
+  environments: { environment: string; events: number; sessions: number }[];
+  newIssues: {
+    id: number;
+    title: string;
+    level: string;
+    status: string;
+    eventCount: number;
+    firstSeen: string;
+    firstSeenRelative: string;
+    lastSeenRelative: string;
+    environment: string;
+  }[];
 }
 
 export interface SessionSummary {
