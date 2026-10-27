@@ -4,6 +4,7 @@
   import Card from "$lib/components/card.svelte";
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
+  import { toast } from "svelte-sonner";
   import Badge from "$lib/components/badge.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import PlatformIcon from "$lib/components/PlatformIcon.svelte";
@@ -15,7 +16,6 @@
 
   let data: ProjectDetail | null = null;
   let error = "";
-  let notice = "";
   let maps: SourceMapMeta[] = [];
   let mapRelease = "";
   let mapBundleUrl = "";
@@ -40,11 +40,11 @@
     const input = document.getElementById("sourcemap-file") as HTMLInputElement | null;
     const file = input?.files?.[0];
     if (!file) {
-      notice = "Choose a .map file first.";
+      toast.success("Choose a .map file first.");
       return;
     }
     if (!mapBundleUrl.trim()) {
-      notice = "Bundle URL is required (e.g. https://example.com/static/app.min.js).";
+      toast.success("Bundle URL is required (e.g. https://example.com/static/app.min.js).");
       return;
     }
     mapBusy = true;
@@ -52,12 +52,12 @@
       const content = await file.text();
       await api.uploadSourceMap(id, { release: mapRelease.trim(), bundleUrl: mapBundleUrl.trim(), content });
       maps = await api.sourceMaps(id);
-      notice = `Source map uploaded for ${mapBundleUrl.trim()}.`;
+      toast.success(`Source map uploaded for ${mapBundleUrl.trim()}.`);
       mapRelease = "";
       mapBundleUrl = "";
       if (input) input.value = "";
     } catch (err) {
-      notice = `Upload failed: ${err instanceof Error ? err.message : err}`;
+      toast.error(`Upload failed: ${err instanceof Error ? err.message : err}`);
     } finally {
       mapBusy = false;
     }
@@ -69,9 +69,9 @@
     try {
       await api.deleteSourceMap(id, confirmDeleteMap);
       maps = await api.sourceMaps(id);
-      notice = "Source map deleted.";
+      toast.success("Source map deleted.");
     } catch (e) {
-      notice = `Delete failed: ${e instanceof Error ? e.message : e}`;
+      toast.error(`Delete failed: ${e instanceof Error ? e.message : e}`);
     } finally {
       deleteBusy = false;
       confirmDeleteMap = null;
@@ -89,7 +89,7 @@
       enabled: data.project.enabled,
     });
     data = updated;
-    notice = "Saved.";
+    toast.success("Saved.");
   }
 
   async function rotate() {
@@ -106,7 +106,7 @@
       await api.deleteProject(id);
       navigate("/projects");
     } catch (e) {
-      notice = `Delete failed: ${e instanceof Error ? e.message : e}`;
+      toast.error(`Delete failed: ${e instanceof Error ? e.message : e}`);
     } finally {
       deleteBusy = false;
       confirmDeleteProject = false;
@@ -115,7 +115,7 @@
 
   function copy(text: string) {
     navigator.clipboard.writeText(text);
-    notice = "Copied to clipboard.";
+    toast.success("Copied to clipboard.");
   }
 
   onMount(load);
@@ -144,7 +144,6 @@
       </div>
       <Button size="sm" variant="destructive" on:click={() => (confirmDeleteProject = true)}><Trash2 class="h-4 w-4" /> Delete</Button>
     </div>
-    {#if notice}<p class="text-sm text-muted-foreground">{notice}</p>{/if}
 
     <ConfirmDialog
       open={confirmDeleteProject}

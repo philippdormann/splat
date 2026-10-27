@@ -10,6 +10,7 @@
     Menu,
   } from "lucide-svelte";
   import { api } from "$lib/api";
+  import { Toaster } from "svelte-sonner";
   import Login from "$lib/pages/Login.svelte";
   import Dashboard from "$lib/pages/Dashboard.svelte";
   import Issues from "$lib/pages/Issues.svelte";
@@ -144,3 +145,4 @@
     </div>
   </div>
 {/if}
+<Toaster richColors closeButton position="bottom-right" />

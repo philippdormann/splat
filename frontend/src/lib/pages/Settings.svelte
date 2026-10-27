@@ -4,11 +4,11 @@
   import Card from "$lib/components/card.svelte";
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
+  import { toast } from "svelte-sonner";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
 
   let data: SettingsData | null = null;
   let error = "";
-  let notice = "";
   let telegram = { botToken: "", chatId: "", enabled: false };
   let webhooks: Record<string, { url: string; enabled: boolean }> = {};
   let traceURL = "";
@@ -59,10 +59,10 @@
     const input = { name: editingHook.name, url: editingHook.url, secret: editingHook.secret, headers: textToHeaders(editingHook.headersText), enabled: editingHook.enabled };
     if (editingHook.id) {
       await api.updateGenericWebhook(editingHook.id, input);
-      notice = "Generic webhook updated.";
+      toast.success("Generic webhook updated.");
     } else {
       await api.createGenericWebhook(input);
-      notice = "Generic webhook created.";
+      toast.success("Generic webhook created.");
     }
     editingHook = null;
     generic = await api.genericWebhooks();
@@ -78,7 +78,7 @@
         await api.deleteGenericWebhook(id);
         generic = await api.genericWebhooks();
         data = await api.settings();
-        notice = "Generic webhook deleted.";
+        toast.success("Generic webhook deleted.");
       },
     };
   }
@@ -99,7 +99,7 @@
     try {
       storage = await api.storage();
     } catch (e) {
-      notice = `Could not load storage usage: ${e instanceof Error ? e.message : e}`;
+      toast.error(`Could not load storage usage: ${e instanceof Error ? e.message : e}`);
     }
   }
 
@@ -107,10 +107,10 @@
     storageBusy = "sweep";
     try {
       const r = await api.storageSweep();
-      notice = `Retention sweep deleted ${r.deleted} event(s).`;
+      toast.success(`Retention sweep deleted ${r.deleted} event(s).`);
       await loadStorage();
     } catch (e) {
-      notice = `Sweep failed: ${e instanceof Error ? e.message : e}`;
+      toast.error(`Sweep failed: ${e instanceof Error ? e.message : e}`);
     } finally {
       storageBusy = "";
     }
@@ -125,7 +125,7 @@
         storageBusy = "vacuum";
         try {
           await api.storageVacuum();
-          notice = "Vacuum finished.";
+          toast.success("Vacuum finished.");
           await loadStorage();
         } finally {
           storageBusy = "";
@@ -154,19 +154,19 @@
   async function saveTelegram(e: Event) {
     e.preventDefault();
     data = await api.saveTelegram(telegram);
-    notice = "Telegram settings saved.";
+    toast.success("Telegram settings saved.");
   }
 
   async function saveWebhook(e: Event, channel: string) {
     e.preventDefault();
     data = await api.saveWebhook(channel, webhooks[channel]);
-    notice = `${channel} settings saved.`;
+    toast.success(`${channel} settings saved.`);
   }
 
   async function saveTracing(e: Event) {
     e.preventDefault();
     data = await api.saveTracing(traceURL);
-    notice = "Tracing settings saved.";
+    toast.success("Tracing settings saved.");
   }
 
   function projectName(pid: number | null): string {
@@ -188,10 +188,10 @@
     const { id, ...input } = editingRule;
     if (id) {
       await api.updateRule(id, input);
-      notice = "Rule updated.";
+      toast.success("Rule updated.");
     } else {
       await api.createRule(input);
-      notice = "Rule created.";
+      toast.success("Rule created.");
     }
     editingRule = null;
     rules = await api.rules();
@@ -205,7 +205,7 @@
       run: async () => {
         await api.deleteRule(id);
         rules = await api.rules();
-        notice = "Rule deleted.";
+        toast.success("Rule deleted.");
       },
     };
   }
@@ -219,7 +219,7 @@
   async function saveSMTP(e: Event) {
     e.preventDefault();
     data = await api.saveSMTP(smtp);
-    notice = "SMTP settings saved.";
+    toast.success("SMTP settings saved.");
   }
 
   function toggleScope(scope: string) {
@@ -242,7 +242,7 @@
     freshSecret = k.secret ?? "";
     keys = await api.apiKeys();
     newKey = { name: "", projectId: null, scopes: ["read"], expiresAt: "" };
-    notice = "API key created — copy the secret now, it will never be shown again.";
+    toast.success("API key created — copy the secret now, it will never be shown again.");
   }
 
   async function rotateKey(id: number) {
@@ -254,7 +254,7 @@
         const k = await api.rotateAPIKey(id);
         freshSecret = k.secret ?? "";
         keys = await api.apiKeys();
-        notice = "Key rotated — copy the new secret now.";
+        toast.success("Key rotated — copy the new secret now.");
       },
     };
   }
@@ -267,7 +267,7 @@
       run: async () => {
         await api.revokeAPIKey(id);
         keys = await api.apiKeys();
-        notice = "Key revoked.";
+        toast.success("Key revoked.");
       },
     };
   }
@@ -280,14 +280,14 @@
       run: async () => {
         await api.deleteAPIKey(id);
         keys = await api.apiKeys();
-        notice = "Key deleted.";
+        toast.success("Key deleted.");
       },
     };
   }
 
   function copySecret() {
     navigator.clipboard.writeText(freshSecret);
-    notice = "Secret copied to clipboard.";
+    toast.success("Secret copied to clipboard.");
   }
 
   // Single shared confirmation dialog for every destructive action below.
@@ -300,7 +300,7 @@
     try {
       await confirmBox.run();
     } catch (e) {
-      notice = e instanceof Error ? e.message : "Action failed.";
+      toast.error(e instanceof Error ? e.message : "Action failed.");
     } finally {
       confirmBusy = false;
       confirmBox = null;
@@ -311,7 +311,6 @@
 <div class="mx-auto max-w-2xl space-y-4">
   <h2 class="text-2xl font-bold">Settings</h2>
   {#if error}<p class="text-sm text-destructive">{error}</p>{/if}
-  {#if notice}<p class="text-sm text-muted-foreground">{notice}</p>{/if}
 
   <ConfirmDialog
     open={confirmBox !== null}
@@ -334,7 +333,7 @@
         <label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={telegram.enabled} /> Enabled</label>
         <div class="flex gap-2">
           <Button type="submit" size="sm">Save</Button>
-          <Button size="sm" variant="outline" on:click={async () => { const r = await api.testTelegram(); notice = r.message; }}>Send test</Button>
+          <Button size="sm" variant="outline" on:click={async () => { const r = await api.testTelegram(); (r.ok ? toast.success(r.message) : toast.error(r.message)); }}>Send test</Button>
         </div>
       </form>
     </Card>
@@ -348,7 +347,7 @@
           <label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={webhooks[c].enabled} /> Enabled</label>
           <div class="flex gap-2">
             <Button type="submit" size="sm">Save</Button>
-            <Button size="sm" variant="outline" on:click={async () => { const r = await api.testWebhook(c); notice = r.message; }}>Send test</Button>
+            <Button size="sm" variant="outline" on:click={async () => { const r = await api.testWebhook(c); (r.ok ? toast.success(r.message) : toast.error(r.message)); }}>Send test</Button>
           </div>
         </form>
       </Card>
@@ -374,7 +373,7 @@
                 </span>
                 <span class="flex gap-2">
                   <Button size="sm" variant="outline" on:click={() => editHook(h)}>Edit</Button>
-                  <Button size="sm" variant="outline" on:click={async () => { const r = await api.testGenericWebhook(h.id); notice = r.message; }}>Send test</Button>
+                  <Button size="sm" variant="outline" on:click={async () => { const r = await api.testGenericWebhook(h.id); (r.ok ? toast.success(r.message) : toast.error(r.message)); }}>Send test</Button>
                   <Button size="sm" variant="outline" on:click={() => deleteHook(h.id)}>Delete</Button>
                 </span>
               </div>
@@ -426,7 +425,7 @@
         </div>
         <div class="flex gap-2">
           <Button type="submit" size="sm">Save</Button>
-          <Button size="sm" variant="outline" on:click={async () => { const r = await api.testSMTP(); notice = r.message; }}>Send test</Button>
+          <Button size="sm" variant="outline" on:click={async () => { const r = await api.testSMTP(); (r.ok ? toast.success(r.message) : toast.error(r.message)); }}>Send test</Button>
         </div>
       </form>
     </Card>
