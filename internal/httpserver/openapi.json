@@ -1191,6 +1191,13 @@
         "responses": { "200": { "description": "Plain-text robots file." } }
       }
     },
+    "/favicon.svg": {
+      "get": {
+        "summary": "App icon",
+        "security": [],
+        "responses": { "200": { "description": "SVG favicon." } }
+      }
+    },
     "/healthz": {
       "get": {
         "summary": "Liveness check (process is up; does not touch the database)",

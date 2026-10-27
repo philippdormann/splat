@@ -124,7 +124,7 @@ func (s *Store) List(projectID int64) ([]Meta, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Meta
+	out := []Meta{}
 	for rows.Next() {
 		var m Meta
 		var created string
@@ -343,7 +343,7 @@ func b64val(c byte) (int, bool) {
 
 // decodeVLQ decodes one base64-VLQ field into its signed values.
 func decodeVLQ(field string) ([]int, error) {
-	var out []int
+	out := []int{}
 	vals := 0
 	shift := 0
 	for i := 0; i < len(field); i++ {

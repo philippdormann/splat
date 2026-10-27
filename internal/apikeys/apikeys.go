@@ -201,7 +201,7 @@ func (s *Store) List() ([]Key, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Key
+	out := []Key{}
 	for rows.Next() {
 		k, err := scanKey(rows)
 		if err != nil {

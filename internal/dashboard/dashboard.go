@@ -211,7 +211,7 @@ func (s *Store) RecentIssues(limit int) ([]RecentIssue, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []RecentIssue
+	out := []RecentIssue{}
 	for rows.Next() {
 		var ri RecentIssue
 		var lastSeen string
@@ -260,7 +260,7 @@ func (s *Store) EventsBySeverity(projectID int64, since time.Time) ([]SeverityPo
 		return nil, err
 	}
 	defer rows.Close()
-	var out []SeverityPoint
+	out := []SeverityPoint{}
 	for rows.Next() {
 		var p SeverityPoint
 		if err := rows.Scan(&p.Bucket, &p.Level, &p.Value); err != nil {
@@ -315,7 +315,7 @@ func (s *Store) DistinctEnvironments(projectID int64) ([]string, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []string
+	out := []string{}
 	for rows.Next() {
 		var e string
 		if err := rows.Scan(&e); err != nil {
@@ -327,7 +327,7 @@ func (s *Store) DistinctEnvironments(projectID int64) ([]string, error) {
 }
 
 func scanPoints(rows *sql.Rows) ([]Point, error) {
-	var out []Point
+	out := []Point{}
 	for rows.Next() {
 		var p Point
 		if err := rows.Scan(&p.Label, &p.Value); err != nil {

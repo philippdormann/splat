@@ -93,6 +93,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /readyz", s.readyz)
 	s.mux.HandleFunc("GET /robots.txt", s.robots)
 	s.mux.HandleFunc("GET /api/v1/meta", s.apiMeta)
+	s.mux.HandleFunc("GET /favicon.svg", s.serveFavicon)
 
 	if s.Metrics != nil {
 		m := s.Metrics
@@ -247,6 +248,18 @@ func (s *Server) robots(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("User-agent: *\nDisallow: /\n"))
+}
+
+func (s *Server) serveFavicon(w http.ResponseWriter, r *http.Request) {
+	icon, err := fs.ReadFile(web.Sub(), "favicon.svg")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(icon)
 }
 
 func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {

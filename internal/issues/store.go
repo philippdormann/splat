@@ -352,7 +352,7 @@ func (s *Store) List(f ListFilter) ([]*Issue, int, error) {
 	}
 	defer rows.Close()
 
-	var out []*Issue
+	out := []*Issue{}
 	for rows.Next() {
 		iss, err := scan(rows)
 		if err != nil {
@@ -500,7 +500,7 @@ func (s *Store) Notes(issueID int64) ([]Note, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Note
+	out := []Note{}
 	for rows.Next() {
 		var n Note
 		var created string

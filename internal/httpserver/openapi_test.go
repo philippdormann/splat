@@ -73,6 +73,7 @@ func TestOpenAPICoversRoutes(t *testing.T) {
 		{"get", "/api/v1/openapi.json"},
 		{"get", "/healthz"},
 		{"get", "/robots.txt"},
+		{"get", "/favicon.svg"},
 		{"get", "/readyz"},
 		{"get", "/api/v1/meta"},
 		{"get", "/metrics"},

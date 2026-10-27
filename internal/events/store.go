@@ -101,7 +101,7 @@ func (s *Store) ListByIssue(issueID int64, limit, offset int) ([]*Event, error) 
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*Event
+	out := []*Event{}
 	for rows.Next() {
 		e, err := scan(rows)
 		if err != nil {

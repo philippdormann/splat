@@ -126,7 +126,7 @@ func (s *Store) List() ([]*Project, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*Project
+	out := []*Project{}
 	for rows.Next() {
 		p, err := scanProject(rows)
 		if err != nil {

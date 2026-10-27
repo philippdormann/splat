@@ -119,7 +119,7 @@ func (s *Store) GenericWebhooks() ([]GenericWebhook, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []GenericWebhook
+	out := []GenericWebhook{}
 	for rows.Next() {
 		var w GenericWebhook
 		var headersJSON string
@@ -410,7 +410,7 @@ func (s *Store) Rules() ([]Rule, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Rule
+	out := []Rule{}
 	for rows.Next() {
 		r, err := scanRule(rows)
 		if err != nil {

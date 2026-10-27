@@ -1,16 +1,15 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
-  import { Chart, registerables } from "chart.js";
+  import { onMount } from "svelte";
+  import { AreaChart } from "layerchart";
   import { Activity, HeartPulse, Timer, Trophy, Zap, CircleDot, Gauge } from "lucide-svelte";
   import { api, type ProjectOverview, type SessionSummary } from "$lib/api";
+  import * as Chart from "$lib/components/ui/chart/index.js";
   import Button from "$lib/components/button.svelte";
   import Tile from "$lib/components/Tile.svelte";
   import TileSkeleton from "$lib/components/TileSkeleton.svelte";
   import StatTile from "$lib/components/StatTile.svelte";
   import LevelBadge from "$lib/components/LevelBadge.svelte";
   import RelativeTime from "$lib/components/RelativeTime.svelte";
-
-  Chart.register(...registerables);
 
   export let projectId: string;
   export let navigate: (path: string) => void;
@@ -33,7 +32,6 @@
   let data: ProjectOverview | null = null;
   let sessions: SessionSummary | null = null;
   let error = "";
-  let charts: Chart[] = [];
 
   const dark = () => document.documentElement.classList.contains("dark");
 
@@ -49,76 +47,55 @@
     return `${pct.toFixed(1)}%`;
   }
 
-  function levelDatasets() {
+  const severityMeta: Record<string, { color: string; order: number; label: string }> = {
+    error: { color: "#ef4444", order: 0, label: "Error" },
+    fatal: { color: "#b91c1c", order: 1, label: "Fatal" },
+    warning: { color: "#f59e0b", order: 2, label: "Warning" },
+    info: { color: "#3b82f6", order: 3, label: "Info" },
+    debug: { color: "#9ca3af", order: 4, label: "Debug" },
+  };
+
+  function severityLevels(): string[] {
     if (!data) return [];
     const levels = new Set<string>();
     for (const b of data.volumeBySeverity) for (const l of Object.keys(b.counts)) levels.add(l);
-    const ordered = [...levels].sort((a, b) => {
-      const ma = levelStyle[a.toLowerCase()] ?? { order: 5 };
-      const mb = levelStyle[b.toLowerCase()] ?? { order: 5 };
+    return [...levels].sort((a, b) => {
+      const ma = severityMeta[a.toLowerCase()] ?? { order: 5 };
+      const mb = severityMeta[b.toLowerCase()] ?? { order: 5 };
       return ma.order - mb.order || a.localeCompare(b);
     });
-    return ordered.map((level) => {
-      const color = (levelStyle[level.toLowerCase()] ?? { color: "#8b5cf6" }).color;
-      return {
-        label: level,
-        data: data!.volumeBySeverity.map((bucket) => bucket.counts[level] ?? 0),
-        borderColor: color,
-        backgroundColor: color + "55",
-        fill: true,
-        tension: 0.25,
-        pointRadius: 0,
-        stack: "volume",
-      };
+  }
+
+  function severityRows() {
+    if (!data) return [];
+    return data.volumeBySeverity.map((b) => ({ bucket: b.bucket, ...b.counts }));
+  }
+
+  function severityConfig(): Chart.ChartConfig {
+    const cfg: Chart.ChartConfig = {};
+    for (const level of severityLevels()) {
+      const meta = severityMeta[level.toLowerCase()] ?? { color: "#8b5cf6", label: level };
+      cfg[level] = { label: meta.label, color: meta.color };
+    }
+    return cfg;
+  }
+
+  function severitySeries() {
+    return severityLevels().map((level) => {
+      const meta = severityMeta[level.toLowerCase()] ?? { color: "#8b5cf6", label: level };
+      return { key: level, label: meta.label, color: meta.color };
     });
   }
 
-  function drawChart(id: string, cfg: unknown) {
-    const el = document.getElementById(id) as HTMLCanvasElement | null;
-    if (!el) return;
-    const prev = charts.find((c) => c.canvas.id === id);
-    prev?.destroy();
-    charts = charts.filter((c) => c.canvas.id !== id);
-    charts.push(new Chart(el, cfg as never));
+  function sessionRows() {
+    if (!sessions) return [];
+    return sessions.timeseries.map((p) => ({ bucket: p.bucket, healthy: p.healthy, crashed: p.crashed }));
   }
 
-  function draw() {
-    if (!data) return;
-    const grid = dark() ? "#3f3f46" : "#e4e4e7";
-    const tick = dark() ? "#a1a1aa" : "#71717a";
-    if (data.volumeBySeverity.length) {
-      drawChart("ov-volume", {
-        type: "line",
-        data: { labels: data.volumeBySeverity.map((b) => b.bucket), datasets: levelDatasets() },
-        options: {
-          plugins: { legend: { position: "bottom", labels: { color: tick, boxWidth: 12 } } },
-          scales: {
-            y: { stacked: true, beginAtZero: true, grid: { color: grid }, ticks: { color: tick, precision: 0 } },
-            x: { stacked: true, grid: { display: false }, ticks: { color: tick, maxTicksLimit: 8 } },
-          },
-        },
-      });
-    }
-    if (sessions && sessions.timeseries.length) {
-      drawChart("ov-sessions", {
-        type: "line",
-        data: {
-          labels: sessions.timeseries.map((p) => p.bucket),
-          datasets: [
-            { label: "Healthy", data: sessions.timeseries.map((p) => p.healthy), borderColor: "#16a34a", backgroundColor: "#16a34a55", fill: true, tension: 0.25, pointRadius: 0, stack: "sess" },
-            { label: "Crashed", data: sessions.timeseries.map((p) => p.crashed), borderColor: "#dc2626", backgroundColor: "#dc262655", fill: true, tension: 0.25, pointRadius: 0, stack: "sess" },
-          ],
-        },
-        options: {
-          plugins: { legend: { position: "bottom", labels: { color: tick, boxWidth: 12 } } },
-          scales: {
-            y: { stacked: true, beginAtZero: true, grid: { color: grid }, ticks: { color: tick, precision: 0 } },
-            x: { stacked: true, grid: { display: false }, ticks: { color: tick, maxTicksLimit: 8 } },
-          },
-        },
-      });
-    }
-  }
+  const sessionConfig = {
+    healthy: { label: "Healthy", color: "#16a34a" },
+    crashed: { label: "Crashed", color: "#dc2626" },
+  } satisfies Chart.ChartConfig;
 
   async function load() {
     error = "";
@@ -129,7 +106,6 @@
       ]);
       data = ov;
       sessions = sess;
-      queueMicrotask(draw);
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load overview.";
     }
@@ -137,7 +113,6 @@
 
   onMount(load);
   $: if (period) load();
-  onDestroy(() => charts.forEach((c) => c.destroy()));
 </script>
 
 <div class="space-y-4">
@@ -167,7 +142,20 @@
         <Tile icon={Activity}>
           <span slot="title">Error volume by severity</span>
           {#if data.volumeBySeverity.length}
-            <canvas id="ov-volume" height="300"></canvas>
+            <Chart.Container config={severityConfig()} class="min-h-[300px]">
+              <AreaChart
+                data={severityRows()}
+                x="bucket"
+                series={severitySeries()}
+                seriesLayout="stack"
+                legend
+                props={{ xAxis: { format: (d: string) => d.slice(5) } }}
+              >
+                {#snippet tooltip()}
+                  <Chart.Tooltip labelKey="bucket" />
+                {/snippet}
+              </AreaChart>
+            </Chart.Container>
           {:else}
             <p class="py-10 text-center text-sm text-muted-foreground">No events in this window.</p>
           {/if}
@@ -197,7 +185,22 @@
         <Tile icon={Gauge}>
           <span slot="title">Session health</span>
           {#if sessions && sessions.timeseries.length}
-            <canvas id="ov-sessions" height="220"></canvas>
+            <Chart.Container config={sessionConfig} class="min-h-[220px]">
+              <AreaChart
+                data={sessionRows()}
+                x="bucket"
+                series={[
+                  { key: "healthy", label: "Healthy", color: "#16a34a" },
+                  { key: "crashed", label: "Crashed", color: "#dc2626" },
+                ]}
+                seriesLayout="stack"
+                legend
+              >
+                {#snippet tooltip()}
+                  <Chart.Tooltip labelKey="bucket" />
+                {/snippet}
+              </AreaChart>
+            </Chart.Container>
           {:else}
             <p class="py-10 text-center text-sm text-muted-foreground">No sessions yet — enable session tracking in your SDK to see release health.</p>
           {/if}
