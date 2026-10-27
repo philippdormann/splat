@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"errgotrack/internal/database"
+	"errgotrack/internal/email"
 	"errgotrack/internal/telegram"
 	"errgotrack/internal/webhooks"
 )
@@ -33,6 +34,63 @@ type WebhookConfig struct {
 }
 
 var webhookChannelNames = []string{"slack", "discord", "teams", "sheets"}
+
+// allChannelNames is every deliverable destination, used to validate
+// per-rule channel selections.
+var allChannelNames = []string{"telegram", "slack", "discord", "teams", "sheets", "email"}
+
+// ValidChannel reports whether c names a deliverable destination.
+func ValidChannel(c string) bool {
+	for _, n := range allChannelNames {
+		if n == c {
+			return true
+		}
+	}
+	return false
+}
+
+// SMTPConfig is the instance-level mail setup. The To address is the
+// on-call recipient - alert rules pick channels, not people.
+type SMTPConfig struct {
+	Host     string
+	Port     int
+	Username string
+	Password string
+	From     string
+	To       string
+	UseTLS   bool
+	Enabled  bool
+}
+
+func (s *Store) GetSMTPConfig() (SMTPConfig, error) {
+	var c SMTPConfig
+	var useTLS, enabled int
+	err := s.db.QueryRow(`SELECT host, port, username, password, from_address, to_address, use_tls, enabled FROM smtp_config WHERE id = 1`).
+		Scan(&c.Host, &c.Port, &c.Username, &c.Password, &c.From, &c.To, &useTLS, &enabled)
+	c.UseTLS, c.Enabled = useTLS != 0, enabled != 0
+	return c, err
+}
+
+func (s *Store) SetSMTPConfig(c SMTPConfig) error {
+	_, err := s.db.Exec(`UPDATE smtp_config SET host = ?, port = ?, username = ?, password = ?, from_address = ?, to_address = ?, use_tls = ?, enabled = ? WHERE id = 1`,
+		c.Host, c.Port, c.Username, c.Password, c.From, c.To, c.UseTLS, c.Enabled)
+	return err
+}
+
+func (s *Store) SendTestEmail(ctx context.Context) error {
+	cfg, err := s.GetSMTPConfig()
+	if err != nil {
+		return err
+	}
+	return email.Send(email.Config{
+		Host: cfg.Host, Port: cfg.Port, Username: cfg.Username,
+		Password: cfg.Password, From: cfg.From, UseTLS: cfg.UseTLS,
+	}, cfg.To, email.Alert{
+		ProjectName: "Errgotrack", ExceptionType: "Test",
+		Message: "Test notification - if you can read this, email alerts are working.",
+		IsNew:   true, Timestamp: time.Now(),
+	})
+}
 
 type Store struct {
 	db       *database.DB
@@ -113,31 +171,146 @@ func formatForChannel(channel string, a webhooks.Alert) []byte {
 
 type Rule struct {
 	ID              int64
+	Name            string
 	ProjectID       sql.NullInt64
 	Environment     string
 	NotifyNewIssue  bool
 	NotifyThreshold int64
 	NotifyReopened  bool
 	CooldownSeconds int
+	// Channels selects this rule's destinations. Empty means "every enabled
+	// channel" (the pre-rules-upgrade behavior), so old rules keep working
+	// unchanged while new rules can route e.g. production to email and
+	// staging to a chat channel.
+	Channels []string
 }
 
+func scanRule(row interface {
+	Scan(...any) error
+}) (Rule, error) {
+	var r Rule
+	var newIssue, reopened int
+	var channels string
+	if err := row.Scan(&r.ID, &r.Name, &r.ProjectID, &r.Environment, &newIssue, &r.NotifyThreshold, &reopened, &r.CooldownSeconds, &channels); err != nil {
+		return r, err
+	}
+	r.NotifyNewIssue, r.NotifyReopened = newIssue != 0, reopened != 0
+	if channels != "" {
+		_ = json.Unmarshal([]byte(channels), &r.Channels)
+	}
+	return r, nil
+}
+
+const ruleCols = `id, name, project_id, environment, notify_new_issue, notify_threshold, notify_reopened, cooldown_seconds, channels`
+
 func (s *Store) Rules() ([]Rule, error) {
-	rows, err := s.db.Query(`SELECT id, project_id, environment, notify_new_issue, notify_threshold, notify_reopened, cooldown_seconds FROM notification_rules`)
+	rows, err := s.db.Query(`SELECT ` + ruleCols + ` FROM notification_rules ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []Rule
 	for rows.Next() {
-		var r Rule
-		var newIssue, reopened int
-		if err := rows.Scan(&r.ID, &r.ProjectID, &r.Environment, &newIssue, &r.NotifyThreshold, &reopened, &r.CooldownSeconds); err != nil {
+		r, err := scanRule(rows)
+		if err != nil {
 			return nil, err
 		}
-		r.NotifyNewIssue, r.NotifyReopened = newIssue != 0, reopened != 0
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) GetRule(id int64) (Rule, error) {
+	row := s.db.QueryRow(`SELECT `+ruleCols+` FROM notification_rules WHERE id = ?`, id)
+	r, err := scanRule(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return r, sql.ErrNoRows
+	}
+	return r, err
+}
+
+func encodeChannels(channels []string) (string, error) {
+	if len(channels) == 0 {
+		return "[]", nil
+	}
+	seen := map[string]bool{}
+	clean := make([]string, 0, len(channels))
+	for _, c := range channels {
+		if !ValidChannel(c) {
+			return "", fmt.Errorf("unknown channel %q", c)
+		}
+		if !seen[c] {
+			seen[c] = true
+			clean = append(clean, c)
+		}
+	}
+	b, err := json.Marshal(clean)
+	return string(b), err
+}
+
+// CreateRule validates and stores a new alert rule.
+func (s *Store) CreateRule(r Rule) (Rule, error) {
+	ch, err := encodeChannels(r.Channels)
+	if err != nil {
+		return Rule{}, err
+	}
+	if r.CooldownSeconds < 0 {
+		r.CooldownSeconds = 0
+	}
+	if s.db.IsPostgres() {
+		var id int64
+		err := s.db.QueryRow(`
+			INSERT INTO notification_rules (name, project_id, environment, notify_new_issue, notify_threshold, notify_reopened, cooldown_seconds, channels)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+			r.Name, nullableProjectID(r.ProjectID), r.Environment, r.NotifyNewIssue, r.NotifyThreshold, r.NotifyReopened, r.CooldownSeconds, ch).Scan(&id)
+		if err != nil {
+			return Rule{}, err
+		}
+		return s.GetRule(id)
+	}
+	res, err := s.db.Exec(`
+		INSERT INTO notification_rules (name, project_id, environment, notify_new_issue, notify_threshold, notify_reopened, cooldown_seconds, channels)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.Name, nullableProjectID(r.ProjectID), r.Environment, r.NotifyNewIssue, r.NotifyThreshold, r.NotifyReopened, r.CooldownSeconds, ch)
+	if err != nil {
+		return Rule{}, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return Rule{}, err
+	}
+	return s.GetRule(id)
+}
+
+// UpdateRule replaces a rule's editable fields.
+func (s *Store) UpdateRule(r Rule) (Rule, error) {
+	ch, err := encodeChannels(r.Channels)
+	if err != nil {
+		return Rule{}, err
+	}
+	if r.CooldownSeconds < 0 {
+		r.CooldownSeconds = 0
+	}
+	_, err = s.db.Exec(`
+		UPDATE notification_rules SET name = ?, project_id = ?, environment = ?, notify_new_issue = ?,
+			notify_threshold = ?, notify_reopened = ?, cooldown_seconds = ?, channels = ? WHERE id = ?`,
+		r.Name, nullableProjectID(r.ProjectID), r.Environment, r.NotifyNewIssue, r.NotifyThreshold, r.NotifyReopened, r.CooldownSeconds, ch, r.ID)
+	if err != nil {
+		return Rule{}, err
+	}
+	return s.GetRule(r.ID)
+}
+
+func (s *Store) DeleteRule(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM notification_rules WHERE id = ?`, id)
+	return err
+}
+
+func nullableProjectID(n sql.NullInt64) any {
+	if n.Valid {
+		return n.Int64
+	}
+	return nil
 }
 
 func (s *Store) UpsertDefaultRule(projectID int64) error {
@@ -181,6 +354,8 @@ func (s *Store) Evaluate(ctx context.Context, e AlertEvent) {
 
 	shouldNotify := false
 	cooldown := 300
+	cooldownSet := false
+	wantChannels := map[string]bool{}
 	for _, r := range rules {
 		if r.ProjectID.Valid && r.ProjectID.Int64 != e.ProjectID {
 			continue
@@ -188,18 +363,33 @@ func (s *Store) Evaluate(ctx context.Context, e AlertEvent) {
 		if r.Environment != "" && r.Environment != e.Environment {
 			continue
 		}
+		matched := false
 		if e.IsNew && r.NotifyNewIssue {
-			shouldNotify = true
+			matched = true
 		}
 		if e.Reopened && r.NotifyReopened {
-			shouldNotify = true
+			matched = true
 		}
 		if r.NotifyThreshold > 0 && e.EventCount == r.NotifyThreshold {
-			shouldNotify = true
+			matched = true
 		}
-		if shouldNotify {
+		if !matched {
+			continue
+		}
+		shouldNotify = true
+		if !cooldownSet {
 			cooldown = r.CooldownSeconds
-			break
+			cooldownSet = true
+		}
+		if len(r.Channels) == 0 {
+			// No explicit selection: every enabled channel.
+			for _, c := range s.enabledChannels() {
+				wantChannels[c] = true
+			}
+		} else {
+			for _, c := range r.Channels {
+				wantChannels[c] = true
+			}
 		}
 	}
 	if !shouldNotify {
@@ -213,7 +403,7 @@ func (s *Store) Evaluate(ctx context.Context, e AlertEvent) {
 		return
 	}
 
-	for _, channel := range s.enabledChannels() {
+	for channel := range wantChannels {
 		if err := s.enqueue(e, channel); err != nil {
 			s.logger.Error("enqueue notification", "error", err, "issue_id", e.IssueID, "channel", channel)
 		}
@@ -229,6 +419,9 @@ func (s *Store) enabledChannels() []string {
 		if cfg, err := s.GetWebhookConfig(channel); err == nil && cfg.Enabled {
 			out = append(out, channel)
 		}
+	}
+	if cfg, err := s.GetSMTPConfig(); err == nil && cfg.Enabled {
+		out = append(out, "email")
 	}
 	return out
 }
@@ -351,6 +544,22 @@ func (s *Store) send(ctx context.Context, channel string, e AlertEvent) (skip bo
 			IsNew: e.IsNew, Reopened: e.Reopened, EventCount: e.EventCount, Timestamp: e.Timestamp, IssueURL: e.IssueURL,
 		})
 		return false, s.webhook.Send(ctx, cfg.URL, body)
+
+	case "email":
+		cfg, err := s.GetSMTPConfig()
+		if err != nil {
+			return false, err
+		}
+		if !cfg.Enabled {
+			return true, nil
+		}
+		return false, email.Send(email.Config{
+			Host: cfg.Host, Port: cfg.Port, Username: cfg.Username,
+			Password: cfg.Password, From: cfg.From, UseTLS: cfg.UseTLS,
+		}, cfg.To, email.Alert{
+			ProjectName: e.ProjectName, Environment: e.Environment, ExceptionType: e.ExceptionType, Message: e.Message,
+			IsNew: e.IsNew, Reopened: e.Reopened, EventCount: e.EventCount, Timestamp: e.Timestamp, IssueURL: e.IssueURL,
+		})
 
 	default:
 		return false, fmt.Errorf("unknown notification channel %q", channel)

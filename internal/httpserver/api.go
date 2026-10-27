@@ -14,6 +14,7 @@
 package httpserver
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -26,6 +27,7 @@ import (
 	"errgotrack/internal/dashboard"
 	"errgotrack/internal/events"
 	"errgotrack/internal/issues"
+	"errgotrack/internal/notifications"
 	"errgotrack/internal/platforms"
 	"errgotrack/internal/projects"
 	"errgotrack/internal/sentryprotocol"
@@ -344,7 +346,7 @@ func (s *Server) apiIssueDetail(w http.ResponseWriter, r *http.Request) {
 			}
 			return s.SourceMaps.Resolve(issue.ProjectID, event.Release, file, line, col)
 		}),
-		"events":     evJSON,
+		"events": evJSON,
 		"latestEventId": func() any {
 			if latest, err := s.Events.Latest(issue.ID); err == nil {
 				return latest.EventID
@@ -680,10 +682,16 @@ func (s *Server) apiSettingsData() map[string]any {
 		wc, _ := s.Notifications.GetWebhookConfig(channel)
 		webhooks[channel] = map[string]any{"urlMasked": maskToken(wc.URL), "enabled": wc.Enabled}
 	}
+	smtp, _ := s.Notifications.GetSMTPConfig()
 	return map[string]any{
-		"telegram":         map[string]any{"chatId": cfg.ChatID, "enabled": cfg.Enabled},
-		"botTokenMasked":   maskToken(cfg.BotToken),
-		"webhooks":         webhooks,
+		"telegram":       map[string]any{"chatId": cfg.ChatID, "enabled": cfg.Enabled},
+		"botTokenMasked": maskToken(cfg.BotToken),
+		"webhooks":       webhooks,
+		"smtp": map[string]any{
+			"host": smtp.Host, "port": smtp.Port, "username": smtp.Username,
+			"passwordMasked": maskToken(smtp.Password), "from": smtp.From, "to": smtp.To,
+			"useTLS": smtp.UseTLS, "enabled": smtp.Enabled,
+		},
 		"traceURLTemplate": traceTmpl,
 	}
 }
@@ -785,6 +793,152 @@ func (s *Server) apiSettingsSaveTracing(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, s.apiSettingsData())
+}
+
+func (s *Server) apiSettingsSaveSMTP(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Host     string `json:"host"`
+		Port     int    `json:"port"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+		From     string `json:"from"`
+		To       string `json:"to"`
+		UseTLS   bool   `json:"useTLS"`
+		Enabled  bool   `json:"enabled"`
+	}
+	if !decodeJSON(r, &input) {
+		writeAPIError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	cfg, _ := s.Notifications.GetSMTPConfig()
+	cfg.Host, cfg.Username, cfg.From, cfg.To = input.Host, input.Username, input.From, input.To
+	if input.Port > 0 {
+		cfg.Port = input.Port
+	}
+	// A masked password submitted unchanged means "keep the existing
+	// secret" - only overwrite on a real new value.
+	if input.Password != "" && !strings.Contains(input.Password, "•") {
+		cfg.Password = input.Password
+	}
+	cfg.UseTLS, cfg.Enabled = input.UseTLS, input.Enabled
+	if err := s.Notifications.SetSMTPConfig(cfg); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.apiSettingsData())
+}
+
+func (s *Server) apiSettingsTestSMTP(w http.ResponseWriter, r *http.Request) {
+	err := s.Notifications.SendTestEmail(r.Context())
+	msg := "Test notification sent."
+	ok := true
+	if err != nil {
+		msg = "Failed to send: " + err.Error()
+		ok = false
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": ok, "message": msg})
+}
+
+// --- alert rules ---
+
+func ruleJSON(r notifications.Rule) map[string]any {
+	var projectID any
+	if r.ProjectID.Valid {
+		projectID = r.ProjectID.Int64
+	}
+	return map[string]any{
+		"id": r.ID, "name": r.Name, "projectId": projectID,
+		"environment": r.Environment, "notifyNewIssue": r.NotifyNewIssue,
+		"notifyThreshold": r.NotifyThreshold, "notifyReopened": r.NotifyReopened,
+		"cooldownSeconds": r.CooldownSeconds, "channels": r.Channels,
+	}
+}
+
+func (s *Server) apiRulesList(w http.ResponseWriter, r *http.Request) {
+	rules, err := s.Notifications.Rules()
+	if err != nil {
+		s.Logger.Error("list rules", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	out := make([]map[string]any, 0, len(rules))
+	for _, rule := range rules {
+		out = append(out, ruleJSON(rule))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+type ruleInput struct {
+	Name            string   `json:"name"`
+	ProjectID       *int64   `json:"projectId"`
+	Environment     string   `json:"environment"`
+	NotifyNewIssue  bool     `json:"notifyNewIssue"`
+	NotifyThreshold int64    `json:"notifyThreshold"`
+	NotifyReopened  bool     `json:"notifyReopened"`
+	CooldownSeconds int      `json:"cooldownSeconds"`
+	Channels        []string `json:"channels"`
+}
+
+func (s *Server) apiRulesCreate(w http.ResponseWriter, r *http.Request) {
+	var input ruleInput
+	if !decodeJSON(r, &input) {
+		writeAPIError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	rule, err := s.Notifications.CreateRule(input.toRule(0))
+	if err != nil {
+		s.Logger.Error("create rule", "error", err)
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, ruleJSON(rule))
+}
+
+func (s *Server) apiRulesUpdate(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	var input ruleInput
+	if !decodeJSON(r, &input) {
+		writeAPIError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	rule, err := s.Notifications.UpdateRule(input.toRule(id))
+	if err != nil {
+		s.Logger.Error("update rule", "error", err)
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, ruleJSON(rule))
+}
+
+func (s *Server) apiRulesDelete(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if err := s.Notifications.DeleteRule(id); err != nil {
+		s.Logger.Error("delete rule", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (i ruleInput) toRule(id int64) notifications.Rule {
+	r := notifications.Rule{
+		ID: id, Name: i.Name, Environment: i.Environment,
+		NotifyNewIssue: i.NotifyNewIssue, NotifyThreshold: i.NotifyThreshold,
+		NotifyReopened: i.NotifyReopened, CooldownSeconds: i.CooldownSeconds,
+		Channels: i.Channels,
+	}
+	if i.ProjectID != nil {
+		r.ProjectID = sql.NullInt64{Int64: *i.ProjectID, Valid: true}
+	}
+	return r
 }
 
 // --- storage ---

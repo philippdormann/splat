@@ -1,0 +1,15 @@
+ALTER TABLE notification_rules ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
+ALTER TABLE notification_rules ADD COLUMN IF NOT EXISTS channels TEXT NOT NULL DEFAULT '[]';
+
+CREATE TABLE IF NOT EXISTS smtp_config (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    host TEXT NOT NULL DEFAULT '',
+    port INTEGER NOT NULL DEFAULT 587,
+    username TEXT NOT NULL DEFAULT '',
+    password TEXT NOT NULL DEFAULT '',
+    from_address TEXT NOT NULL DEFAULT '',
+    to_address TEXT NOT NULL DEFAULT '',
+    use_tls INTEGER NOT NULL DEFAULT 1,
+    enabled INTEGER NOT NULL DEFAULT 0
+);
+INSERT INTO smtp_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;

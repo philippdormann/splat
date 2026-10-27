@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"context"
+	"database/sql"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -169,5 +170,79 @@ func TestDrainSkipsChannelDisabledBeforeDelivery(t *testing.T) {
 	store.db.QueryRow(`SELECT status FROM notification_queue WHERE channel = 'slack'`).Scan(&status)
 	if status != "skipped" {
 		t.Fatalf("expected skipped (not failed/retried) for a channel disabled before delivery, got %q", status)
+	}
+}
+
+func TestRuleCRUD(t *testing.T) {
+	store, projectID, _ := newTestStore(t)
+	r, err := store.CreateRule(Rule{Name: "prod email", ProjectID: sqlNull(projectID), Environment: "production", NotifyNewIssue: true, CooldownSeconds: 60, Channels: []string{"email"}})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if r.Name != "prod email" || len(r.Channels) != 1 || r.Channels[0] != "email" {
+		t.Fatalf("round trip mismatch: %+v", r)
+	}
+	if _, err := store.CreateRule(Rule{Name: "bad", Channels: []string{"pager"}}); err == nil {
+		t.Fatal("want error on unknown channel")
+	}
+	r.Name = "renamed"
+	r.NotifyReopened = true
+	updated, err := store.UpdateRule(r)
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if updated.Name != "renamed" || !updated.NotifyReopened {
+		t.Fatalf("update mismatch: %+v", updated)
+	}
+	if err := store.DeleteRule(r.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := store.GetRule(r.ID); err == nil {
+		t.Fatal("want not-found after delete")
+	}
+}
+
+func sqlNull(id int64) sql.NullInt64 {
+	return sql.NullInt64{Int64: id, Valid: true}
+}
+
+func TestEvaluateRespectsPerRuleChannels(t *testing.T) {
+	store, projectID, issueID := newTestStore(t)
+	// Default rule (all channels) would fan out to telegram; replace it
+	// with a slack-only rule.
+	rules, _ := store.Rules()
+	for _, r := range rules {
+		store.DeleteRule(r.ID)
+	}
+	store.SetWebhookConfig("slack", WebhookConfig{URL: "http://example.invalid", Enabled: true})
+	if _, err := store.CreateRule(Rule{Name: "slack only", NotifyNewIssue: true, Channels: []string{"slack"}}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	store.Evaluate(context.Background(), AlertEvent{IssueID: issueID, ProjectID: projectID, IsNew: true, EventCount: 1, Timestamp: time.Now()})
+	channels := pendingChannels(t, store)
+	if len(channels) != 1 || channels[0] != "slack" {
+		t.Fatalf("want only slack queued, got %v", channels)
+	}
+}
+
+func TestSMTPConfigRoundTrip(t *testing.T) {
+	store, _, _ := newTestStore(t)
+	cfg, err := store.GetSMTPConfig()
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if cfg.Enabled {
+		t.Fatal("SMTP must default to disabled")
+	}
+	cfg.Host, cfg.Port, cfg.To, cfg.Enabled = "smtp.example.com", 587, "oncall@example.com", true
+	if err := store.SetSMTPConfig(cfg); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	got, _ := store.GetSMTPConfig()
+	if got.Host != "smtp.example.com" || got.To != "oncall@example.com" || !got.Enabled {
+		t.Fatalf("round trip mismatch: %+v", got)
+	}
+	if !ValidChannel("email") || ValidChannel("pager") {
+		t.Fatal("ValidChannel wrong")
 	}
 }

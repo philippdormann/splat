@@ -147,6 +147,40 @@ export const api = {
       method: "POST",
       body: "{}",
     }),
+
+  rules: () => req<AlertRule[]>("/api/v1/rules"),
+  createRule: (input: AlertRuleInput) =>
+    req<AlertRule>("/api/v1/rules", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateRule: (id: number, input: AlertRuleInput) =>
+    req<AlertRule>(`/api/v1/rules/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+  deleteRule: (id: number) =>
+    req<{ ok: boolean }>(`/api/v1/rules/${id}`, { method: "DELETE" }),
+
+  saveSMTP: (input: {
+    host: string;
+    port: number;
+    username: string;
+    password: string;
+    from: string;
+    to: string;
+    useTLS: boolean;
+    enabled: boolean;
+  }) =>
+    req<SettingsData>("/api/v1/settings/smtp", {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+  testSMTP: () =>
+    req<{ ok: boolean; message: string }>("/api/v1/settings/smtp/test", {
+      method: "POST",
+      body: "{}",
+    }),
 };
 
 export interface Point {
@@ -318,6 +352,7 @@ export interface SettingsData {
   telegram: { botToken: string; chatId: string; enabled: boolean };
   botTokenMasked: string;
   webhooks: Record<string, { urlMasked: string; enabled: boolean }>;
+  smtp: SMTPSettings;
   traceURLTemplate: string;
 }
 
@@ -325,4 +360,38 @@ export interface StorageUsage {
   driver: string;
   sizeBytes: number;
   tables: { name: string; rows: number }[];
+}
+
+export interface AlertRule {
+  id: number;
+  name: string;
+  projectId: number | null;
+  environment: string;
+  notifyNewIssue: boolean;
+  notifyThreshold: number;
+  notifyReopened: boolean;
+  cooldownSeconds: number;
+  channels: string[];
+}
+
+export interface AlertRuleInput {
+  name: string;
+  projectId?: number | null;
+  environment?: string;
+  notifyNewIssue?: boolean;
+  notifyThreshold?: number;
+  notifyReopened?: boolean;
+  cooldownSeconds?: number;
+  channels?: string[];
+}
+
+export interface SMTPSettings {
+  host: string;
+  port: number;
+  username: string;
+  passwordMasked: string;
+  from: string;
+  to: string;
+  useTLS: boolean;
+  enabled: boolean;
 }

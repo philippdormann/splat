@@ -95,6 +95,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/v1/settings/webhooks/{channel}", s.requireAPIAuth(s.apiSettingsSaveWebhook))
 	s.mux.HandleFunc("POST /api/v1/settings/webhooks/{channel}/test", s.requireAPIAuth(s.apiSettingsTestWebhook))
 	s.mux.HandleFunc("PUT /api/v1/settings/tracing", s.requireAPIAuth(s.apiSettingsSaveTracing))
+	s.mux.HandleFunc("PUT /api/v1/settings/smtp", s.requireAPIAuth(s.apiSettingsSaveSMTP))
+	s.mux.HandleFunc("POST /api/v1/settings/smtp/test", s.requireAPIAuth(s.apiSettingsTestSMTP))
+
+	s.mux.HandleFunc("GET /api/v1/rules", s.requireAPIAuth(s.apiRulesList))
+	s.mux.HandleFunc("POST /api/v1/rules", s.requireAPIAuth(s.apiRulesCreate))
+	s.mux.HandleFunc("PUT /api/v1/rules/{id}", s.requireAPIAuth(s.apiRulesUpdate))
+	s.mux.HandleFunc("DELETE /api/v1/rules/{id}", s.requireAPIAuth(s.apiRulesDelete))
 
 	s.mux.HandleFunc("GET /api/v1/storage", s.requireAPIAuth(s.apiStorageUsage))
 	s.mux.HandleFunc("POST /api/v1/storage/sweep", s.requireAPIAuth(s.apiStorageSweep))

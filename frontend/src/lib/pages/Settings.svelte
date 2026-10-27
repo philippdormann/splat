@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type SettingsData, type StorageUsage } from "$lib/api";
+  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput } from "$lib/api";
   import Card from "$lib/components/card.svelte";
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
@@ -13,8 +13,13 @@
   let traceURL = "";
   let storage: StorageUsage | null = null;
   let storageBusy = "";
+  let rules: AlertRule[] = [];
+  let projects: { id: number; name: string }[] = [];
+  let editingRule: (AlertRuleInput & { id?: number }) | null = null;
+  let smtp = { host: "", port: 587, username: "", password: "", from: "", to: "", useTLS: true, enabled: false };
 
   const channels = ["slack", "discord", "teams", "sheets"];
+  const allChannels = ["telegram", "slack", "discord", "teams", "sheets", "email"];
 
   function formatBytes(n: number): string {
     if (n < 1024) return `${n} B`;
@@ -69,7 +74,10 @@
       telegram = { botToken: "", chatId: data.telegram.chatId, enabled: data.telegram.enabled };
       for (const c of channels) webhooks[c] = { url: "", enabled: data.webhooks[c]?.enabled ?? false };
       traceURL = data.traceURLTemplate;
+      smtp = { host: data.smtp.host, port: data.smtp.port || 587, username: data.smtp.username, password: "", from: data.smtp.from, to: data.smtp.to, useTLS: data.smtp.useTLS, enabled: data.smtp.enabled };
       await loadStorage();
+      rules = await api.rules();
+      projects = await api.projects();
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load settings.";
     }
@@ -91,6 +99,53 @@
     e.preventDefault();
     data = await api.saveTracing(traceURL);
     notice = "Tracing settings saved.";
+  }
+
+  function projectName(pid: number | null): string {
+    if (pid === null || pid === undefined) return "All projects";
+    return projects.find((p) => p.id === pid)?.name ?? `Project ${pid}`;
+  }
+
+  function newRule() {
+    editingRule = { name: "", projectId: null, environment: "", notifyNewIssue: true, notifyThreshold: 0, notifyReopened: true, cooldownSeconds: 300, channels: [] };
+  }
+
+  function editRule(r: AlertRule) {
+    editingRule = { id: r.id, name: r.name, projectId: r.projectId, environment: r.environment, notifyNewIssue: r.notifyNewIssue, notifyThreshold: r.notifyThreshold, notifyReopened: r.notifyReopened, cooldownSeconds: r.cooldownSeconds, channels: [...(r.channels ?? [])] };
+  }
+
+  async function saveRule(e: Event) {
+    e.preventDefault();
+    if (!editingRule) return;
+    const { id, ...input } = editingRule;
+    if (id) {
+      await api.updateRule(id, input);
+      notice = "Rule updated.";
+    } else {
+      await api.createRule(input);
+      notice = "Rule created.";
+    }
+    editingRule = null;
+    rules = await api.rules();
+  }
+
+  async function deleteRule(id: number) {
+    if (!confirm("Delete this alert rule?")) return;
+    await api.deleteRule(id);
+    rules = await api.rules();
+    notice = "Rule deleted.";
+  }
+
+  function toggleRuleChannel(channel: string) {
+    if (!editingRule) return;
+    const list = editingRule.channels ?? [];
+    editingRule.channels = list.includes(channel) ? list.filter((c) => c !== channel) : [...list, channel];
+  }
+
+  async function saveSMTP(e: Event) {
+    e.preventDefault();
+    data = await api.saveSMTP(smtp);
+    notice = "SMTP settings saved.";
   }
 </script>
 
@@ -137,6 +192,93 @@
         <Input bind:value={traceURL} placeholder="https://…/&#123;trace_id&#125;" />
         <Button type="submit" size="sm">Save</Button>
       </form>
+    </Card>
+
+    <Card cls="p-4">
+      <form on:submit={saveSMTP} class="space-y-3">
+        <p class="text-sm font-medium">Email (SMTP) {#if data.smtp.enabled}<span class="text-green-600">(enabled)</span>{/if}</p>
+        <p class="font-mono text-xs text-muted-foreground">Password: {data.smtp.passwordMasked || "(not set)"}</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1"><label class="text-xs">Host</label><Input bind:value={smtp.host} placeholder="smtp.example.com" /></div>
+          <div class="space-y-1"><label class="text-xs">Port</label><Input type="number" bind:value={smtp.port} /></div>
+          <div class="space-y-1"><label class="text-xs">Username</label><Input bind:value={smtp.username} /></div>
+          <div class="space-y-1"><label class="text-xs">Password</label><Input type="password" bind:value={smtp.password} placeholder="leave blank to keep" /></div>
+          <div class="space-y-1"><label class="text-xs">From address</label><Input bind:value={smtp.from} placeholder="errgotrack@example.com" /></div>
+          <div class="space-y-1"><label class="text-xs">To address (on-call)</label><Input bind:value={smtp.to} placeholder="oncall@example.com" /></div>
+        </div>
+        <div class="flex gap-4 text-sm">
+          <label class="flex items-center gap-2"><input type="checkbox" bind:checked={smtp.useTLS} /> STARTTLS</label>
+          <label class="flex items-center gap-2"><input type="checkbox" bind:checked={smtp.enabled} /> Enabled</label>
+        </div>
+        <div class="flex gap-2">
+          <Button type="submit" size="sm">Save</Button>
+          <Button size="sm" variant="outline" on:click={async () => { const r = await api.testSMTP(); notice = r.message; }}>Send test</Button>
+        </div>
+      </form>
+    </Card>
+
+    <Card cls="p-4">
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium">Alert rules</p>
+          <Button size="sm" variant="outline" on:click={newRule}>New rule</Button>
+        </div>
+        <p class="text-xs text-muted-foreground">Rules decide which events alert and where. A rule with no channels uses every enabled channel; picking channels routes e.g. production to email and staging to chat.</p>
+        {#if rules.length === 0}
+          <p class="text-xs text-muted-foreground">No rules yet — nothing will alert.</p>
+        {:else}
+          <div class="divide-y divide-border rounded-md border border-border">
+            {#each rules as r}
+              <div class="flex flex-wrap items-center justify-between gap-2 p-2 text-xs">
+                <span>
+                  <span class="font-medium">{r.name || "(unnamed rule)"}</span>
+                  <span class="text-muted-foreground"> · {projectName(r.projectId)}{r.environment ? ` · ${r.environment}` : ""} · cooldown {r.cooldownSeconds}s</span>
+                  <span class="block text-muted-foreground">
+                    {#if r.notifyNewIssue}new{/if}{#if r.notifyReopened}{r.notifyNewIssue ? " · " : ""}reopened{/if}{#if r.notifyThreshold > 0} · ≥{r.notifyThreshold} events{/if}
+                    · → {(r.channels?.length ? r.channels : ["all enabled"]).join(", ")}
+                  </span>
+                </span>
+                <span class="flex gap-2">
+                  <Button size="sm" variant="outline" on:click={() => editRule(r)}>Edit</Button>
+                  <Button size="sm" variant="outline" on:click={() => deleteRule(r.id)}>Delete</Button>
+                </span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+        {#if editingRule}
+          <form on:submit={saveRule} class="space-y-3 rounded-md border border-border p-3">
+            <div class="grid grid-cols-2 gap-3">
+              <div class="space-y-1"><label class="text-xs">Name</label><Input bind:value={editingRule.name} placeholder="Production → email" /></div>
+              <div class="space-y-1"><label class="text-xs">Project</label>
+                <select class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={editingRule.projectId}>
+                  <option value={null}>All projects</option>
+                  {#each projects as p}<option value={p.id}>{p.name}</option>{/each}
+                </select>
+              </div>
+              <div class="space-y-1"><label class="text-xs">Environment (blank = all)</label><Input bind:value={editingRule.environment} placeholder="production" /></div>
+              <div class="space-y-1"><label class="text-xs">Cooldown (seconds)</label><Input type="number" bind:value={editingRule.cooldownSeconds} /></div>
+              <div class="space-y-1"><label class="text-xs">Alert at event count (0 = off)</label><Input type="number" bind:value={editingRule.notifyThreshold} /></div>
+            </div>
+            <div class="flex gap-4 text-sm">
+              <label class="flex items-center gap-2"><input type="checkbox" bind:checked={editingRule.notifyNewIssue} /> New issues</label>
+              <label class="flex items-center gap-2"><input type="checkbox" bind:checked={editingRule.notifyReopened} /> Reopened</label>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs">Channels (none = all enabled)</p>
+              <div class="flex flex-wrap gap-3 text-sm">
+                {#each allChannels as c}
+                  <label class="flex items-center gap-1.5"><input type="checkbox" checked={editingRule.channels?.includes(c)} on:change={() => toggleRuleChannel(c)} /> {c}</label>
+                {/each}
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <Button type="submit" size="sm">Save rule</Button>
+              <Button size="sm" variant="outline" on:click={() => (editingRule = null)}>Cancel</Button>
+            </div>
+          </form>
+        {/if}
+      </div>
     </Card>
 
     <Card cls="p-4">
