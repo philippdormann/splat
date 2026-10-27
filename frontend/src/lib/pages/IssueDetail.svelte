@@ -6,6 +6,7 @@
   import LevelBadge from "$lib/components/LevelBadge.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import Button from "$lib/components/button.svelte";
+  import { Copy, Check } from "lucide-svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import DateTime from "$lib/components/DateTime.svelte";
 
@@ -19,6 +20,8 @@
   let actionBusy = false;
   let selectedEvent: string | null = null;
   let showRaw = false;
+  let copiedRaw = false;
+  let copiedRawTimer: ReturnType<typeof setTimeout>;
   let noteBody = "";
   let noteBusy = false;
   let confirmDeleteNote: number | null = null;
@@ -41,6 +44,9 @@
   function copyRaw() {
     if (!data?.rawEvent) return;
     navigator.clipboard.writeText(JSON.stringify(data.rawEvent, null, 2));
+    copiedRaw = true;
+    clearTimeout(copiedRawTimer);
+    copiedRawTimer = setTimeout(() => (copiedRaw = false), 2000);
   }
 
   async function addNote(e: Event) {
@@ -259,7 +265,12 @@
       <Card cls="p-4">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <button class="text-sm font-medium hover:underline" on:click={() => (showRaw = !showRaw)}>{showRaw ? "▾" : "▸"} Raw event JSON</button>
-          {#if showRaw}<Button size="sm" variant="outline" on:click={copyRaw}>Copy</Button>{/if}
+          {#if showRaw}
+            <span class="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400" aria-live="polite">
+              {#if copiedRaw}<Check class="h-3 w-3" /> Copied{/if}
+            </span>
+            <Button size="sm" variant="outline" on:click={copyRaw}><Copy class="h-3.5 w-3.5" /> Copy</Button>
+          {/if}
         </div>
         {#if showRaw}
           <pre class="mt-2 max-h-96 overflow-auto rounded-md bg-muted p-3 font-mono text-xs">{JSON.stringify(data.rawEvent, null, 2)}</pre>
