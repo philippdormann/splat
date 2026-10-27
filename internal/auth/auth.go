@@ -6,6 +6,7 @@ package auth
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
@@ -86,6 +87,13 @@ func randomToken() (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
+// hashSessionToken stores only the SHA-256 of session tokens, so a
+// database backup or file read does not yield usable sessions.
+func hashSessionToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
 func (s *Store) CreateSession(userID int64) (token string, expires time.Time, err error) {
 	token, err = randomToken()
 	if err != nil {
@@ -93,7 +101,7 @@ func (s *Store) CreateSession(userID int64) (token string, expires time.Time, er
 	}
 	expires = time.Now().Add(sessionDuration)
 	_, err = s.db.Exec(`INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)`,
-		token, userID, expires.UTC().Format(time.RFC3339))
+		hashSessionToken(token), userID, expires.UTC().Format(time.RFC3339))
 	return token, expires, err
 }
 
@@ -102,7 +110,7 @@ func (s *Store) ValidateSession(token string) (userID int64, ok bool) {
 		return 0, false
 	}
 	var expiresAt string
-	err := s.db.QueryRow(`SELECT user_id, expires_at FROM sessions WHERE token = ?`, token).Scan(&userID, &expiresAt)
+	err := s.db.QueryRow(`SELECT user_id, expires_at FROM sessions WHERE token = ?`, hashSessionToken(token)).Scan(&userID, &expiresAt)
 	if err != nil {
 		return 0, false
 	}
@@ -114,7 +122,14 @@ func (s *Store) ValidateSession(token string) (userID int64, ok bool) {
 }
 
 func (s *Store) DeleteSession(token string) error {
-	_, err := s.db.Exec(`DELETE FROM sessions WHERE token = ?`, token)
+	_, err := s.db.Exec(`DELETE FROM sessions WHERE token = ?`, hashSessionToken(token))
+	return err
+}
+
+// DeleteSessionsForUser revokes every session of a user - used on
+// password change so a stolen session does not survive a reset.
+func (s *Store) DeleteSessionsForUser(userID int64) error {
+	_, err := s.db.Exec(`DELETE FROM sessions WHERE user_id = ?`, userID)
 	return err
 }
 
@@ -267,8 +282,11 @@ func (s *Store) SetPassword(id int64, password string) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(`UPDATE users SET password_hash = ? WHERE id = ?`, string(hash), id)
-	return err
+	if _, err = s.db.Exec(`UPDATE users SET password_hash = ? WHERE id = ?`, string(hash), id); err != nil {
+		return err
+	}
+	// A password reset must evict attacker sessions.
+	return s.DeleteSessionsForUser(id)
 }
 
 func SetSessionCookie(w http.ResponseWriter, token string, expires time.Time, secure bool) {
