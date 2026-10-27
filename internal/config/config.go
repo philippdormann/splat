@@ -29,18 +29,18 @@ type Config struct {
 
 func Load() (Config, error) {
 	c := Config{
-		Addr:            getenv("ERRGOTRACK_ADDR", ":8080"),
-		DatabasePath:    getenv("ERRGOTRACK_DB_PATH", "data/splat.db"),
-		DatabaseURL:     getenv("ERRGOTRACK_DATABASE_URL", ""),
-		DBDriver:        getenv("ERRGOTRACK_DB_DRIVER", "sqlite"),
-		PublicURL:       getenv("ERRGOTRACK_PUBLIC_URL", "http://localhost:8080"),
-		AdminUsername:   getenv("ERRGOTRACK_ADMIN_USERNAME", ""),
-		AdminPassword:   getenv("ERRGOTRACK_ADMIN_PASSWORD", ""),
-		SessionSecret:   getenv("ERRGOTRACK_SESSION_SECRET", ""),
-		RetentionSweep:  getenvDuration("ERRGOTRACK_RETENTION_SWEEP", time.Hour),
-		ShutdownTimeout: getenvDuration("ERRGOTRACK_SHUTDOWN_TIMEOUT", 10*time.Second),
-		MetricsEnabled:  getenvBool("ERRGOTRACK_METRICS", false),
-		LogLevel:        getenv("ERRGOTRACK_LOG_LEVEL", "info"),
+		Addr:            getenv("SPLAT_ADDR", ":8080"),
+		DatabasePath:    getenv("SPLAT_DB_PATH", "data/splat.db"),
+		DatabaseURL:     getenv("SPLAT_DATABASE_URL", ""),
+		DBDriver:        getenv("SPLAT_DB_DRIVER", "sqlite"),
+		PublicURL:       getenv("SPLAT_PUBLIC_URL", "http://localhost:8080"),
+		AdminUsername:   getenv("SPLAT_ADMIN_USERNAME", ""),
+		AdminPassword:   getenv("SPLAT_ADMIN_PASSWORD", ""),
+		SessionSecret:   getenv("SPLAT_SESSION_SECRET", ""),
+		RetentionSweep:  getenvDuration("SPLAT_RETENTION_SWEEP", time.Hour),
+		ShutdownTimeout: getenvDuration("SPLAT_SHUTDOWN_TIMEOUT", 10*time.Second),
+		MetricsEnabled:  getenvBool("SPLAT_METRICS", false),
+		LogLevel:        getenv("SPLAT_LOG_LEVEL", "info"),
 	}
 	if c.SessionSecret == "" {
 		return c, fmt.Errorf("SPLAT_SESSION_SECRET must be set (random 32+ byte string)")
@@ -59,37 +59,16 @@ func Load() (Config, error) {
 	return c, nil
 }
 
-// getenv reads SPLAT_* first, then the pre-rename ERRGOTRACK_* equivalent,
-// so existing deployments keep working after the rename. New setups should
-// use the SPLAT_* names.
+// getenv reads a SPLAT_* variable, falling back when unset.
 func getenv(key, fallback string) string {
-	if v, ok := lookup(key); ok {
+	if v := os.Getenv(key); v != "" {
 		return v
 	}
 	return fallback
 }
 
-// lookup checks the SPLAT_* name, then the legacy ERRGOTRACK_* name.
-func lookup(key string) (string, bool) {
-	if v := os.Getenv(renamed(key)); v != "" {
-		return v, true
-	}
-	if v := os.Getenv(key); v != "" {
-		return v, true
-	}
-	return "", false
-}
-
-// renamed maps a legacy ERRGOTRACK_* key to its SPLAT_* successor.
-func renamed(key string) string {
-	if rest, ok := strings.CutPrefix(key, "ERRGOTRACK_"); ok {
-		return "SPLAT_" + rest
-	}
-	return key
-}
-
 func getenvDuration(key string, fallback time.Duration) time.Duration {
-	if v, ok := lookup(key); ok {
+	if v := os.Getenv(key); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			return d
 		}
@@ -98,7 +77,7 @@ func getenvDuration(key string, fallback time.Duration) time.Duration {
 }
 
 func getenvBool(key string, fallback bool) bool {
-	if v, ok := lookup(key); ok {
+	if v := os.Getenv(key); v != "" {
 		switch strings.ToLower(strings.TrimSpace(v)) {
 		case "1", "true", "yes", "on":
 			return true
@@ -110,7 +89,7 @@ func getenvBool(key string, fallback bool) bool {
 }
 
 func getenvInt(key string, fallback int) int {
-	if v, ok := lookup(key); ok {
+	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
 		}

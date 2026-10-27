@@ -38,7 +38,7 @@ import (
 // "dev" means a local un-stamped build.
 var version = "dev"
 
-// parseLogLevel maps ERRGOTRACK_LOG_LEVEL names to slog levels,
+// parseLogLevel maps SPLAT_LOG_LEVEL names to slog levels,
 // defaulting to info on anything unrecognized.
 func parseLogLevel(s string) slog.Level {
 	switch strings.ToLower(strings.TrimSpace(s)) {
@@ -58,9 +58,6 @@ func parseLogLevel(s string) slog.Level {
 // itself does the local GET /healthz and reports success via exit code.
 func runHealthcheck() {
 	addr := os.Getenv("SPLAT_ADDR")
-	if addr == "" {
-		addr = os.Getenv("ERRGOTRACK_ADDR")
-	}
 	if addr == "" {
 		addr = ":8080"
 	}
