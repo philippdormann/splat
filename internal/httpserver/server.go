@@ -102,6 +102,7 @@ func (s *Server) routes() {
 	s.ingest = ingest
 	limiter := newIPRateLimiter(50, 100)     // 50 req/s sustained, burst 100 - generous for a handful of app processes
 	loginLimiter := newIPRateLimiter(0.5, 5) // 1 attempt/2s sustained, burst 5 - throttles brute force against the single admin account
+	twofaLimiter := newIPRateLimiter(2, 10)  // separate bucket so enrollment flows don't starve login, still brute-force resistant
 
 	// Sentry-compatible ingestion (unchanged wire protocol).
 	s.mux.Handle("POST /api/{project}/envelope/", rateLimit(limiter, http.HandlerFunc(ingest.Envelope)))
@@ -157,11 +158,13 @@ func (s *Server) routes() {
 
 	// Two-factor self-service: any session (the challenge authorizes
 	// enrollment inline during login when enforcement requires it).
+	// Setup/disable/code-regeneration touch TOTP secrets and redeem
+	// 6-digit codes, so they share the login brute-force limiter.
 	s.mux.HandleFunc("GET /api/v1/2fa/status", s.requireAPIAuth(s.api2FAStatus))
-	s.mux.HandleFunc("POST /api/v1/2fa/setup/begin", s.api2FASetupBegin)
-	s.mux.HandleFunc("POST /api/v1/2fa/setup/confirm", s.api2FASetupConfirm)
-	s.mux.HandleFunc("POST /api/v1/2fa/disable", s.api2FADisable)
-	s.mux.HandleFunc("POST /api/v1/2fa/recovery-codes/regenerate", s.api2FARegenerateCodes)
+	s.mux.Handle("POST /api/v1/2fa/setup/begin", rateLimit(twofaLimiter, http.HandlerFunc(s.api2FASetupBegin)))
+	s.mux.Handle("POST /api/v1/2fa/setup/confirm", rateLimit(twofaLimiter, http.HandlerFunc(s.api2FASetupConfirm)))
+	s.mux.Handle("POST /api/v1/2fa/disable", rateLimit(twofaLimiter, http.HandlerFunc(s.api2FADisable)))
+	s.mux.Handle("POST /api/v1/2fa/recovery-codes/regenerate", rateLimit(twofaLimiter, http.HandlerFunc(s.api2FARegenerateCodes)))
 
 	// Instance security policy (2FA enforcement): same visibility as the
 	// other instance settings.
