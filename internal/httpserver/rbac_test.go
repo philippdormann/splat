@@ -207,6 +207,16 @@ func TestRBACMemberScoping(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &ulist); err != nil || len(ulist) != 3 {
 		t.Fatalf("users = %s, %v", rec.Body.String(), err)
 	}
+	// Nobody changes their own role, even admins.
+	rec = postJSON(t, s, http.MethodPut, "/api/v1/users/"+itoa(admin.ID)+"/role", adminCookie, `{"role":"member"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("self role change = %d, want 400", rec.Code)
+	}
+	// ...but an admin can still change someone else's role.
+	rec = postJSON(t, s, http.MethodPut, "/api/v1/users/"+itoa(member.ID)+"/role", adminCookie, `{"role":"admin"}`)
+	if rec.Code != 200 {
+		t.Fatalf("other role change = %d %s", rec.Code, rec.Body.String())
+	}
 	_ = tm
 }
 

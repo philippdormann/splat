@@ -83,6 +83,12 @@ func (s *Server) apiUsersSetRole(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
+	// Nobody changes their own role through this endpoint: admins keep a
+	// working session and can't lock themselves out by accident.
+	if me, ok := s.Auth.ValidateSession(auth.SessionTokenFromRequest(r)); ok && me == id {
+		writeAPIError(w, http.StatusBadRequest, "cannot change your own role")
+		return
+	}
 	if err := s.Auth.SetRole(id, input.Role); err != nil {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
