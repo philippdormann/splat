@@ -6,6 +6,7 @@
   import Button from "$lib/components/button.svelte";
   import { toast } from "svelte-sonner";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import Dialog from "$lib/components/Dialog.svelte";
   import { Bell, KeyRound, Database, SlidersHorizontal, ScrollText } from "lucide-svelte";
 
   let tab = "general";
@@ -35,6 +36,31 @@
   const channels = ["slack", "discord", "teams", "sheets"];
   const allChannels = ["telegram", "slack", "discord", "teams", "sheets", "email", "generic"];
   const allScopes = ["ingest", "read", "write"];
+
+  let channelDialog: string | null = null;
+
+  function closeChannelDialog() {
+    channelDialog = null;
+  }
+
+  function telegramStatus(): string {
+    if (!data) return "";
+    if (data.telegram.enabled) return data.telegram.chatId ? `Chat ${data.telegram.chatId}` : "Enabled";
+    return data.botTokenMasked ? "Configured, disabled" : "Not configured yet";
+  }
+
+  function webhookStatus(c: string): string {
+    if (!data) return "";
+    const w = data.webhooks[c];
+    if (w?.enabled) return w.urlMasked || "Enabled";
+    return w?.urlMasked ? "Configured, disabled" : "Not configured yet";
+  }
+
+  function smtpStatus(): string {
+    if (!data) return "";
+    if (data.smtp.enabled) return data.smtp.host || "Enabled";
+    return data.smtp.host ? "Configured, disabled" : "Not configured yet";
+  }
 
   let generic: GenericWebhook[] = [];
   let editingHook: { id?: number; name: string; url: string; secret: string; headersText: string; enabled: boolean } | null = null;
@@ -164,12 +190,14 @@
   async function saveTelegram(e: Event) {
     e.preventDefault();
     data = await api.saveTelegram(telegram);
+    channelDialog = null;
     toast.success("Telegram settings saved.");
   }
 
   async function saveWebhook(e: Event, channel: string) {
     e.preventDefault();
     data = await api.saveWebhook(channel, webhooks[channel]);
+    channelDialog = null;
     toast.success(`${channel} settings saved.`);
   }
 
@@ -229,6 +257,7 @@
   async function saveSMTP(e: Event) {
     e.preventDefault();
     data = await api.saveSMTP(smtp);
+    channelDialog = null;
     toast.success("SMTP settings saved.");
   }
 
@@ -362,8 +391,44 @@
 
         {:else if tab === "notifications"}
     <Card cls="p-4">
+      <p class="mb-1 text-sm font-medium">Notifications</p>
+      <p class="mb-3 text-xs text-muted-foreground">Each destination is configured separately. Alert rules decide which events go where.</p>
+      <div class="divide-y divide-border rounded-md border border-border">
+        <div class="flex items-center justify-between gap-2 p-3">
+          <div class="min-w-0">
+            <p class="text-sm font-medium">Telegram {#if data.telegram.enabled}<span class="text-xs text-green-600">(enabled)</span>{/if}</p>
+            <p class="truncate font-mono text-xs text-muted-foreground">{telegramStatus()}</p>
+          </div>
+          <Button size="sm" variant="outline" on:click={() => (channelDialog = "telegram")}>Configure</Button>
+        </div>
+        {#each channels as c}
+          <div class="flex items-center justify-between gap-2 p-3">
+            <div class="min-w-0">
+              <p class="text-sm font-medium capitalize">{c} {#if data.webhooks[c]?.enabled}<span class="text-xs text-green-600">(enabled)</span>{/if}</p>
+              <p class="truncate font-mono text-xs text-muted-foreground">{webhookStatus(c)}</p>
+            </div>
+            <Button size="sm" variant="outline" on:click={() => (channelDialog = c)}>Configure</Button>
+          </div>
+        {/each}
+        <div class="flex items-center justify-between gap-2 p-3">
+          <div class="min-w-0">
+            <p class="text-sm font-medium">Email (SMTP) {#if data.smtp.enabled}<span class="text-xs text-green-600">(enabled)</span>{/if}</p>
+            <p class="truncate font-mono text-xs text-muted-foreground">{smtpStatus()}</p>
+          </div>
+          <Button size="sm" variant="outline" on:click={() => (channelDialog = "smtp")}>Configure</Button>
+        </div>
+        <div class="flex items-center justify-between gap-2 p-3">
+          <div class="min-w-0">
+            <p class="text-sm font-medium">Generic webhooks</p>
+            <p class="truncate font-mono text-xs text-muted-foreground">{generic.length === 0 ? "None yet" : `${generic.length} webhook${generic.length === 1 ? "" : "s"}`}</p>
+          </div>
+          <Button size="sm" variant="outline" on:click={() => (channelDialog = "generic")}>Configure</Button>
+        </div>
+      </div>
+    </Card>
+
+    <Dialog open={channelDialog === "telegram"} title="Configure Telegram" onClose={closeChannelDialog}>
       <form on:submit={saveTelegram} class="space-y-3">
-        <p class="text-sm font-medium">Telegram {#if data.telegram.enabled}<span class="text-green-600">(enabled)</span>{/if}</p>
         <p class="font-mono text-xs text-muted-foreground">Token: {data.botTokenMasked || "(not set)"}</p>
         <div class="space-y-1"><label class="text-xs">Bot token</label><Input type="password" bind:value={telegram.botToken} placeholder="leave blank to keep" /></div>
         <div class="space-y-1"><label class="text-xs">Chat ID</label><Input bind:value={telegram.chatId} /></div>
@@ -373,28 +438,48 @@
           <Button size="sm" variant="outline" on:click={async () => { const r = await api.testTelegram(); (r.ok ? toast.success(r.message) : toast.error(r.message)); }}>Send test</Button>
         </div>
       </form>
-    </Card>
+    </Dialog>
 
     {#each channels as c}
-      <Card cls="p-4">
-        <form on:submit={(e) => saveWebhook(e, c)} class="space-y-3">
-          <p class="text-sm font-medium capitalize">{c} {#if data.webhooks[c]?.enabled}<span class="text-green-600">(enabled)</span>{/if}</p>
-          <p class="font-mono text-xs text-muted-foreground">URL: {data.webhooks[c]?.urlMasked || "(not set)"}</p>
-          <div class="space-y-1"><label class="text-xs">Webhook URL</label><Input bind:value={webhooks[c].url} placeholder="leave blank to keep" /></div>
-          <label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={webhooks[c].enabled} /> Enabled</label>
-          <div class="flex gap-2">
-            <Button type="submit" size="sm">Save</Button>
-            <Button size="sm" variant="outline" on:click={async () => { const r = await api.testWebhook(c); (r.ok ? toast.success(r.message) : toast.error(r.message)); }}>Send test</Button>
-          </div>
-        </form>
-      </Card>
+      {#if channelDialog === c}
+        <Dialog open={true} title={`Configure ${c}`} onClose={closeChannelDialog}>
+          <form on:submit={(e) => saveWebhook(e, c)} class="space-y-3">
+            <p class="font-mono text-xs text-muted-foreground">URL: {data.webhooks[c]?.urlMasked || "(not set)"}</p>
+            <div class="space-y-1"><label class="text-xs">Webhook URL</label><Input bind:value={webhooks[c].url} placeholder="leave blank to keep" /></div>
+            <label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={webhooks[c].enabled} /> Enabled</label>
+            <div class="flex gap-2">
+              <Button type="submit" size="sm">Save</Button>
+              <Button size="sm" variant="outline" on:click={async () => { const r = await api.testWebhook(c); (r.ok ? toast.success(r.message) : toast.error(r.message)); }}>Send test</Button>
+            </div>
+          </form>
+        </Dialog>
+      {/if}
     {/each}
-    <Card cls="p-4">
-      <div class="space-y-3">
-        <div class="flex items-center justify-between">
-          <p class="text-sm font-medium">Generic webhooks</p>
-          <Button size="sm" variant="outline" on:click={newHook}>New webhook</Button>
+
+    <Dialog open={channelDialog === "smtp"} title="Configure Email (SMTP)" onClose={closeChannelDialog}>
+      <form on:submit={saveSMTP} class="space-y-3">
+        <p class="font-mono text-xs text-muted-foreground">Password: {data.smtp.passwordMasked || "(not set)"}</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1"><label class="text-xs">Host</label><Input bind:value={smtp.host} placeholder="smtp.example.com" /></div>
+          <div class="space-y-1"><label class="text-xs">Port</label><Input type="number" bind:value={smtp.port} /></div>
+          <div class="space-y-1"><label class="text-xs">Username</label><Input bind:value={smtp.username} /></div>
+          <div class="space-y-1"><label class="text-xs">Password</label><Input type="password" bind:value={smtp.password} placeholder="leave blank to keep" /></div>
+          <div class="space-y-1"><label class="text-xs">From address</label><Input bind:value={smtp.from} placeholder="errgotrack@example.com" /></div>
+          <div class="space-y-1"><label class="text-xs">To address (on-call)</label><Input bind:value={smtp.to} placeholder="oncall@example.com" /></div>
         </div>
+        <div class="flex gap-4 text-sm">
+          <label class="flex items-center gap-2"><input type="checkbox" bind:checked={smtp.useTLS} /> STARTTLS</label>
+          <label class="flex items-center gap-2"><input type="checkbox" bind:checked={smtp.enabled} /> Enabled</label>
+        </div>
+        <div class="flex gap-2">
+          <Button type="submit" size="sm">Save</Button>
+          <Button size="sm" variant="outline" on:click={async () => { const r = await api.testSMTP(); (r.ok ? toast.success(r.message) : toast.error(r.message)); }}>Send test</Button>
+        </div>
+      </form>
+    </Dialog>
+
+    <Dialog open={channelDialog === "generic"} title="Generic webhooks" onClose={closeChannelDialog}>
+      <div class="space-y-3">
         <p class="text-xs text-muted-foreground">Any HTTPS endpoint receives the JSON alert payload. With a secret set, each delivery carries <span class="font-mono">X-Errgotrack-Signature: sha256=&lt;hmac&gt;</span> over the body. Select the <span class="font-mono">generic</span> channel in alert rules to route here.</p>
         {#if generic.length === 0 && !editingHook}
           <p class="text-xs text-muted-foreground">No generic webhooks yet.</p>
@@ -430,31 +515,11 @@
               <Button size="sm" variant="outline" on:click={() => (editingHook = null)}>Cancel</Button>
             </div>
           </form>
+        {:else}
+          <Button size="sm" variant="outline" on:click={newHook}>New webhook</Button>
         {/if}
       </div>
-    </Card>
-    <Card cls="p-4">
-      <form on:submit={saveSMTP} class="space-y-3">
-        <p class="text-sm font-medium">Email (SMTP) {#if data.smtp.enabled}<span class="text-green-600">(enabled)</span>{/if}</p>
-        <p class="font-mono text-xs text-muted-foreground">Password: {data.smtp.passwordMasked || "(not set)"}</p>
-        <div class="grid grid-cols-2 gap-3">
-          <div class="space-y-1"><label class="text-xs">Host</label><Input bind:value={smtp.host} placeholder="smtp.example.com" /></div>
-          <div class="space-y-1"><label class="text-xs">Port</label><Input type="number" bind:value={smtp.port} /></div>
-          <div class="space-y-1"><label class="text-xs">Username</label><Input bind:value={smtp.username} /></div>
-          <div class="space-y-1"><label class="text-xs">Password</label><Input type="password" bind:value={smtp.password} placeholder="leave blank to keep" /></div>
-          <div class="space-y-1"><label class="text-xs">From address</label><Input bind:value={smtp.from} placeholder="errgotrack@example.com" /></div>
-          <div class="space-y-1"><label class="text-xs">To address (on-call)</label><Input bind:value={smtp.to} placeholder="oncall@example.com" /></div>
-        </div>
-        <div class="flex gap-4 text-sm">
-          <label class="flex items-center gap-2"><input type="checkbox" bind:checked={smtp.useTLS} /> STARTTLS</label>
-          <label class="flex items-center gap-2"><input type="checkbox" bind:checked={smtp.enabled} /> Enabled</label>
-        </div>
-        <div class="flex gap-2">
-          <Button type="submit" size="sm">Save</Button>
-          <Button size="sm" variant="outline" on:click={async () => { const r = await api.testSMTP(); (r.ok ? toast.success(r.message) : toast.error(r.message)); }}>Send test</Button>
-        </div>
-      </form>
-    </Card>
+    </Dialog>
         {:else if tab === "rules"}
     <Card cls="p-4">
       <div class="space-y-3">
@@ -486,36 +551,38 @@
           </div>
         {/if}
         {#if editingRule}
-          <form on:submit={saveRule} class="space-y-3 rounded-md border border-border p-3">
-            <div class="grid grid-cols-2 gap-3">
-              <div class="space-y-1"><label class="text-xs">Name</label><Input bind:value={editingRule.name} placeholder="Production → email" /></div>
-              <div class="space-y-1"><label class="text-xs">Project</label>
-                <select class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={editingRule.projectId}>
-                  <option value={null}>All projects</option>
-                  {#each projects as p}<option value={p.id}>{p.name}</option>{/each}
-                </select>
+          <Dialog open={true} title={editingRule.id ? "Edit alert rule" : "New alert rule"} onClose={() => (editingRule = null)}>
+            <form on:submit={saveRule} class="space-y-3">
+              <div class="grid grid-cols-2 gap-3">
+                <div class="space-y-1"><label class="text-xs">Name</label><Input bind:value={editingRule.name} placeholder="Production → email" /></div>
+                <div class="space-y-1"><label class="text-xs">Project</label>
+                  <select class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={editingRule.projectId}>
+                    <option value={null}>All projects</option>
+                    {#each projects as p}<option value={p.id}>{p.name}</option>{/each}
+                  </select>
+                </div>
+                <div class="space-y-1"><label class="text-xs">Environment (blank = all)</label><Input bind:value={editingRule.environment} placeholder="production" /></div>
+                <div class="space-y-1"><label class="text-xs">Cooldown (seconds)</label><Input type="number" bind:value={editingRule.cooldownSeconds} /></div>
+                <div class="space-y-1"><label class="text-xs">Alert at event count (0 = off)</label><Input type="number" bind:value={editingRule.notifyThreshold} /></div>
               </div>
-              <div class="space-y-1"><label class="text-xs">Environment (blank = all)</label><Input bind:value={editingRule.environment} placeholder="production" /></div>
-              <div class="space-y-1"><label class="text-xs">Cooldown (seconds)</label><Input type="number" bind:value={editingRule.cooldownSeconds} /></div>
-              <div class="space-y-1"><label class="text-xs">Alert at event count (0 = off)</label><Input type="number" bind:value={editingRule.notifyThreshold} /></div>
-            </div>
-            <div class="flex gap-4 text-sm">
-              <label class="flex items-center gap-2"><input type="checkbox" bind:checked={editingRule.notifyNewIssue} /> New issues</label>
-              <label class="flex items-center gap-2"><input type="checkbox" bind:checked={editingRule.notifyReopened} /> Reopened</label>
-            </div>
-            <div class="space-y-1">
-              <p class="text-xs">Channels (none = all enabled)</p>
-              <div class="flex flex-wrap gap-3 text-sm">
-                {#each allChannels as c}
-                  <label class="flex items-center gap-1.5"><input type="checkbox" checked={editingRule.channels?.includes(c)} on:change={() => toggleRuleChannel(c)} /> {c}</label>
-                {/each}
+              <div class="flex gap-4 text-sm">
+                <label class="flex items-center gap-2"><input type="checkbox" bind:checked={editingRule.notifyNewIssue} /> New issues</label>
+                <label class="flex items-center gap-2"><input type="checkbox" bind:checked={editingRule.notifyReopened} /> Reopened</label>
               </div>
-            </div>
-            <div class="flex gap-2">
-              <Button type="submit" size="sm">Save rule</Button>
-              <Button size="sm" variant="outline" on:click={() => (editingRule = null)}>Cancel</Button>
-            </div>
-          </form>
+              <div class="space-y-1">
+                <p class="text-xs">Channels (none = all enabled)</p>
+                <div class="flex flex-wrap gap-3 text-sm">
+                  {#each allChannels as c}
+                    <label class="flex items-center gap-1.5"><input type="checkbox" checked={editingRule.channels?.includes(c)} on:change={() => toggleRuleChannel(c)} /> {c}</label>
+                  {/each}
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <Button type="submit" size="sm">Save rule</Button>
+                <Button size="sm" variant="outline" on:click={() => (editingRule = null)}>Cancel</Button>
+              </div>
+            </form>
+          </Dialog>
         {/if}
       </div>
     </Card>
