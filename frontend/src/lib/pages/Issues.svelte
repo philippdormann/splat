@@ -6,6 +6,7 @@
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
 
   export let navigate: (path: string) => void;
 
@@ -19,6 +20,8 @@
   let selected = new Set<number>();
   let error = "";
   let timer: ReturnType<typeof setTimeout>;
+  let pendingBulk: string | null = null;
+  let bulkBusy = false;
 
   function params() {
     const p = new URLSearchParams();
@@ -49,10 +52,35 @@
 
   async function bulk(statusValue: string) {
     if (selected.size === 0) return;
-    await api.bulkIssueStatus([...selected], statusValue);
-    selected = new Set();
-    await load();
+    pendingBulk = statusValue;
   }
+
+  async function confirmBulk() {
+    if (!pendingBulk || selected.size === 0) return;
+    bulkBusy = true;
+    try {
+      await api.bulkIssueStatus([...selected], pendingBulk);
+      selected = new Set();
+      pendingBulk = null;
+      await load();
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Bulk update failed.";
+      pendingBulk = null;
+    } finally {
+      bulkBusy = false;
+    }
+  }
+
+  const bulkCopy: Record<string, { title: string; label: string }> = {
+    resolved: { title: "Resolve selected issues?", label: "Resolve" },
+    ignored: { title: "Ignore selected issues?", label: "Ignore" },
+    muted: { title: "Mute selected issues?", label: "Mute" },
+  };
+  const bulkDescriptions: Record<string, string> = {
+    resolved: "New occurrences will reopen them.",
+    ignored: "They stay ignored permanently and will not notify.",
+    muted: "They keep counting events but never reopen and never notify, until unmuted.",
+  };
 
   onMount(load);
 </script>
@@ -68,6 +96,16 @@
       </div>
     {/if}
   </div>
+
+  <ConfirmDialog
+    open={pendingBulk !== null}
+    title={pendingBulk ? bulkCopy[pendingBulk].title : ""}
+    description={pendingBulk ? `${selected.size} selected issue${selected.size === 1 ? "" : "s"}. ${bulkDescriptions[pendingBulk]}` : ""}
+    confirmLabel={pendingBulk ? bulkCopy[pendingBulk].label : ""}
+    busy={bulkBusy}
+    onConfirm={confirmBulk}
+    onCancel={() => { if (!bulkBusy) pendingBulk = null; }}
+  />
 
   <Card cls="flex flex-wrap gap-2 p-3">
     <div class="min-w-48 flex-1"><Input placeholder="Search title or exception…" bind:value={q} on:input={search} /></div>

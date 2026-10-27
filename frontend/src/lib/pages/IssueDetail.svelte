@@ -5,6 +5,7 @@
   import LevelBadge from "$lib/components/LevelBadge.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import Button from "$lib/components/button.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
 
   export let id: string;
   export let navigate: (path: string) => void;
@@ -12,6 +13,8 @@
   let data: IssueDetail | null = null;
   let error = "";
   let muteFor = "forever";
+  let pendingAction: "resolved" | "resolved-next" | "ignored" | "muted" | "unresolved" | null = null;
+  let actionBusy = false;
 
   async function load() {
     try {
@@ -21,25 +24,39 @@
     }
   }
 
-  async function setStatus(status: string) {
-    await api.setIssueStatus(id, status);
-    await load();
-  }
-
-  async function resolveInNextRelease() {
-    await api.setIssueStatus(id, "resolved", undefined, true);
-    await load();
-  }
-
-  async function mute() {
-    let mutedUntil: string | undefined;
-    if (muteFor !== "forever") {
-      const hours = { "24h": 24, "7d": 24 * 7, "30d": 24 * 30 }[muteFor] ?? 0;
-      if (hours > 0) mutedUntil = new Date(Date.now() + hours * 3600 * 1000).toISOString();
+  async function confirmAction() {
+    if (!pendingAction) return;
+    actionBusy = true;
+    try {
+      if (pendingAction === "muted") {
+        let mutedUntil: string | undefined;
+        if (muteFor !== "forever") {
+          const hours = { "24h": 24, "7d": 24 * 7, "30d": 24 * 30 }[muteFor] ?? 0;
+          if (hours > 0) mutedUntil = new Date(Date.now() + hours * 3600 * 1000).toISOString();
+        }
+        await api.setIssueStatus(id, "muted", mutedUntil);
+      } else if (pendingAction === "resolved-next") {
+        await api.setIssueStatus(id, "resolved", undefined, true);
+      } else {
+        await api.setIssueStatus(id, pendingAction);
+      }
+      pendingAction = null;
+      await load();
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to update issue.";
+      pendingAction = null;
+    } finally {
+      actionBusy = false;
     }
-    await api.setIssueStatus(id, "muted", mutedUntil);
-    await load();
   }
+
+  const actionCopy: Record<string, { title: string; description: string; label: string }> = {
+    resolved: { title: "Resolve issue?", description: "New occurrences will reopen it.", label: "Resolve" },
+    "resolved-next": { title: "Resolve in next release?", description: "Stays resolved for the current release and reopens automatically if the bug appears in a different release.", label: "Resolve in next release" },
+    ignored: { title: "Ignore issue?", description: "The issue stays ignored permanently — new occurrences will not reopen it and it will not notify.", label: "Ignore" },
+    muted: { title: "Mute issue?", description: "Muted issues keep counting events but never reopen and never notify. A timed mute lifts automatically.", label: "Mute" },
+    unresolved: { title: "Reopen issue?", description: "The issue returns to unresolved and can notify again.", label: "Reopen" },
+  };
 
   function formatMutedUntil(iso: string | null): string {
     if (!iso) return "muted indefinitely";
@@ -69,23 +86,39 @@
         <p class="mt-1 font-mono text-xs text-muted-foreground">{data.issue.exceptionType}: {data.issue.exceptionValue}</p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" on:click={() => setStatus("resolved")}>Resolve</Button>
-        <Button size="sm" variant="outline" title="Resolve, but reopen automatically if the bug appears in a different release" on:click={() => resolveInNextRelease()}>Resolve in next release</Button>
-        <Button size="sm" variant="outline" on:click={() => setStatus("ignored")}>Ignore</Button>
+        <Button size="sm" variant="outline" on:click={() => (pendingAction = "resolved")}>Resolve</Button>
+        <Button size="sm" variant="outline" title="Resolve, but reopen automatically if the bug appears in a different release" on:click={() => (pendingAction = "resolved-next")}>Resolve in next release</Button>
+        <Button size="sm" variant="outline" on:click={() => (pendingAction = "ignored")}>Ignore</Button>
         {#if data.issue.status === "muted"}
-          <Button size="sm" variant="outline" on:click={() => setStatus("unresolved")}>Unmute</Button>
+          <Button size="sm" variant="outline" on:click={() => (pendingAction = "unresolved")}>Unmute</Button>
         {:else}
+          <Button size="sm" variant="outline" on:click={() => (pendingAction = "muted")}>Mute</Button>
+        {/if}
+        <Button size="sm" variant="outline" on:click={() => (pendingAction = "unresolved")}>Reopen</Button>
+      </div>
+    </div>
+
+    <ConfirmDialog
+      open={pendingAction !== null}
+      title={pendingAction ? actionCopy[pendingAction].title : ""}
+      description={pendingAction ? actionCopy[pendingAction].description : ""}
+      confirmLabel={pendingAction ? actionCopy[pendingAction].label : ""}
+      variant={pendingAction === "unresolved" ? "default" : "destructive"}
+      busy={actionBusy}
+      onConfirm={confirmAction}
+      onCancel={() => { if (!actionBusy) pendingAction = null; }}
+    >
+      {#if pendingAction === "muted"}
+        <span class="mt-3 block">
           <select class="h-8 rounded-md border border-input bg-background px-2 text-xs" bind:value={muteFor} aria-label="Mute duration">
             <option value="forever">Mute forever</option>
             <option value="24h">Mute 24 hours</option>
             <option value="7d">Mute 7 days</option>
             <option value="30d">Mute 30 days</option>
           </select>
-          <Button size="sm" variant="outline" on:click={mute}>Mute</Button>
-        {/if}
-        <Button size="sm" variant="outline" on:click={() => setStatus("unresolved")}>Reopen</Button>
-      </div>
-    </div>
+        </span>
+      {/if}
+    </ConfirmDialog>
 
     {#if data.traceId}
       <Card cls="flex flex-wrap items-center gap-2 p-3 text-sm">

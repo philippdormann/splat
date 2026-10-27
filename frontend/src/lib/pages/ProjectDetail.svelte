@@ -4,6 +4,7 @@
   import Card from "$lib/components/card.svelte";
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import { Copy, RefreshCw, Trash2, Upload, Check } from "lucide-svelte";
 
   export let id: string;
@@ -18,6 +19,9 @@
   let mapBusy = false;
   let rotated = false;
   let rotatedTimer: ReturnType<typeof setTimeout>;
+  let confirmDeleteProject = false;
+  let confirmDeleteMap: number | null = null;
+  let deleteBusy = false;
 
   async function load() {
     try {
@@ -56,11 +60,19 @@
     }
   }
 
-  async function deleteMap(mapId: number) {
-    if (!confirm("Delete this source map? New events will show minified frames again.")) return;
-    await api.deleteSourceMap(id, mapId);
-    maps = await api.sourceMaps(id);
-    notice = "Source map deleted.";
+  async function deleteMap() {
+    if (confirmDeleteMap === null) return;
+    deleteBusy = true;
+    try {
+      await api.deleteSourceMap(id, confirmDeleteMap);
+      maps = await api.sourceMaps(id);
+      notice = "Source map deleted.";
+    } catch (e) {
+      notice = `Delete failed: ${e instanceof Error ? e.message : e}`;
+    } finally {
+      deleteBusy = false;
+      confirmDeleteMap = null;
+    }
   }
 
   async function save(e: Event) {
@@ -86,9 +98,16 @@
   }
 
   async function remove() {
-    if (!confirm("Delete this project and all its issues/events?")) return;
-    await api.deleteProject(id);
-    navigate("/projects");
+    deleteBusy = true;
+    try {
+      await api.deleteProject(id);
+      navigate("/projects");
+    } catch (e) {
+      notice = `Delete failed: ${e instanceof Error ? e.message : e}`;
+    } finally {
+      deleteBusy = false;
+      confirmDeleteProject = false;
+    }
   }
 
   function copy(text: string) {
@@ -107,9 +126,29 @@
   <div class="mx-auto max-w-3xl space-y-4">
     <div class="flex items-center justify-between">
       <h2 class="text-2xl font-bold">{data.project.name}</h2>
-      <Button size="sm" variant="destructive" on:click={remove}><Trash2 class="h-4 w-4" /> Delete</Button>
+      <Button size="sm" variant="destructive" on:click={() => (confirmDeleteProject = true)}><Trash2 class="h-4 w-4" /> Delete</Button>
     </div>
     {#if notice}<p class="text-sm text-muted-foreground">{notice}</p>{/if}
+
+    <ConfirmDialog
+      open={confirmDeleteProject}
+      title="Delete project?"
+      description={`“${data.project.name}” and all its issues, events and source maps will be permanently deleted. This cannot be undone.`}
+      confirmLabel="Delete project"
+      busy={deleteBusy}
+      onConfirm={remove}
+      onCancel={() => { if (!deleteBusy) confirmDeleteProject = false; }}
+    />
+
+    <ConfirmDialog
+      open={confirmDeleteMap !== null}
+      title="Delete source map?"
+      description="New events will show minified frames again."
+      confirmLabel="Delete"
+      busy={deleteBusy}
+      onConfirm={deleteMap}
+      onCancel={() => { if (!deleteBusy) confirmDeleteMap = null; }}
+    />
 
     <Card cls="space-y-2 p-4">
       <p class="text-sm font-medium">DSN
@@ -163,7 +202,7 @@
             {#each maps as m}
               <div class="flex items-center justify-between gap-2 p-2 font-mono text-xs">
                 <span class="truncate">{m.bundleUrl} <span class="text-muted-foreground">· {m.release || "(any release)"} · {(m.sizeBytes / 1024).toFixed(1)} KB</span></span>
-                <Button size="sm" variant="outline" on:click={() => deleteMap(m.id)}>Delete</Button>
+                <Button size="sm" variant="outline" on:click={() => (confirmDeleteMap = m.id)}>Delete</Button>
               </div>
             {/each}
           </div>

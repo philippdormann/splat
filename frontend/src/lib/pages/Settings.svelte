@@ -4,6 +4,7 @@
   import Card from "$lib/components/card.svelte";
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
 
   let data: SettingsData | null = null;
   let error = "";
@@ -69,11 +70,17 @@
   }
 
   async function deleteHook(id: number) {
-    if (!confirm("Delete this generic webhook?")) return;
-    await api.deleteGenericWebhook(id);
-    generic = await api.genericWebhooks();
-    data = await api.settings();
-    notice = "Generic webhook deleted.";
+    confirmBox = {
+      title: "Delete this generic webhook?",
+      description: "Alert rules routing to the generic channel will skip the deleted endpoint.",
+      label: "Delete",
+      run: async () => {
+        await api.deleteGenericWebhook(id);
+        generic = await api.genericWebhooks();
+        data = await api.settings();
+        notice = "Generic webhook deleted.";
+      },
+    };
   }
 
   function formatBytes(n: number): string {
@@ -110,17 +117,21 @@
   }
 
   async function runVacuum() {
-    if (!confirm("Vacuum rewrites the database file and may take a while on large databases. Continue?")) return;
-    storageBusy = "vacuum";
-    try {
-      await api.storageVacuum();
-      notice = "Vacuum finished.";
-      await loadStorage();
-    } catch (e) {
-      notice = `Vacuum failed: ${e instanceof Error ? e.message : e}`;
-    } finally {
-      storageBusy = "";
-    }
+    confirmBox = {
+      title: "Vacuum the database?",
+      description: "Vacuum rewrites the database file and may take a while on large databases.",
+      label: "Vacuum",
+      run: async () => {
+        storageBusy = "vacuum";
+        try {
+          await api.storageVacuum();
+          notice = "Vacuum finished.";
+          await loadStorage();
+        } finally {
+          storageBusy = "";
+        }
+      },
+    };
   }
 
   onMount(async () => {
@@ -187,10 +198,16 @@
   }
 
   async function deleteRule(id: number) {
-    if (!confirm("Delete this alert rule?")) return;
-    await api.deleteRule(id);
-    rules = await api.rules();
-    notice = "Rule deleted.";
+    confirmBox = {
+      title: "Delete this alert rule?",
+      description: "Matching events will stop notifying on the rule's channels.",
+      label: "Delete",
+      run: async () => {
+        await api.deleteRule(id);
+        rules = await api.rules();
+        notice = "Rule deleted.";
+      },
+    };
   }
 
   function toggleRuleChannel(channel: string) {
@@ -229,29 +246,65 @@
   }
 
   async function rotateKey(id: number) {
-    if (!confirm("Rotate this key? The old secret stops working immediately.")) return;
-    const k = await api.rotateAPIKey(id);
-    freshSecret = k.secret ?? "";
-    keys = await api.apiKeys();
-    notice = "Key rotated — copy the new secret now.";
+    confirmBox = {
+      title: "Rotate this key?",
+      description: "The old secret stops working immediately. Copy the new secret once it appears.",
+      label: "Rotate",
+      run: async () => {
+        const k = await api.rotateAPIKey(id);
+        freshSecret = k.secret ?? "";
+        keys = await api.apiKeys();
+        notice = "Key rotated — copy the new secret now.";
+      },
+    };
   }
 
   async function revokeKey(id: number) {
-    await api.revokeAPIKey(id);
-    keys = await api.apiKeys();
-    notice = "Key revoked.";
+    confirmBox = {
+      title: "Revoke this key?",
+      description: "The secret stops working immediately. This cannot be undone — rotate instead if you just need a fresh secret.",
+      label: "Revoke",
+      run: async () => {
+        await api.revokeAPIKey(id);
+        keys = await api.apiKeys();
+        notice = "Key revoked.";
+      },
+    };
   }
 
   async function deleteKey(id: number) {
-    if (!confirm("Permanently delete this key?")) return;
-    await api.deleteAPIKey(id);
-    keys = await api.apiKeys();
-    notice = "Key deleted.";
+    confirmBox = {
+      title: "Permanently delete this key?",
+      description: "The key and its usage history disappear. Revoke instead if you might need it back.",
+      label: "Delete",
+      run: async () => {
+        await api.deleteAPIKey(id);
+        keys = await api.apiKeys();
+        notice = "Key deleted.";
+      },
+    };
   }
 
   function copySecret() {
     navigator.clipboard.writeText(freshSecret);
     notice = "Secret copied to clipboard.";
+  }
+
+  // Single shared confirmation dialog for every destructive action below.
+  let confirmBox: { title: string; description: string; label: string; run: () => Promise<void> } | null = null;
+  let confirmBusy = false;
+
+  async function runConfirm() {
+    if (!confirmBox) return;
+    confirmBusy = true;
+    try {
+      await confirmBox.run();
+    } catch (e) {
+      notice = e instanceof Error ? e.message : "Action failed.";
+    } finally {
+      confirmBusy = false;
+      confirmBox = null;
+    }
   }
 </script>
 
@@ -259,6 +312,16 @@
   <h2 class="text-2xl font-bold">Settings</h2>
   {#if error}<p class="text-sm text-destructive">{error}</p>{/if}
   {#if notice}<p class="text-sm text-muted-foreground">{notice}</p>{/if}
+
+  <ConfirmDialog
+    open={confirmBox !== null}
+    title={confirmBox ? confirmBox.title : ""}
+    description={confirmBox ? confirmBox.description : ""}
+    confirmLabel={confirmBox ? confirmBox.label : ""}
+    busy={confirmBusy}
+    onConfirm={runConfirm}
+    onCancel={() => { if (!confirmBusy) confirmBox = null; }}
+  />
   {#if !data}
     <p class="text-sm text-muted-foreground">Loading…</p>
   {:else}
