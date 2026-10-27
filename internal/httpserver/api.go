@@ -936,6 +936,10 @@ func (s *Server) apiProjectUpdate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "not found")
 		return
 	}
+	if !s.canAccessProject(r, id) {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
 	var input struct {
 		Name               *string `json:"name"`
 		DefaultEnvironment *string `json:"defaultEnvironment"`
