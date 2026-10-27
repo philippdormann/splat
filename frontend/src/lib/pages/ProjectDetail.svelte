@@ -7,6 +7,7 @@
   import { toast } from "svelte-sonner";
   import Badge from "$lib/components/badge.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import Dialog from "$lib/components/Dialog.svelte";
   import PlatformIcon from "$lib/components/PlatformIcon.svelte";
   import ProjectOverview from "$lib/pages/ProjectOverview.svelte";
   import { ArrowLeft, Copy, RefreshCw, Trash2, Upload, Check, Rocket, FlaskConical } from "lucide-svelte";
@@ -32,6 +33,7 @@
   let access: ProjectAccess | null = null;
   let accessUsers: User[] = [];
   let grantUserId: number | null = null;
+  let showGrant = false;
 
   async function loadAccess() {
     try {
@@ -52,6 +54,7 @@
     try {
       await api.grantProjectMember(id, grantUserId);
       grantUserId = null;
+      showGrant = false;
       access = await api.projectAccess(id);
       toast.success("Access granted.");
     } catch (e) {
@@ -331,13 +334,27 @@
                 <span class="text-xs text-muted-foreground">No direct grants.</span>
               {/each}
             </div>
-            <div class="mt-2 flex gap-2">
-              <select class="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs" bind:value={grantUserId}>
-                <option value={null}>Grant user…</option>
-                {#each accessUsers.filter((u) => !(access?.memberIds ?? []).includes(u.id)) as u}<option value={u.id}>{u.username} ({u.role})</option>{/each}
-              </select>
-              <Button size="sm" variant="outline" on:click={grantAccess}>Grant</Button>
+            <div class="mt-2">
+              <Button size="sm" variant="outline" on:click={() => (showGrant = true)}>Grant user</Button>
             </div>
+            {#if showGrant}
+              <Dialog open={true} title="Grant project access" onClose={() => (showGrant = false)}>
+                <div class="space-y-3">
+                  <p class="text-xs text-muted-foreground">The user sees this project's dashboard, issues, and events. Team grants are managed under Settings → Users & Teams.</p>
+                  <div class="space-y-1">
+                    <label class="text-xs">User</label>
+                    <select class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={grantUserId}>
+                      <option value={null}>Pick a user…</option>
+                      {#each accessUsers.filter((u) => !(access?.memberIds ?? []).includes(u.id)) as u}<option value={u.id}>{u.username} ({u.role})</option>{/each}
+                    </select>
+                  </div>
+                  <div class="flex gap-2">
+                    <Button size="sm" on:click={grantAccess} disabled={!grantUserId}>Grant access</Button>
+                    <Button size="sm" variant="outline" on:click={() => (showGrant = false)}>Cancel</Button>
+                  </div>
+                </div>
+              </Dialog>
+            {/if}
           </div>
           <div>
             <p class="text-xs text-muted-foreground">Teams ({access.teams.length})</p>
