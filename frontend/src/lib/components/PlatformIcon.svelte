@@ -5,9 +5,9 @@
   export let size = 24;
 
   function iconFor(id: string) {
+    if (id === "javascript-browser") return Globe;
     if (id.startsWith("python")) return FileCode2;
     if (id.startsWith("java")) return Coffee;
-    if (id === "javascript-browser") return Globe;
     if (id === "bun" || id === "nodejs" || id === "nextjs") return Braces;
     return Boxes;
   }

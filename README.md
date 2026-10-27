@@ -2,11 +2,12 @@
 
 **A lightweight, self-hosted, Sentry-compatible error tracker.** One Go
 binary, SQLite by default (Postgres optional), a small Docker image. No
-Redis, no Node build step at runtime, no CDN at runtime. Point your app's
-official Sentry SDK at it and it just works - built to run comfortably on
-a small VPS instead of needing a cluster.
+Redis, no runtime dependencies, no CDN. The dashboard is a Svelte 5 +
+shadcn-svelte SPA built with bun and embedded in the binary. Point your
+app's official Sentry SDK at it and it just works - built to run
+comfortably on a small VPS instead of needing a cluster.
 
-![Errgotrack dashboard](docs/screenshot.png)
+![Errgotrack dashboard](docs/screenshot-dashboard.png)
 
 ## Why
 
@@ -26,28 +27,46 @@ command.
   hand-crafted test payloads.
 - **Automatic issue grouping** - repeated occurrences of the same bug
   collapse into one issue instead of flooding your list; resolved issues
-  reopen automatically if they recur.
+  reopen automatically if they recur (or pin a resolve to a release so it
+  only reopens on a *different* release); ignored issues never reopen, and
+  muted issues stay silent - with optional expiry - while still counting
+  events.
 - **A real dashboard** - events over time, top exceptions, error
   distribution by project/environment, new-vs-recurring issues, all backed
-  by live SQL aggregates, not placeholder charts.
+  by live SQL aggregates, not placeholder charts. Per-project overviews add
+  severity-stacked volume, release health, and top issues.
 - **Rich issue detail** - full stack traces with surrounding source lines
   and captured local variables, tags, breadcrumbs (with their structured
   data), user/request context, and Sentry's `contexts` object (browser, OS,
   device, custom frameworks) all rendered, not just the exception message.
-- **Notifications on Telegram, Slack, Discord, Microsoft Teams, and Google
-  Sheets** - configure any combination; each delivers independently through a durable
+  Step through individual event occurrences, inspect the reconstructed raw
+  event JSON, and leave operator notes on the issue.
+- **Source map resolution** - upload `.map` files per release + bundle URL
+  and minified JS frames resolve to the original file/line/function with
+  source context.
+- **Release health** - SDK session envelopes are stored and aggregated into
+  crash-free sessions/users per release, with a releases view and session
+  health trends. No APM/tracing backend required.
+- **Notifications on Telegram, Slack, Discord, Microsoft Teams, Google
+  Sheets, email, and generic webhooks** - configure any combination; each delivers independently through a durable
   retry queue, so one channel's outage never blocks or duplicates another's
-  alert, and none of them can block event ingestion itself.
+  alert, and none of them can block event ingestion itself. Generic
+  webhooks post signed JSON (`X-Errgotrack-Signature`) with custom headers
+  to any HTTPS endpoint.
 - **Trace correlation** - if an event carries a `trace_id` (from an SDK
   wired for distributed tracing), link straight out to whatever tracing
   backend you already run (Jaeger, Tempo, Honeycomb, ...). Errgotrack
   doesn't store spans itself - it stays an error tracker, not an APM.
-- **Multi-project, with per-platform setup snippets** - create a project,
-  pick its framework from a dropdown, get the right install command + init
-  code with your real DSN already filled in.
+- **Multi-project, with per-platform setup snippets** - create a project
+  from a visual platform picker, get the right install command + init
+  code with your real DSN already filled in. A one-click test event
+  verifies the whole pipeline and jumps straight to its issue.
 - **Search, filters, bulk actions** - full-text search over messages and
-  exception types (SQLite FTS5), filter by project/environment/status, bulk
-  resolve/ignore.
+  exception types (SQLite FTS5), filter by project/environment/status
+  (including muted), bulk resolve/ignore/mute.
+- **API keys with scopes** - `egt_…` Bearer tokens for automation
+  (`ingest`/`read`/`write`), optionally project-bound and expiring, hashes
+  only on disk, secret shown once.
 - **Configurable retention** - old events age out in the background without
   ever touching issue history (counts, first/last seen stay intact).
 - **Automatic dark/light theme, keyboard-friendly, no CDN** - the dashboard is a
@@ -71,6 +90,7 @@ compatibility wall:
 | Python - Flask | ✅ verified with the real SDK, real request-handling exception |
 | Python - FastAPI | ✅ verified with the real SDK, real request-handling exception |
 | Node.js | ✅ verified with `@sentry/node` |
+| Bun | ✅ setup snippet + protocol verified (`@sentry/bun` speaks the same envelope) |
 | Java (plain JVM, Spring Boot, Quarkus) | ✅ core SDK verified directly; Spring Boot/Quarkus wrap the same core |
 | Next.js | ⚠️ protocol/payload shape verified, not a full Next.js build |
 | JavaScript (browser) | ⚠️ same core protocol as Node, not separately run |
@@ -121,9 +141,10 @@ environment variables, if you're iterating rather than deploying (run
 Then:
 
 1. Open http://localhost:8080 and log in.
-2. Create a project, picking your framework from the dropdown.
+2. Create a project, picking your platform from the grid.
 3. Copy the DSN and install snippet shown - it already has your real DSN
-   filled in.
+   filled in. No app handy? Hit "Send test event" on the project page to
+   verify the whole pipeline and jump straight to its issue.
 4. Trigger a real exception in your app. It should show up on the
    dashboard within a second.
 
@@ -180,13 +201,12 @@ installs (Python, Node, Java), not just hand-crafted payloads - see
 **Explicitly not implemented** (accepted and silently dropped where the
 protocol allows it, so a real SDK never errors, but nothing is stored or
 shown for these):
-- Performance tracing / transactions, profiling, session replay, release
-  health "sessions", client reports, metrics. This is an error tracker, not
-  an APM platform - see Trace correlation above for the lightweight
-  alternative.
+- Performance tracing / transactions, profiling, session replay, client
+  reports, metrics. This is an error tracker, not an APM platform - see
+  Trace correlation above for the lightweight alternative. (Session
+  envelopes *are* stored, but only for release-health aggregation.)
 - Attachments (binary item payloads are parsed per envelope framing but not
   persisted).
-- Source map resolution / server-side symbolication of minified stacks.
 - `X-Sentry-Rate-Limits` backoff signaling to the SDK (the server rate-limits
   by IP; it doesn't yet tell a misbehaving client to slow down).
 
@@ -201,7 +221,10 @@ that would otherwise fragment one bug into many issues.
 
 A resolved issue that sees a new occurrence flips back to `unresolved`
 ("reopened"). An ignored issue does not auto-reopen - that's the point of
-ignoring it.
+ignoring it. A muted issue stays silent while counting events unless its
+mute expiry passes. Resolving "in the next release" pins the resolve to
+the current release: same-release events keep it resolved, a different
+release reopens it.
 
 ## Dashboard
 
@@ -210,7 +233,7 @@ Svelte 5 + shadcn-svelte SPA in [`frontend/`](frontend/), built with bun
 `web/dist` - the server only serves the built `index.html` + fingerprinted
 assets and a JSON API under `/api/v1/` (same-origin, session-cookie auth).
 The theme follows the OS color scheme live.
-Chart.js for charts, lucide-svelte icons. For local UI iteration,
+Charts use shadcn-svelte chart components over layerchart, lucide-svelte icons. For local UI iteration,
 `cd frontend && bun run dev` proxies `/api` to a Go server on `:8080`.
 
 ## Notifications
@@ -341,12 +364,12 @@ go test -race ./...           # same, with the race detector
 ./tests/integration_sentry_sdk.sh   # real sentry-sdk client, real HTTP server
 ```
 
-Covers: envelope/store parsing (including length-prefixed items with
+Covers: envelope/store/session parsing (including length-prefixed items with
 embedded newlines), auth/project resolution, fingerprinting and grouping
 edge cases, concurrent ingestion, migrations (idempotent re-open, FK
 enforcement, on both SQLite and Postgres), FTS5/ILIKE search and pagination,
 notification formatting/retry/
-backoff/cooldowns across all four channels and their independence from
+backoff/cooldowns across all channels and their independence from
 each other, retention deletion vs. issue summary preservation, and
 JSON-escaping of untrusted event data (a regression test serializes an issue
 with a `<script>` payload in the exception type/tags/project
@@ -402,6 +425,21 @@ directly while the server is live is not.) **Restore:** stop the server,
 replace the file, start it again. **Backup (Postgres):** use `pg_dump` /
 your provider's snapshots as usual.
 
+## Health, metrics & security
+
+- `GET /healthz` - liveness (`{"status":"ok"}`), no database touch.
+- `GET /readyz` - readiness: pings the database, returns version + uptime,
+  `503` when the DB is unreachable. `GET /api/v1/meta` exposes the same
+  build metadata publicly.
+- `GET /metrics` - Prometheus exposition (request counts by route, ingested
+  / rejected events, DB gauges). Off unless `ERRGOTRACK_METRICS=1`.
+- Every response carries a strict Content-Security-Policy (the SPA has no
+  inline scripts or third-party fetches), `X-Frame-Options: DENY`, and
+  `X-Robots-Tag: noindex, nofollow`, plus a deny-all `robots.txt`.
+- Webhook URLs are SSRF-guarded at save time (no private/link-local
+  targets); generic webhooks sign bodies with HMAC-SHA256. API keys store
+  hashes only.
+
 ## What's deliberately not here
 
 - No performance tracing / APM, profiling, or session replay - this is an
@@ -414,19 +452,26 @@ your provider's snapshots as usual.
 
 ```
 cmd/server/            entrypoint, wiring, graceful shutdown
-frontend/              Svelte 5 + shadcn-svelte SPA (bun, vite, tailwind);
-                       `bun run build` emits web/dist, embedded in the binary
-internal/sentryprotocol/  envelope + store parsing, auth/DSN parsing
+frontend/              Svelte 5 + shadcn-svelte SPA (bun, vite, tailwind,
+                       layerchart charts); `bun run build` emits web/dist,
+                       embedded in the binary
+internal/sentryprotocol/  envelope + store + session parsing, auth/DSN parsing
 internal/ingestion/    HTTP handlers for the Sentry-compatible endpoints
-internal/issues/       fingerprinting, grouping, status transitions
+internal/issues/       fingerprinting, grouping, status transitions, notes
 internal/events/       event storage, FTS5 (sqlite) / ILIKE (postgres) search
 internal/dashboard/    aggregate queries behind the dashboard/stat panels
+internal/sessions/     session ingestion, crash-free math, release rollups
 internal/projects/     project CRUD, DSN/key rotation
 internal/platforms/    per-framework setup snippets shown on a project's page
 internal/notifications/   alert rules, durable per-channel queue
+internal/email/        stdlib SMTP delivery
 internal/telegram/ + internal/webhooks/   channel-specific formatting/delivery clients
 internal/tracing/      trace_id -> external tracing backend URL correlation
 internal/auth/         admin login, sessions, CSRF
+internal/apikeys/      Bearer keys, scopes, expiry, rotation
+internal/sourcemaps/   upload + dependency-free v3 resolution
+internal/storage/      usage reporting, manual sweep + vacuum
+internal/metrics/      dependency-free Prometheus exposition
 internal/retention/    bounded-batch event cleanup
 internal/database/     sqlite (default) + postgres backends, embedded migrations
 internal/httpserver/   routes, middleware, JSON API (/api/v1/), SPA serving
