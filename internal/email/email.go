@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/smtp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -103,7 +104,7 @@ func Send(cfg Config, to string, a Alert) error {
 		"Content-Type: text/plain; charset=utf-8\r\n" +
 		"\r\n" + Body(a)
 
-	addr := fmt.Sprintf("%s:%d", cfg.Host, port)
+	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(port))
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	conn, err := dialer.Dial("tcp", addr)
 	if err != nil {

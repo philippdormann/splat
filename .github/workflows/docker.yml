@@ -32,6 +32,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go test -race ./...
+      - run: go vet ./...
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - uses: oven-sh/setup-bun@v2
         with:
@@ -40,9 +41,51 @@ jobs:
           if [ -d frontend ]; then
             cd frontend && bun install --frozen-lockfile && bun run check && bun run build
           fi
+      - run: |
+          if [ -d frontend ]; then
+            cd frontend && bun audit
+          fi
+
+  trivy-fs:
+    # Dependency/license gate on the repo itself: fails the run on any
+    # HIGH/CRITICAL CVE in Go modules or the bun lockfile.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan repo for HIGH/CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+  trivy-image:
+    # Same gate for the shipped image (base images included). Builds
+    # amd64-only for speed; the multi-arch publish job stays unchanged.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build local image for scanning
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: errgotrack:trivy-scan
+          build-args: |
+            VERSION=ci-scan
+      - name: Scan image for HIGH/CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: errgotrack:trivy-scan
+          severity: HIGH,CRITICAL
+          exit-code: "1"
 
   build-and-push:
-    needs: test
+    needs: [test, trivy-fs, trivy-image]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
