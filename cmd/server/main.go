@@ -20,6 +20,7 @@ import (
 	"errgotrack/internal/events"
 	"errgotrack/internal/httpserver"
 	"errgotrack/internal/issues"
+	"errgotrack/internal/metrics"
 	"errgotrack/internal/notifications"
 	"errgotrack/internal/projects"
 	"errgotrack/internal/retention"
@@ -102,6 +103,12 @@ func main() {
 
 	sweeper := retention.NewSweeper(db, logger)
 
+	var reg *metrics.Registry
+	if cfg.MetricsEnabled {
+		reg = metrics.NewRegistry()
+		logger.Info("prometheus metrics enabled", "path", "/metrics")
+	}
+
 	dbPath := ""
 	if cfg.DBDriver != "postgres" {
 		dbPath = cfg.DatabasePath
@@ -120,6 +127,7 @@ func main() {
 		SourceMaps:    sourcemaps.NewStore(db),
 		Sessions:      sessions.NewStore(db),
 		APIKeys:       apikeys.NewStore(db),
+		Metrics:       reg,
 		DB:            db,
 		Logger:        logger,
 		PublicURL:     cfg.PublicURL,

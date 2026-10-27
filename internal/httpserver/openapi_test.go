@@ -72,6 +72,7 @@ func TestOpenAPICoversRoutes(t *testing.T) {
 		{"get", "/robots.txt"},
 		{"get", "/readyz"},
 		{"get", "/api/v1/meta"},
+		{"get", "/metrics"},
 	} {
 		ops, ok := doc.Paths[tc.path]
 		if !ok {

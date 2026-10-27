@@ -19,6 +19,7 @@ import (
 	"errgotrack/internal/events"
 	"errgotrack/internal/ingestion"
 	"errgotrack/internal/issues"
+	"errgotrack/internal/metrics"
 	"errgotrack/internal/notifications"
 	"errgotrack/internal/projects"
 	"errgotrack/internal/retention"
@@ -42,6 +43,7 @@ type Server struct {
 	SourceMaps    *sourcemaps.Store
 	APIKeys       *apikeys.Store
 	Sessions      *sessions.Store
+	Metrics       *metrics.Registry // nil disables /metrics
 	DB            *database.DB
 	Logger        *slog.Logger
 	PublicURL     string
@@ -63,7 +65,9 @@ func New(s *Server) (*Server, error) {
 }
 
 func (s *Server) Handler() http.Handler {
-	return recoverMiddleware(s.Logger, loggingMiddleware(s.Logger, securityHeadersMiddleware(s.mux)))
+	// Logging sits inside security headers so its `next` is the mux
+	// itself, letting request metrics resolve route patterns.
+	return recoverMiddleware(s.Logger, securityHeadersMiddleware(loggingMiddleware(s.Logger, s.Metrics, s.mux)))
 }
 
 func (s *Server) routes() {
@@ -74,6 +78,7 @@ func (s *Server) routes() {
 		Issues:        s.Issues,
 		Events:        s.Events,
 		Notifications: s.Notifications,
+		Metrics:       s.Metrics,
 		Logger:        s.Logger,
 		PublicURL:     s.PublicURL,
 	}
@@ -88,6 +93,34 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /readyz", s.readyz)
 	s.mux.HandleFunc("GET /robots.txt", s.robots)
 	s.mux.HandleFunc("GET /api/v1/meta", s.apiMeta)
+
+	if s.Metrics != nil {
+		m := s.Metrics
+		m.CounterVec("errgotrack_http_requests_total", "HTTP requests by route and status.", []string{"route", "code"})
+		m.Counter("errgotrack_events_ingested_total", "Events stored via ingestion.")
+		m.CounterVec("errgotrack_events_rejected_total", "Events rejected before storage, by reason.", []string{"reason"})
+		m.GaugeFunc("errgotrack_db_events_total", "Rows in events.", func() float64 {
+			return countOr(s.DB, `SELECT COUNT(*) FROM events`)
+		})
+		m.GaugeFunc("errgotrack_db_issues_unresolved_total", "Unresolved issues.", func() float64 {
+			return countOr(s.DB, `SELECT COUNT(*) FROM issues WHERE status = 'unresolved'`)
+		})
+		m.GaugeFunc("errgotrack_notifications_pending_total", "Queued pending notifications.", func() float64 {
+			return countOr(s.DB, `SELECT COUNT(*) FROM notification_queue WHERE status = 'pending'`)
+		})
+		if s.Storage != nil {
+			m.GaugeFunc("errgotrack_db_size_bytes", "Database size in bytes.", func() float64 {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				u, err := s.Storage.Usage(ctx)
+				if err != nil {
+					return 0
+				}
+				return float64(u.SizeBytes)
+			})
+		}
+		s.mux.Handle("GET /metrics", m.Handler())
+	}
 
 	// JSON API for the Svelte SPA. Session cookie or Bearer API key;
 	// read vs write API-key scopes enforced per endpoint.
@@ -190,6 +223,21 @@ func (s *Server) serveSPA(w http.ResponseWriter, r *http.Request) {
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	// Liveness only: the process is up. Use /readyz to check the database.
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+}
+
+// countOr runs a COUNT(*) query for a gauge, returning 0 on any failure so
+// a scrape never fails because one gauge query did.
+func countOr(db *database.DB, query string) float64 {
+	if db == nil {
+		return 0
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var n int64
+	if err := db.QueryRowContext(ctx, query).Scan(&n); err != nil {
+		return 0
+	}
+	return float64(n)
 }
 
 func (s *Server) robots(w http.ResponseWriter, r *http.Request) {

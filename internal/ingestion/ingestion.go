@@ -20,6 +20,7 @@ import (
 	"errgotrack/internal/apikeys"
 	"errgotrack/internal/events"
 	"errgotrack/internal/issues"
+	"errgotrack/internal/metrics"
 	"errgotrack/internal/notifications"
 	"errgotrack/internal/projects"
 	"errgotrack/internal/sentryprotocol"
@@ -35,8 +36,22 @@ type Handler struct {
 	Events        *events.Store
 	Notifications *notifications.Store
 	Sessions      *sessions.Store // optional: nil disables session tracking
+	Metrics       *metrics.Registry
 	Logger        *slog.Logger
 	PublicURL     string
+}
+
+func (h *Handler) reject(w http.ResponseWriter, reason string, code int, msg string) {
+	if h.Metrics != nil {
+		h.Metrics.Inc("errgotrack_events_rejected_total", reason)
+	}
+	http.Error(w, msg, code)
+}
+
+func (h *Handler) ingested() {
+	if h.Metrics != nil {
+		h.Metrics.Inc("errgotrack_events_ingested_total")
+	}
 }
 
 // Envelope handles POST /api/{project}/envelope/.
@@ -48,7 +63,7 @@ func (h *Handler) Envelope(w http.ResponseWriter, r *http.Request) {
 	env, err := sentryprotocol.ParseEnvelope(body)
 	if err != nil {
 		h.Logger.Warn("envelope parse failed", "error", err)
-		http.Error(w, `{"error":"malformed envelope"}`, http.StatusBadRequest)
+		h.reject(w, "malformed_body", http.StatusBadRequest, `{"error":"malformed envelope"}`)
 		return
 	}
 
@@ -90,7 +105,9 @@ func (h *Handler) Envelope(w http.ResponseWriter, r *http.Request) {
 		if ev.EventID == "" {
 			ev.EventID = eventID
 		}
-		h.ingestEvent(r.Context(), project, ev)
+		if h.ingestEvent(r.Context(), project, ev) != nil {
+			h.ingested()
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -113,13 +130,15 @@ func (h *Handler) Store(w http.ResponseWriter, r *http.Request) {
 	ev, err := sentryprotocol.ParseEventPayload(body)
 	if err != nil {
 		h.Logger.Warn("store event parse failed", "project", project.Slug, "error", err)
-		http.Error(w, `{"error":"malformed event"}`, http.StatusBadRequest)
+		h.reject(w, "malformed_body", http.StatusBadRequest, `{"error":"malformed event"}`)
 		return
 	}
 	if ev.EventID == "" {
 		ev.EventID = newEventID()
 	}
-	h.ingestEvent(r.Context(), project, ev)
+	if h.ingestEvent(r.Context(), project, ev) != nil {
+		h.ingested()
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"id":"%s"}`, ev.EventID)
@@ -131,7 +150,7 @@ func (h *Handler) readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool
 	if r.Header.Get("Content-Encoding") == "gzip" {
 		gz, err := gzip.NewReader(r.Body)
 		if err != nil {
-			http.Error(w, `{"error":"invalid gzip body"}`, http.StatusBadRequest)
+			h.reject(w, "malformed_body", http.StatusBadRequest, `{"error":"invalid gzip body"}`)
 			return nil, false
 		}
 		defer gz.Close()
@@ -141,9 +160,9 @@ func (h *Handler) readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool
 	if err != nil {
 		var maxErr *http.MaxBytesError
 		if errors.As(err, &maxErr) {
-			http.Error(w, `{"error":"payload too large"}`, http.StatusRequestEntityTooLarge)
+			h.reject(w, "payload_too_large", http.StatusRequestEntityTooLarge, `{"error":"payload too large"}`)
 		} else {
-			http.Error(w, `{"error":"could not read body"}`, http.StatusBadRequest)
+			h.reject(w, "malformed_body", http.StatusBadRequest, `{"error":"could not read body"}`)
 		}
 		return nil, false
 	}
@@ -162,11 +181,11 @@ func (h *Handler) resolveProject(w http.ResponseWriter, r *http.Request, authKey
 		if p, ok := h.resolveProjectByKey(w, r); ok {
 			return p, true
 		}
-		http.Error(w, `{"error":"invalid project key"}`, http.StatusUnauthorized)
+		h.reject(w, "auth", http.StatusUnauthorized, `{"error":"invalid project key"}`)
 		return nil, false
 	}
 	if !project.Enabled {
-		http.Error(w, `{"error":"project disabled"}`, http.StatusForbidden)
+		h.reject(w, "project_disabled", http.StatusForbidden, `{"error":"project disabled"}`)
 		return nil, false
 	}
 	// The URL's {project} segment is the DSN's numeric project id; verify
@@ -174,7 +193,7 @@ func (h *Handler) resolveProject(w http.ResponseWriter, r *http.Request, authKey
 	// against another project's ingestion path.
 	if idStr := r.PathValue("project"); idStr != "" {
 		if id, err := strconv.ParseInt(idStr, 10, 64); err == nil && id != project.ID {
-			http.Error(w, `{"error":"project key does not match project id"}`, http.StatusUnauthorized)
+			h.reject(w, "project_mismatch", http.StatusUnauthorized, `{"error":"project key does not match project id"}`)
 			return nil, false
 		}
 	}
@@ -188,26 +207,26 @@ func (h *Handler) resolveProject(w http.ResponseWriter, r *http.Request, authKey
 func (h *Handler) resolveProjectByKey(w http.ResponseWriter, r *http.Request) (*projects.Project, bool) {
 	secret := apikeys.BearerToken(r)
 	if secret == "" || h.APIKeys == nil {
-		http.Error(w, `{"error":"missing authentication"}`, http.StatusUnauthorized)
+		h.reject(w, "auth", http.StatusUnauthorized, `{"error":"missing authentication"}`)
 		return nil, false
 	}
 	k, err := h.APIKeys.Validate(secret)
 	if err != nil || !k.HasScope(apikeys.ScopeIngest) {
-		http.Error(w, `{"error":"invalid project key"}`, http.StatusUnauthorized)
+		h.reject(w, "auth", http.StatusUnauthorized, `{"error":"invalid project key"}`)
 		return nil, false
 	}
 	id, err := strconv.ParseInt(r.PathValue("project"), 10, 64)
 	if err != nil {
-		http.Error(w, `{"error":"invalid project id"}`, http.StatusUnauthorized)
+		h.reject(w, "auth", http.StatusUnauthorized, `{"error":"invalid project id"}`)
 		return nil, false
 	}
 	if k.ProjectID.Valid && k.ProjectID.Int64 != id {
-		http.Error(w, `{"error":"key not valid for this project"}`, http.StatusForbidden)
+		h.reject(w, "project_mismatch", http.StatusForbidden, `{"error":"key not valid for this project"}`)
 		return nil, false
 	}
 	project, err := h.Projects.Get(id)
 	if err != nil || !project.Enabled {
-		http.Error(w, `{"error":"invalid project key"}`, http.StatusUnauthorized)
+		h.reject(w, "auth", http.StatusUnauthorized, `{"error":"invalid project key"}`)
 		return nil, false
 	}
 	h.APIKeys.TouchLastUsed(k.ID)

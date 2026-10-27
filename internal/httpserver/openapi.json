@@ -1156,6 +1156,13 @@
         "security": [],
         "responses": { "200": { "description": "Build metadata." } }
       }
+    },
+    "/metrics": {
+      "get": {
+        "summary": "Prometheus metrics (only when ERRGOTRACK_METRICS is enabled)",
+        "security": [],
+        "responses": { "200": { "description": "Prometheus text exposition. 404 when disabled." } }
+      }
     }
   }
 }

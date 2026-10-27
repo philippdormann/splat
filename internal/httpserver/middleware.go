@@ -3,7 +3,10 @@ package httpserver
 import (
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
+
+	"errgotrack/internal/metrics"
 )
 
 // recoverMiddleware turns a panicking handler into a generic 500 instead of
@@ -50,11 +53,24 @@ func (s *statusRecorder) WriteHeader(code int) {
 	s.ResponseWriter.WriteHeader(code)
 }
 
-func loggingMiddleware(logger *slog.Logger, next http.Handler) http.Handler {
+func loggingMiddleware(logger *slog.Logger, m *metrics.Registry, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
 		logger.Info("request", "method", r.Method, "path", r.URL.Path, "status", rec.status, "duration", time.Since(start))
+		if m != nil {
+			// r.Pattern is only populated for handlers inside the mux;
+			// this middleware wraps it from the outside, so resolve the
+			// pattern explicitly ("" when nothing matched). Patterns
+			// already include the method ("GET /metrics").
+			route := "unknown"
+			if mux, ok := next.(*http.ServeMux); ok {
+				if _, pattern := mux.Handler(r); pattern != "" {
+					route = pattern
+				}
+			}
+			m.Inc("errgotrack_http_requests_total", route, strconv.Itoa(rec.status))
+		}
 	})
 }

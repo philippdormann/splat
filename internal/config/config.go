@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -19,6 +20,9 @@ type Config struct {
 	SessionSecret   string
 	RetentionSweep  time.Duration
 	ShutdownTimeout time.Duration
+	// MetricsEnabled exposes GET /metrics (Prometheus text format).
+	// Off by default: the endpoint leaks operational counts.
+	MetricsEnabled bool
 }
 
 func Load() (Config, error) {
@@ -33,6 +37,7 @@ func Load() (Config, error) {
 		SessionSecret:   getenv("ERRGOTRACK_SESSION_SECRET", ""),
 		RetentionSweep:  getenvDuration("ERRGOTRACK_RETENTION_SWEEP", time.Hour),
 		ShutdownTimeout: getenvDuration("ERRGOTRACK_SHUTDOWN_TIMEOUT", 10*time.Second),
+		MetricsEnabled:  getenvBool("ERRGOTRACK_METRICS", false),
 	}
 	if c.SessionSecret == "" {
 		return c, fmt.Errorf("ERRGOTRACK_SESSION_SECRET must be set (random 32+ byte string)")
@@ -62,6 +67,18 @@ func getenvDuration(key string, fallback time.Duration) time.Duration {
 	if v := os.Getenv(key); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			return d
+		}
+	}
+	return fallback
+}
+
+func getenvBool(key string, fallback bool) bool {
+	if v := os.Getenv(key); v != "" {
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "1", "true", "yes", "on":
+			return true
+		case "0", "false", "no", "off":
+			return false
 		}
 	}
 	return fallback
