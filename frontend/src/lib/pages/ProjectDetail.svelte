@@ -129,7 +129,7 @@
         <div class="grid grid-cols-2 gap-3">
           <div class="space-y-1"><label class="text-xs">Name</label><Input bind:value={data.project.name} /></div>
           <div class="space-y-1"><label class="text-xs">Default environment</label><Input bind:value={data.project.defaultEnvironment} /></div>
-          <div class="space-y-1"><label class="text-xs">Retention (days)</label><Input type="number" bind:value={data.project.retentionDays} /></div>
+          <div class="space-y-1"><label class="text-xs">Retention (days, 0 = keep forever)</label><Input type="number" min="0" bind:value={data.project.retentionDays} /></div>
           <div class="space-y-1">
             <label class="text-xs">Platform</label>
             <select class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={data.project.platform}>

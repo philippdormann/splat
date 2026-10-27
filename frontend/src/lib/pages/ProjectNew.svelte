@@ -11,7 +11,7 @@
   let slug = "";
   let defaultEnvironment = "production";
   let platform = "";
-  let retentionDays = 90;
+  let retentionDays = 0;
   let platforms: Platform[] = [];
   let error = "";
   let busy = false;
@@ -48,7 +48,7 @@
       <div class="space-y-2"><label class="text-sm font-medium">Slug</label><Input bind:value={slug} required placeholder="my-app" /></div>
       <div class="grid grid-cols-2 gap-3">
         <div class="space-y-2"><label class="text-sm font-medium">Environment</label><Input bind:value={defaultEnvironment} placeholder="production" /></div>
-        <div class="space-y-2"><label class="text-sm font-medium">Retention (days)</label><Input type="number" bind:value={retentionDays} /></div>
+        <div class="space-y-2"><label class="text-sm font-medium">Retention (days, 0 = keep forever)</label><Input type="number" min="0" bind:value={retentionDays} /></div>
       </div>
       <div class="space-y-2">
         <label class="text-sm font-medium">Platform</label>

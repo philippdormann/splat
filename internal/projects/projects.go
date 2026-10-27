@@ -49,8 +49,10 @@ func (s *Store) Create(name, slug, defaultEnv, platform string, retentionDays in
 	if defaultEnv == "" {
 		defaultEnv = "production"
 	}
-	if retentionDays <= 0 {
-		retentionDays = 90
+	// retentionDays <= 0 means infinite: the sweeper only touches projects
+	// with retention_days > 0, so clamp negatives to 0 (keep forever).
+	if retentionDays < 0 {
+		retentionDays = 0
 	}
 	if !platforms.Valid(platform) {
 		platform = platforms.DefaultID
@@ -144,8 +146,8 @@ func (s *Store) UpdateSettings(id int64, name, defaultEnvironment, platform stri
 	if defaultEnvironment == "" {
 		defaultEnvironment = "production"
 	}
-	if retentionDays <= 0 {
-		retentionDays = 90
+	if retentionDays < 0 {
+		retentionDays = 0
 	}
 	if !platforms.Valid(platform) {
 		platform = platforms.DefaultID

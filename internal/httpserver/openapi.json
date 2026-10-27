@@ -186,7 +186,7 @@
           "slug": { "type": "string" },
           "defaultEnvironment": { "type": "string" },
           "enabled": { "type": "boolean" },
-          "retentionDays": { "type": "integer" },
+          "retentionDays": { "type": "integer", "description": "0 keeps events forever (the default)." },
           "platform": { "type": "string" },
           "platformLabel": { "type": "string" },
           "createdAt": { "type": "string", "format": "date-time" },
@@ -461,7 +461,7 @@
                   "slug": { "type": "string" },
                   "defaultEnvironment": { "type": "string" },
                   "platform": { "type": "string" },
-                  "retentionDays": { "type": "integer" }
+                  "retentionDays": { "type": "integer", "description": "0 keeps events forever (the default)." }
                 }
               }
             }
@@ -500,7 +500,7 @@
                   "name": { "type": "string" },
                   "defaultEnvironment": { "type": "string" },
                   "platform": { "type": "string" },
-                  "retentionDays": { "type": "integer" },
+                  "retentionDays": { "type": "integer", "description": "0 keeps events forever (the default)." },
                   "enabled": { "type": "boolean" }
                 }
               }

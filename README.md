@@ -247,7 +247,8 @@ a direct link into whatever tracing backend you already run.
 
 ## Retention
 
-Each project has a `retention_days` setting. A background sweeper
+Each project has a `retention_days` setting (default `0` = keep events
+forever). A background sweeper
 (`internal/retention`) deletes events older than that in bounded batches of
 500 rows, so it never holds a long-running transaction that would stall
 ingestion. **Issue summaries (title, counts, first/last seen) are a
