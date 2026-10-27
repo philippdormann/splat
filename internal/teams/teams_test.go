@@ -4,9 +4,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"errgotrack/internal/auth"
-	"errgotrack/internal/database"
-	"errgotrack/internal/projects"
+	"github.com/philippdormann/splat/internal/auth"
+	"github.com/philippdormann/splat/internal/database"
+	"github.com/philippdormann/splat/internal/projects"
 )
 
 func testDB(t *testing.T) (*database.DB, *auth.Store, *Store, int64) {

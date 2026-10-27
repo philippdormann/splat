@@ -17,16 +17,16 @@ import (
 	"strconv"
 	"time"
 
-	"errgotrack/internal/apikeys"
-	"errgotrack/internal/events"
-	"errgotrack/internal/issues"
-	"errgotrack/internal/logs"
-	"errgotrack/internal/metrics"
-	"errgotrack/internal/notifications"
-	"errgotrack/internal/projects"
-	"errgotrack/internal/sentryprotocol"
-	"errgotrack/internal/sessions"
-	"errgotrack/internal/traces"
+	"github.com/philippdormann/splat/internal/apikeys"
+	"github.com/philippdormann/splat/internal/events"
+	"github.com/philippdormann/splat/internal/issues"
+	"github.com/philippdormann/splat/internal/logs"
+	"github.com/philippdormann/splat/internal/metrics"
+	"github.com/philippdormann/splat/internal/notifications"
+	"github.com/philippdormann/splat/internal/projects"
+	"github.com/philippdormann/splat/internal/sentryprotocol"
+	"github.com/philippdormann/splat/internal/sessions"
+	"github.com/philippdormann/splat/internal/traces"
 )
 
 const maxBodyBytes = 2 << 20 // 2MiB: generous for a Django traceback + breadcrumbs, small enough to bound memory per request
@@ -388,7 +388,7 @@ func (h *Handler) SendTestEvent(ctx context.Context, project *projects.Project) 
 			Type:  "TestError",
 			Value: "This is a test event sent from Errgotrack - safe to resolve once received.",
 			Stacktrace: &sentryprotocol.Stacktrace{Frames: []sentryprotocol.Frame{{
-				Filename: "errgotrack/test.py", Function: "send_test_event",
+				Filename: "github.com/philippdormann/splat/test.py", Function: "send_test_event",
 				LineNo: 1, InApp: true, ContextLine: "raise TestError('hello from errgotrack')",
 			}}},
 		}}},

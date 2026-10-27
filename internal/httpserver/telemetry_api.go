@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"errgotrack/internal/logs"
-	"errgotrack/internal/traces"
+	"github.com/philippdormann/splat/internal/logs"
+	"github.com/philippdormann/splat/internal/traces"
 )
 
 // --- logs & traces (project-scoped reads) ---

@@ -11,8 +11,8 @@ import (
 	"net/url"
 	"time"
 
-	"errgotrack/internal/database"
-	"errgotrack/internal/platforms"
+	"github.com/philippdormann/splat/internal/database"
+	"github.com/philippdormann/splat/internal/platforms"
 )
 
 type Project struct {

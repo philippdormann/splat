@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"errgotrack/internal/sentryprotocol"
+	"github.com/philippdormann/splat/internal/sentryprotocol"
 )
 
 // realisticEvent mirrors what sentry-sdk actually sends for a Django

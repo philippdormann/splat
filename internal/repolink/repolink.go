@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"errgotrack/internal/database"
-	"errgotrack/internal/forge"
+	"github.com/philippdormann/splat/internal/database"
+	"github.com/philippdormann/splat/internal/forge"
 )
 
 type Store struct{ db *database.DB }

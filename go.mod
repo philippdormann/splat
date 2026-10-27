@@ -1,4 +1,4 @@
-module errgotrack
+module github.com/philippdormann/splat
 
 go 1.27.3
 

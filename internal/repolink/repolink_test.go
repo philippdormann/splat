@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"errgotrack/internal/database"
+	"github.com/philippdormann/splat/internal/database"
 )
 
 func testStore(t *testing.T) (*Store, int64) {

@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"errgotrack/internal/database"
+	"github.com/philippdormann/splat/internal/database"
 )
 
 const (

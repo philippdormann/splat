@@ -11,7 +11,7 @@ import (
 	"errors"
 	"strings"
 
-	"errgotrack/internal/database"
+	"github.com/philippdormann/splat/internal/database"
 )
 
 type Store struct{ db *database.DB }

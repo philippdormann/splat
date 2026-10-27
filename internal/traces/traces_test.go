@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"errgotrack/internal/database"
-	"errgotrack/internal/sentryprotocol"
+	"github.com/philippdormann/splat/internal/database"
+	"github.com/philippdormann/splat/internal/sentryprotocol"
 )
 
 const txnPayload = `{

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"errgotrack/internal/issues"
+	"github.com/philippdormann/splat/internal/issues"
 )
 
 // Event payloads are untrusted: an exception type, message, or tag value can

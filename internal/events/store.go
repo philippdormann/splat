@@ -4,7 +4,7 @@ package events
 
 import (
 	"database/sql"
-	"errgotrack/internal/database"
+	"github.com/philippdormann/splat/internal/database"
 	"errors"
 	"fmt"
 	"strings"

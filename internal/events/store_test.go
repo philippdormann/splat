@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"errgotrack/internal/database"
-	"errgotrack/internal/issues"
-	"errgotrack/internal/projects"
+	"github.com/philippdormann/splat/internal/database"
+	"github.com/philippdormann/splat/internal/issues"
+	"github.com/philippdormann/splat/internal/projects"
 )
 
 func setup(t *testing.T) (*database.DB, int64, int64) {

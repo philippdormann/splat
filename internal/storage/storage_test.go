@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"errgotrack/internal/database"
-	"errgotrack/internal/projects"
+	"github.com/philippdormann/splat/internal/database"
+	"github.com/philippdormann/splat/internal/projects"
 )
 
 func TestUsageOnFreshDB(t *testing.T) {

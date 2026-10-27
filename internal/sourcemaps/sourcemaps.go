@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"errgotrack/internal/database"
+	"github.com/philippdormann/splat/internal/database"
 )
 
 // MaxMapBytes caps a single uploaded map at 10 MiB - large enough for real

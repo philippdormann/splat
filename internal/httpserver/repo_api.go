@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"errgotrack/internal/forge"
-	"errgotrack/internal/repolink"
-	"errgotrack/internal/webhooks"
+	"github.com/philippdormann/splat/internal/forge"
+	"github.com/philippdormann/splat/internal/repolink"
+	"github.com/philippdormann/splat/internal/webhooks"
 )
 
 // --- repository integration (forge issues) ---

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"errgotrack/internal/database"
-	"errgotrack/internal/sentryprotocol"
+	"github.com/philippdormann/splat/internal/database"
+	"github.com/philippdormann/splat/internal/sentryprotocol"
 )
 
 type Store struct{ db *database.DB }

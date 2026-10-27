@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"errgotrack/internal/database"
+	"github.com/philippdormann/splat/internal/database"
 )
 
 func testHealthServer(t *testing.T) *Server {

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"errgotrack/internal/auth"
+	"github.com/philippdormann/splat/internal/auth"
 )
 
 // --- users & teams (admin session only) ---

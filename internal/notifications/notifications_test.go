@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"errgotrack/internal/database"
-	"errgotrack/internal/issues"
-	"errgotrack/internal/projects"
-	"errgotrack/internal/webhooks"
+	"github.com/philippdormann/splat/internal/database"
+	"github.com/philippdormann/splat/internal/issues"
+	"github.com/philippdormann/splat/internal/projects"
+	"github.com/philippdormann/splat/internal/webhooks"
 )
 
 // newTestStore sets up a project with Telegram enabled and the default

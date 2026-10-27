@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"errgotrack/internal/database"
+	"github.com/philippdormann/splat/internal/database"
 )
 
 // SessionUpdate is one "session" envelope item.

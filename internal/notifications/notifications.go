@@ -19,10 +19,10 @@ import (
 	"strings"
 	"time"
 
-	"errgotrack/internal/database"
-	"errgotrack/internal/email"
-	"errgotrack/internal/telegram"
-	"errgotrack/internal/webhooks"
+	"github.com/philippdormann/splat/internal/database"
+	"github.com/philippdormann/splat/internal/email"
+	"github.com/philippdormann/splat/internal/telegram"
+	"github.com/philippdormann/splat/internal/webhooks"
 )
 
 type TelegramConfig struct {

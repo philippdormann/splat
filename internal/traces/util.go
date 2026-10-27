@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"errgotrack/internal/sentryprotocol"
+	"github.com/philippdormann/splat/internal/sentryprotocol"
 )
 
 // parseTime shares the event timestamp wire format (Unix float or ISO8601)

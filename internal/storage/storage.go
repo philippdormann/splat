@@ -8,7 +8,7 @@ import (
 	"context"
 	"os"
 
-	"errgotrack/internal/database"
+	"github.com/philippdormann/splat/internal/database"
 )
 
 // Tables we report row counts for. Queried best-effort: a table missing on

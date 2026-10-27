@@ -5,7 +5,7 @@
 package tracing
 
 import (
-	"errgotrack/internal/database"
+	"github.com/philippdormann/splat/internal/database"
 	"strings"
 )
 

@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"testing"
 
-	"errgotrack/internal/database"
+	"github.com/philippdormann/splat/internal/database"
 )
 
 // TestDSNPathIsBareProjectID guards against a real bug caught by running the

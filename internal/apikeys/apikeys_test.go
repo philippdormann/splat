@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"errgotrack/internal/database"
-	"errgotrack/internal/projects"
+	"github.com/philippdormann/splat/internal/database"
+	"github.com/philippdormann/splat/internal/projects"
 )
 
 func setup(t *testing.T) (*Store, int64) {

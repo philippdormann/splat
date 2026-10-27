@@ -5,7 +5,7 @@ package issues
 import (
 	"context"
 	"database/sql"
-	"errgotrack/internal/database"
+	"github.com/philippdormann/splat/internal/database"
 	"errors"
 	"fmt"
 	"strings"

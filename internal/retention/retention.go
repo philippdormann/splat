@@ -6,7 +6,7 @@ package retention
 
 import (
 	"context"
-	"errgotrack/internal/database"
+	"github.com/philippdormann/splat/internal/database"
 	"log/slog"
 	"time"
 )

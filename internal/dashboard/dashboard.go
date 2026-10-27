@@ -6,7 +6,7 @@ package dashboard
 
 import (
 	"database/sql"
-	"errgotrack/internal/database"
+	"github.com/philippdormann/splat/internal/database"
 	"fmt"
 	"strings"
 	"time"

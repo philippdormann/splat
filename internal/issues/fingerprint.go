@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"strings"
 
-	"errgotrack/internal/sentryprotocol"
+	"github.com/philippdormann/splat/internal/sentryprotocol"
 )
 
 // Fingerprint derives a stable grouping key for an event. It prefers a

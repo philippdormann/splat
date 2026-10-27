@@ -3,8 +3,8 @@ package httpserver
 import (
 	"net/http"
 
-	"errgotrack/internal/apikeys"
-	"errgotrack/internal/auth"
+	"github.com/philippdormann/splat/internal/apikeys"
+	"github.com/philippdormann/splat/internal/auth"
 )
 
 // apiAuth is the resolved caller of a management-API request: either a

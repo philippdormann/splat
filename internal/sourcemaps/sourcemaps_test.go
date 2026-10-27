@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"errgotrack/internal/database"
-	"errgotrack/internal/projects"
+	"github.com/philippdormann/splat/internal/database"
+	"github.com/philippdormann/splat/internal/projects"
 )
 
 // minimal valid v3 map: one line, one segment mapping gen col 0 to

@@ -11,14 +11,14 @@ import (
 	"testing"
 	"time"
 
-	"errgotrack/internal/database"
-	"errgotrack/internal/events"
-	"errgotrack/internal/issues"
-	"errgotrack/internal/logs"
-	"errgotrack/internal/notifications"
-	"errgotrack/internal/projects"
-	"errgotrack/internal/sessions"
-	"errgotrack/internal/traces"
+	"github.com/philippdormann/splat/internal/database"
+	"github.com/philippdormann/splat/internal/events"
+	"github.com/philippdormann/splat/internal/issues"
+	"github.com/philippdormann/splat/internal/logs"
+	"github.com/philippdormann/splat/internal/notifications"
+	"github.com/philippdormann/splat/internal/projects"
+	"github.com/philippdormann/splat/internal/sessions"
+	"github.com/philippdormann/splat/internal/traces"
 )
 
 func newTestHandler(t testing.TB) (*Handler, *projects.Project) {

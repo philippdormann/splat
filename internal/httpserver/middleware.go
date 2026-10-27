@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"errgotrack/internal/metrics"
+	"github.com/philippdormann/splat/internal/metrics"
 )
 
 // recoverMiddleware turns a panicking handler into a generic 500 instead of

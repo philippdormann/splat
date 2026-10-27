@@ -3,7 +3,7 @@ package issues
 import (
 	"testing"
 
-	"errgotrack/internal/sentryprotocol"
+	"github.com/philippdormann/splat/internal/sentryprotocol"
 )
 
 func exceptionEvent(excType string, frames []sentryprotocol.Frame) *sentryprotocol.Event {

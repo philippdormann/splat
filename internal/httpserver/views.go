@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"errgotrack/internal/sentryprotocol"
+	"github.com/philippdormann/splat/internal/sentryprotocol"
 )
 
 // --- dashboard ranges ---

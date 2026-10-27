@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"errgotrack/internal/database"
+	"github.com/philippdormann/splat/internal/database"
 )
 
 func TestBuildURL(t *testing.T) {
