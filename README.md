@@ -180,7 +180,7 @@ precedence, so existing setups keep working unedited:
 | `SPLAT_ADDR` | `:8080` | listen address |
 | `SPLAT_DB_DRIVER` | `sqlite` | `sqlite` (default, zero-ops) or `postgres` |
 | `SPLAT_DB_PATH` | `data/splat.db` | SQLite file path (sqlite driver only) |
-| `SPLAT_DATABASE_URL` | - | Postgres connection URL, e.g. `postgres://errgotrack:errgotrack@localhost:5432/errgotrack?sslmode=disable` (postgres driver only, **required** there) |
+| `SPLAT_DATABASE_URL` | - | Postgres connection URL, e.g. `postgres://splat:splat@localhost:5432/splat?sslmode=disable` (postgres driver only, **required** there) |
 | `SPLAT_PUBLIC_URL` | `http://localhost:8080` | used to build DSNs and alert links; `https://` here also makes session cookies `Secure` |
 | `SPLAT_ADMIN_USERNAME` / `SPLAT_ADMIN_PASSWORD` | - | bootstraps the first admin user when no users exist yet; ignored afterwards (manage users in the UI) |
 | `SPLAT_SESSION_SECRET` | - | **required**; any random 32+ byte string |

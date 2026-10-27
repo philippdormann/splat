@@ -18,7 +18,7 @@ services:
       SPLAT_ADMIN_PASSWORD: ${SPLAT_ADMIN_PASSWORD}
       SPLAT_SESSION_SECRET: ${SPLAT_SESSION_SECRET}
       SPLAT_DB_DRIVER: postgres
-      SPLAT_DATABASE_URL: postgres://${POSTGRES_USER:-errgotrack}:${POSTGRES_PASSWORD:-errgotrack}@postgres:5432/${POSTGRES_DB:-errgotrack}?sslmode=disable
+      SPLAT_DATABASE_URL: postgres://${POSTGRES_USER:-splat}:${POSTGRES_PASSWORD:-splat}@postgres:5432/${POSTGRES_DB:-splat}?sslmode=disable
     depends_on:
       postgres:
         condition: service_healthy
@@ -32,16 +32,16 @@ services:
     image: postgres:18-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-errgotrack}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-errgotrack}
-      POSTGRES_DB: ${POSTGRES_DB:-errgotrack}
+      POSTGRES_USER: ${POSTGRES_USER:-splat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-splat}
+      POSTGRES_DB: ${POSTGRES_DB:-splat}
     volumes:
       # PG18+ stores data in versioned subdirectories, so the mount goes
       # on the parent dir (a 16-style /var/lib/postgresql/data mount is
       # refused at startup).
       - postgres-data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-errgotrack} -d $${POSTGRES_DB:-errgotrack}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-splat} -d $${POSTGRES_DB:-splat}"]
       interval: 10s
       timeout: 3s
       retries: 5
