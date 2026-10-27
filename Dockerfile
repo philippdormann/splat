@@ -11,12 +11,13 @@ RUN cd frontend && bun run build
 
 # --- backend: Go binary with the Svelte build embedded ---
 FROM golang:1.26-alpine AS build
+ARG VERSION=dev
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=frontend /app/web/dist ./web/dist
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/errgotrack ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/errgotrack ./cmd/server
 # distroless has no shell to mkdir/chown at runtime, so the data directory is
 # created here (as root, in a stage that has a shell) and copied over with
 # the nonroot ownership the final image's USER needs to write to it.
@@ -30,4 +31,5 @@ USER nonroot:nonroot
 EXPOSE 8080
 VOLUME ["/data"]
 ENV ERRGOTRACK_DB_PATH=/data/errgotrack.db
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD ["/app/errgotrack", "-healthcheck"]
 ENTRYPOINT ["/app/errgotrack"]

@@ -4,15 +4,18 @@
 package httpserver
 
 import (
+	"context"
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"runtime"
 	"strconv"
 	"time"
 
 	"errgotrack/internal/apikeys"
 	"errgotrack/internal/auth"
 	"errgotrack/internal/dashboard"
+	"errgotrack/internal/database"
 	"errgotrack/internal/events"
 	"errgotrack/internal/ingestion"
 	"errgotrack/internal/issues"
@@ -37,15 +40,21 @@ type Server struct {
 	Storage       *storage.Store
 	SourceMaps    *sourcemaps.Store
 	APIKeys       *apikeys.Store
+	DB            *database.DB
 	Logger        *slog.Logger
 	PublicURL     string
 	CookieSecure  bool
+	Version       string
+	StartedAt     time.Time
 
 	mux *http.ServeMux
 }
 
 func New(s *Server) (*Server, error) {
 	s.mux = http.NewServeMux()
+	if s.StartedAt.IsZero() {
+		s.StartedAt = time.Now()
+	}
 	s.routes()
 	return s, nil
 }
@@ -71,6 +80,8 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/{project}/envelope/", rateLimit(limiter, http.HandlerFunc(ingest.Envelope)))
 	s.mux.Handle("POST /api/{project}/store/", rateLimit(limiter, http.HandlerFunc(ingest.Store)))
 	s.mux.HandleFunc("GET /healthz", s.healthz)
+	s.mux.HandleFunc("GET /readyz", s.readyz)
+	s.mux.HandleFunc("GET /api/v1/meta", s.apiMeta)
 
 	// JSON API for the Svelte SPA. Session cookie or Bearer API key;
 	// read vs write API-key scopes enforced per endpoint.
@@ -167,8 +178,52 @@ func (s *Server) serveSPA(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("ok"))
+	// Liveness only: the process is up. Use /readyz to check the database.
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+}
+
+func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {
+	// Readiness: the process is up AND can serve traffic (database reachable).
+	dbStatus := "ok"
+	code := http.StatusOK
+	if s.DB == nil {
+		dbStatus = "not configured"
+		code = http.StatusServiceUnavailable
+	} else {
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		defer cancel()
+		if err := s.DB.PingContext(ctx); err != nil {
+			s.Logger.Error("readiness db ping failed", "error", err)
+			dbStatus = "unreachable"
+			code = http.StatusServiceUnavailable
+		}
+	}
+	status := "ok"
+	if code != http.StatusOK {
+		status = "degraded"
+	}
+	writeJSON(w, code, map[string]any{
+		"status":        status,
+		"db":            dbStatus,
+		"version":       s.Version,
+		"uptimeSeconds": int64(time.Since(s.StartedAt).Seconds()),
+	})
+}
+
+func (s *Server) apiMeta(w http.ResponseWriter, r *http.Request) {
+	// Public build metadata: no secrets, useful for dashboards and for
+	// confirming which build a running instance actually is.
+	driver := ""
+	if s.DB != nil {
+		driver = string(s.DB.Driver())
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"version":       s.Version,
+		"goVersion":     runtime.Version(),
+		"dbDriver":      driver,
+		"startedAt":     s.StartedAt.UTC().Format(time.RFC3339),
+		"uptimeSeconds": int64(time.Since(s.StartedAt).Seconds()),
+	})
 }
 
 func relativeTime(t time.Time) string {

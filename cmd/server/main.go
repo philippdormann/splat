@@ -28,6 +28,10 @@ import (
 	"errgotrack/internal/tracing"
 )
 
+// version is stamped at build time via -ldflags "-X main.version=...".
+// "dev" means a local un-stamped build.
+var version = "dev"
+
 // runHealthcheck lets `errgotrack -healthcheck` serve as a Docker HEALTHCHECK
 // command: the distroless runtime image has no shell or curl, so the binary
 // itself does the local GET /healthz and reports success via exit code.
@@ -114,9 +118,11 @@ func main() {
 		Storage:       storage.NewStore(db, dbPath),
 		SourceMaps:    sourcemaps.NewStore(db),
 		APIKeys:       apikeys.NewStore(db),
+		DB:            db,
 		Logger:        logger,
 		PublicURL:     cfg.PublicURL,
 		CookieSecure:  strings.HasPrefix(cfg.PublicURL, "https://"),
+		Version:       version,
 	})
 	if err != nil {
 		logger.Error("init http server", "error", err)

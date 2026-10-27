@@ -1035,9 +1035,26 @@
     },
     "/healthz": {
       "get": {
-        "summary": "Health check",
+        "summary": "Liveness check (process is up; does not touch the database)",
         "security": [],
-        "responses": { "200": { "description": "ok." } }
+        "responses": { "200": { "description": "{status: ok}." } }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "summary": "Readiness check (database reachable)",
+        "security": [],
+        "responses": {
+          "200": { "description": "{status, db, version, uptimeSeconds}." },
+          "503": { "description": "Database unreachable." }
+        }
+      }
+    },
+    "/api/v1/meta": {
+      "get": {
+        "summary": "Public build metadata (version, go version, db driver, uptime)",
+        "security": [],
+        "responses": { "200": { "description": "Build metadata." } }
       }
     }
   }
