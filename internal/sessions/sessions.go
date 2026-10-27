@@ -462,3 +462,84 @@ func (s *Store) Releases(projectID int64) ([]ReleaseHealth, error) {
 	}
 	return out, nil
 }
+
+// ReleaseEnvRow breaks one release down by environment.
+type ReleaseEnvRow struct {
+	Environment string
+	Events      int64
+	Sessions    int64
+}
+
+// ReleaseEnvironments counts a release's events and sessions per
+// environment, busiest first. Release "" reads as "(none)", matching the
+// Releases rollup's label for empty releases.
+func (s *Store) ReleaseEnvironments(projectID int64, release string) ([]ReleaseEnvRow, error) {
+	db := s.db
+	byEnv := map[string]*ReleaseEnvRow{}
+	var order []string
+	touch := func(env string) *ReleaseEnvRow {
+		if env == "" {
+			env = "(none)"
+		}
+		r, ok := byEnv[env]
+		if !ok {
+			r = &ReleaseEnvRow{Environment: env}
+			byEnv[env] = r
+			order = append(order, env)
+		}
+		return r
+	}
+
+	rows, err := db.Query(`
+		SELECT COALESCE(NULLIF(environment, ''), '(none)'), COUNT(*)
+		FROM events WHERE project_id = ? AND release = ? GROUP BY 1`, projectID, release)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var env string
+		var n int64
+		if err := rows.Scan(&env, &n); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		touch(env).Events = n
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	srows, err := db.Query(`
+		SELECT COALESCE(NULLIF(environment, ''), '(none)'), COUNT(*)
+		FROM sdk_sessions WHERE project_id = ? AND release = ? GROUP BY 1`, projectID, release)
+	if err != nil {
+		return nil, err
+	}
+	for srows.Next() {
+		var env string
+		var n int64
+		if err := srows.Scan(&env, &n); err != nil {
+			srows.Close()
+			return nil, err
+		}
+		touch(env).Sessions = n
+	}
+	srows.Close()
+	if err := srows.Err(); err != nil {
+		return nil, err
+	}
+
+	sort.SliceStable(order, func(i, j int) bool {
+		a, b := byEnv[order[i]], byEnv[order[j]]
+		if a.Events != b.Events {
+			return a.Events > b.Events
+		}
+		return a.Sessions > b.Sessions
+	})
+	out := make([]ReleaseEnvRow, 0, len(order))
+	for _, env := range order {
+		out = append(out, *byEnv[env])
+	}
+	return out, nil
+}

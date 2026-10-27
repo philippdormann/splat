@@ -302,3 +302,62 @@ func TestRepoAndLinkScoping(t *testing.T) {
 	}
 	_ = member
 }
+
+func TestProjectReleaseDetail(t *testing.T) {
+	s, a, _, ps := fullTestServer(t)
+	admin, _ := a.CreateUser("admin", "password123", auth.RoleAdmin)
+	member, _ := a.CreateUser("dev", "password123", auth.RoleMember)
+	p, _ := ps.Create("App", "app", "production", "python", 0)
+	adminCookie := sessionCookie(t, a, admin.ID)
+	memberCookie := sessionCookie(t, a, member.ID)
+
+	at := time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
+	if _, err := s.Issues.Upsert(context.Background(), p.ID, "fp1", "Bug", "E", "v", "", "error", "production", "3.0", at); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Sessions.UpsertSession(p.ID, []byte(`{"sid":"a","did":"u1","release":"3.0","environment":"production","started":"2026-10-27T10:00:00Z","status":"ok"}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := get(t, s, "/api/v1/projects/1/releases/3.0", adminCookie)
+	if rec.Code != 200 {
+		t.Fatalf("detail = %d %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Release      string `json:"release"`
+		WindowStart  string `json:"windowStart"`
+		Environments []struct {
+			Environment string `json:"environment"`
+			Events      int64  `json:"events"`
+			Sessions    int64  `json:"sessions"`
+		} `json:"environments"`
+		NewIssues []struct {
+			ID    int64  `json:"id"`
+			Title string `json:"title"`
+		} `json:"newIssues"`
+		Summary struct {
+			Release string `json:"release"`
+		} `json:"summary"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Release != "3.0" || body.Summary.Release != "3.0" {
+		t.Fatalf("body = %s", rec.Body.String())
+	}
+	if len(body.NewIssues) != 1 || body.NewIssues[0].Title != "Bug" {
+		t.Fatalf("newIssues = %s", rec.Body.String())
+	}
+	if len(body.Environments) != 1 || body.Environments[0].Sessions != 1 {
+		t.Fatalf("environments = %s", rec.Body.String())
+	}
+
+	// Unknown release 404s; ungranted member 404s (not 403).
+	if rec := get(t, s, "/api/v1/projects/1/releases/9.9", adminCookie); rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown release = %d", rec.Code)
+	}
+	if rec := get(t, s, "/api/v1/projects/1/releases/3.0", memberCookie); rec.Code != http.StatusNotFound {
+		t.Fatalf("member detail = %d, want 404", rec.Code)
+	}
+	_ = member
+}

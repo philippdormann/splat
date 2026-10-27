@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"errgotrack/internal/database"
+	"errgotrack/internal/events"
+	"errgotrack/internal/issues"
 	"errgotrack/internal/projects"
 )
 
@@ -119,5 +121,64 @@ func TestHealthTimeseriesAndReleases(t *testing.T) {
 	}
 	if rel[0].CrashFreeSessions != 50 {
 		t.Fatalf("crash-free = %v", rel[0].CrashFreeSessions)
+	}
+}
+
+func TestReleaseEnvironmentsGroupsEventsAndSessions(t *testing.T) {
+	db, err := database.Open(filepath.Join(t.TempDir(), "env.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	p, err := projects.NewStore(db).Create("P", "p", "production", "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid := p.ID
+	now := time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
+
+	iss, err := issues.NewStore(db).Upsert(t.Context(), pid, "fp", "Bug", "E", "v", "", "error", "production", "2.0", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evStore := events.NewStore(db)
+	for i, env := range []string{"production", "production", "staging"} {
+		if err := evStore.Insert(&events.Event{
+			EventID:     "e" + string(rune('0'+i)) + "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+			IssueID:     iss.Issue.ID,
+			ProjectID:   pid,
+			Environment: env,
+			Release:     "2.0",
+			Timestamp:   now,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	s := NewStore(db)
+	if err := s.UpsertSession(pid, []byte(`{"sid":"a","did":"u1","release":"2.0","environment":"production","started":"2026-10-27T10:00:00Z","status":"ok"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertSession(pid, []byte(`{"sid":"b","did":"u2","release":"2.0","environment":"staging","started":"2026-10-27T10:00:00Z","status":"ok"}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := s.ReleaseEnvironments(pid, "2.0")
+	if err != nil {
+		t.Fatalf("envs: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows = %+v", rows)
+	}
+	if rows[0].Environment != "production" || rows[0].Events != 2 || rows[0].Sessions != 1 {
+		t.Fatalf("production row = %+v", rows[0])
+	}
+	if rows[1].Environment != "staging" || rows[1].Events != 1 || rows[1].Sessions != 1 {
+		t.Fatalf("staging row = %+v", rows[1])
+	}
+
+	empty, err := s.ReleaseEnvironments(pid, "9.9")
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("unknown release = %v, %v", empty, err)
 	}
 }

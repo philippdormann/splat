@@ -40,6 +40,7 @@ func TestOpenAPICoversRoutes(t *testing.T) {
 		{"get", "/api/v1/platforms"},
 		{"get", "/api/v1/projects/{id}/overview"},
 		{"get", "/api/v1/projects/{id}/releases"},
+		{"get", "/api/v1/projects/{id}/releases/{release}"},
 		{"get", "/api/v1/projects/{id}/logs"},
 		{"get", "/api/v1/projects/{id}/traces"},
 		{"get", "/api/v1/projects/{id}/traces/{traceId}"},

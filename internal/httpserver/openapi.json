@@ -3017,6 +3017,35 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{id}/releases/{release}": {
+      "get": {
+        "summary": "Release detail: rollup, environment breakdown, issues new in release",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "release",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "URL-encoded release name; (none) for empty release"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Release detail."
+          }
+        }
+      }
     }
   }
 }

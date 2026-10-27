@@ -358,3 +358,49 @@ func TestIssueNotesCRUD(t *testing.T) {
 		t.Fatalf("cross-issue delete must not remove notes, got %v", notes)
 	}
 }
+
+func TestNewSinceWindowsByFirstSeen(t *testing.T) {
+	db, projectID := newTestDB(t)
+	store := NewStore(db)
+	ctx := context.Background()
+
+	base := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	mk := func(fp string, at time.Time) {
+		t.Helper()
+		if _, err := store.Upsert(ctx, projectID, fp, "t-"+fp, "E", "v", "", "error", "production", "1.0", at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("old", base)
+	mk("mid1", base.Add(48*time.Hour))
+	mk("mid2", base.Add(72*time.Hour))
+	mk("new", base.Add(120*time.Hour))
+
+	// Window from day 2 on: mid1, mid2, new — biggest event_count first
+	// is trivially all 1s here, so assert the set.
+	got, err := store.NewSince(projectID, base.Add(24*time.Hour), nil, 10)
+	if err != nil || len(got) != 3 {
+		t.Fatalf("open window = %v, %v", got, err)
+	}
+	// Bounded window excludes "new".
+	end := base.Add(96 * time.Hour)
+	got, err = store.NewSince(projectID, base.Add(24*time.Hour), &end, 10)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("bounded window = %v, %v", got, err)
+	}
+	for _, iss := range got {
+		if iss.FirstSeen.Before(base.Add(24*time.Hour)) || !iss.FirstSeen.Before(end) {
+			t.Fatalf("out-of-window issue: %+v", iss)
+		}
+	}
+	// Limit applies.
+	got, err = store.NewSince(projectID, base, nil, 2)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("limited = %v, %v", got, err)
+	}
+	// Other projects are invisible.
+	got, err = store.NewSince(projectID+999, base, nil, 10)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("other project = %v, %v", got, err)
+	}
+}

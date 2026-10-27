@@ -33,6 +33,7 @@ import (
 	"errgotrack/internal/platforms"
 	"errgotrack/internal/projects"
 	"errgotrack/internal/sentryprotocol"
+	"errgotrack/internal/sessions"
 	"errgotrack/internal/sourcemaps"
 	"errgotrack/internal/tracing"
 	"errgotrack/internal/webhooks"
@@ -1052,6 +1053,124 @@ func (s *Server) apiProjectReleases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, rel)
+}
+
+// apiProjectReleaseDetail renders one release: its rollup row, an
+// environment breakdown, and the issues first seen while it was the
+// newest release ("what broke in this release").
+//
+// Release names travel URL-encoded (they may contain slashes and spaces);
+// the mux decodes {release} back before it arrives here. The rollup
+// labels an empty release "(none)", so that name maps back to "".
+func (s *Server) apiProjectReleaseDetail(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if _, err := s.Projects.Get(id); err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if !s.canAccessProject(r, id) {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if s.Sessions == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "sessions not configured")
+		return
+	}
+	raw := r.PathValue("release")
+	actual := raw
+	if actual == "(none)" {
+		actual = ""
+	}
+
+	rels, err := s.Sessions.Releases(id)
+	if err != nil {
+		s.Logger.Error("project release detail", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	var summary *sessions.ReleaseHealth
+	for i := range rels {
+		if rels[i].Release == raw {
+			summary = &rels[i]
+			break
+		}
+	}
+	if summary == nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	// Window: from this release's first sighting until the next-newer
+	// release appears. Timestamps are RFC3339, so string order is time
+	// order; unparsable values fail open to the epoch (start) or unbounded
+	// (end) rather than 404ing a real release.
+	ordered := append([]sessions.ReleaseHealth{}, rels...)
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].FirstSeen < ordered[j].FirstSeen })
+	start := time.Time{}
+	var end *time.Time
+	for i := range ordered {
+		if ordered[i].Release != summary.Release {
+			continue
+		}
+		if t, err := time.Parse(time.RFC3339Nano, ordered[i].FirstSeen); err == nil {
+			start = t
+		}
+		for _, next := range ordered {
+			if next.FirstSeen > ordered[i].FirstSeen {
+				if t, err := time.Parse(time.RFC3339Nano, next.FirstSeen); err == nil {
+					if end == nil || t.Before(*end) {
+						end = &t
+					}
+				}
+			}
+		}
+		break
+	}
+
+	envRows, err := s.Sessions.ReleaseEnvironments(id, actual)
+	if err != nil {
+		s.Logger.Error("project release environments", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	envJSON := make([]map[string]any, 0, len(envRows))
+	for _, e := range envRows {
+		envJSON = append(envJSON, map[string]any{
+			"environment": e.Environment, "events": e.Events, "sessions": e.Sessions,
+		})
+	}
+
+	newIssues, err := s.Issues.NewSince(id, start, end, 20)
+	if err != nil {
+		s.Logger.Error("project release new issues", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	issueJSON := make([]map[string]any, 0, len(newIssues))
+	for _, iss := range newIssues {
+		issueJSON = append(issueJSON, map[string]any{
+			"id": iss.ID, "title": iss.Title, "level": iss.Level,
+			"status": string(iss.Status), "eventCount": iss.EventCount,
+			"firstSeen":         iss.FirstSeen.UTC().Format(time.RFC3339),
+			"firstSeenRelative": relativeTime(iss.FirstSeen),
+			"lastSeenRelative":  relativeTime(iss.LastSeen),
+			"environment":       iss.Environment,
+		})
+	}
+
+	var windowEnd any
+	if end != nil {
+		windowEnd = end.UTC().Format(time.RFC3339)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"release": summary.Release, "summary": summary,
+		"windowStart": start.UTC().Format(time.RFC3339), "windowEnd": windowEnd,
+		"environments": envJSON, "newIssues": issueJSON,
+	})
 }
 
 // apiProjectSessionSummary returns crash-free rates plus the health

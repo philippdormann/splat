@@ -370,6 +370,37 @@ func (s *Store) List(f ListFilter) ([]*Issue, int, error) {
 	return out, total, rows.Err()
 }
 
+// NewSince lists issues first seen at or after `since` (and before `until`
+// when non-nil), biggest by lifetime event count first. Release pages use
+// it to answer "what broke in this release": the window runs from the
+// release's first sighting until the next-newer release appears.
+func (s *Store) NewSince(projectID int64, since time.Time, until *time.Time, limit int) ([]*Issue, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	where := "WHERE project_id = ? AND first_seen >= ?"
+	args := []any{projectID, since.UTC().Format(time.RFC3339Nano)}
+	if until != nil {
+		where += " AND first_seen < ?"
+		args = append(args, until.UTC().Format(time.RFC3339Nano))
+	}
+	args = append(args, limit)
+	rows, err := s.db.Query(`SELECT `+selectCols+` FROM issues `+where+` ORDER BY event_count DESC, last_seen DESC LIMIT ?`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []*Issue{}
+	for rows.Next() {
+		iss, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, iss)
+	}
+	return out, rows.Err()
+}
+
 // Sparkline24h returns, per issue id, 24 hourly event counts covering the
 // last 24 hours (oldest hour first, zero-filled where an hour had no
 // events) - one batched query for however many issues are on the current
