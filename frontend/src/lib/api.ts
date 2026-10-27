@@ -419,6 +419,7 @@ export interface ProjectDetail {
 export interface Platform {
   id: string;
   label: string;
+  language: string;
 }
 
 export interface ProjectOverview {

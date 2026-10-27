@@ -687,7 +687,7 @@
     "/api/v1/platforms": {
       "get": {
         "summary": "Setup snippet platforms",
-        "responses": { "200": { "description": "Platform id/label pairs." } }
+        "responses": { "200": { "description": "Platform id/label/language triples." } }
       }
     },
     "/api/v1/projects/{id}/overview": {

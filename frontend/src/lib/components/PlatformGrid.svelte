@@ -24,7 +24,7 @@
         value === p.id ? "border-primary bg-muted ring-1 ring-primary" : "border-border bg-card",
       )}
     >
-      <PlatformIcon platform={p.id} size={28} />
+      <PlatformIcon platform={p.id} language={p.language} size={28} />
       <span class="text-xs font-medium leading-tight">{p.label}</span>
     </button>
   {/each}

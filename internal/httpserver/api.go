@@ -1069,7 +1069,7 @@ func (s *Server) apiProjectOverview(w http.ResponseWriter, r *http.Request) {
 func platformsJSON() []map[string]string {
 	out := make([]map[string]string, 0, len(platforms.All))
 	for _, p := range platforms.All {
-		out = append(out, map[string]string{"id": p.ID, "label": p.Label})
+		out = append(out, map[string]string{"id": p.ID, "label": p.Label, "language": p.Language})
 	}
 	return out
 }

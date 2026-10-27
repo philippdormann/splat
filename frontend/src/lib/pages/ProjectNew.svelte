@@ -92,7 +92,41 @@
   }
 
   $: selectedLabel = platforms.find((p) => p.id === platform)?.label ?? "";
+  $: selectedLanguage = platforms.find((p) => p.id === platform)?.language ?? "";
   $: slugTaken = slug !== "" && takenSlugs().has(slug);
+
+  // Picker categories mirror rustrak's PLATFORM_CATEGORIES (popular first,
+  // default tab). `all` resolves from the server list so it never falls
+  // behind. Search deliberately ignores the active tab.
+  const categories: { id: string; label: string; platforms?: string[] }[] = [
+    { id: "popular", label: "Popular", platforms: ["javascript-nextjs","javascript-react","react-native","node","php-laravel","python-fastapi","flutter","python-django","python","node-express","javascript","php","ruby-rails","apple-ios","node-nestjs","python-flask","javascript-vue","dotnet-aspnetcore","javascript-nuxt","dotnet-maui","javascript-angular","android","java-spring-boot","php-symfony","node-cloudflare-workers","electron","unity","javascript-remix"] },
+    { id: "browser", label: "Browser", platforms: ["dart","flutter","javascript","javascript-angular","javascript-astro","javascript-ember","javascript-gatsby","javascript-nextjs","javascript-nuxt","javascript-react","javascript-react-router","javascript-remix","javascript-solid","javascript-solidstart","javascript-svelte","javascript-sveltekit","javascript-tanstackstart-react","javascript-vue","react-native","unity"] },
+    { id: "server", label: "Server", platforms: ["bun","dart","deno","dotnet","dotnet-aspnet","dotnet-aspnetcore","elixir","go","go-echo","go-fasthttp","go-fiber","go-gin","go-http","go-iris","go-negroni","java","java-log4j2","java-logback","java-spring","java-spring-boot","kotlin","native","node","node-cloudflare-pages","node-cloudflare-workers","node-connect","node-express","node-fastify","node-hapi","node-hono","node-koa","node-nestjs","php","php-laravel","php-symfony","powershell","python","python-aiohttp","python-asgi","python-bottle","python-celery","python-chalice","python-django","python-falcon","python-fastapi","python-flask","python-litestar","python-pyramid","python-quart","python-rq","python-sanic","python-starlette","python-tornado","python-tryton","python-wsgi","ruby","ruby-rack","ruby-rails","rust"] },
+    { id: "mobile", label: "Mobile", platforms: ["android","apple-ios","capacitor","cordova","dart","dotnet-maui","dotnet-xamarin","flutter","ionic","react-native","unity","unreal"] },
+    { id: "desktop", label: "Desktop", platforms: ["apple-macos","dart","dotnet","dotnet-maui","dotnet-winforms","dotnet-wpf","electron","flutter","godot","java","kotlin","minidump","native","native-qt","unity","unreal"] },
+    { id: "serverless", label: "Serverless", platforms: ["dotnet-awslambda","dotnet-gcpfunctions","node-awslambda","node-azurefunctions","node-cloudflare-pages","node-cloudflare-workers","node-gcpfunctions","python-awslambda","python-gcpfunctions","python-serverless"] },
+    { id: "gaming", label: "Gaming", platforms: ["godot","native","nintendo-switch","playstation","unity","unreal","xbox"] },
+    { id: "all", label: "All" },
+  ];
+  let category = "popular";
+  let query = "";
+
+  function visiblePlatforms(): Platform[] {
+    const q = query.trim().toLowerCase();
+    if (q) {
+      return platforms
+        .filter((p) => p.id.toLowerCase().includes(q) || p.label.toLowerCase().includes(q) || p.language.toLowerCase().includes(q))
+        .sort((a, b) => a.label.localeCompare(b.label));
+    }
+    const cat = categories.find((c) => c.id === category);
+    if (!cat || !cat.platforms) {
+      return [...platforms].sort((a, b) => a.label.localeCompare(b.label));
+    }
+    const byId = new Map(platforms.map((p) => [p.id, p]));
+    const resolved = (cat.platforms ?? []).map((id) => byId.get(id)).filter((p): p is Platform => p !== undefined);
+    return category === "popular" ? resolved : resolved.sort((a, b) => a.label.localeCompare(b.label));
+  }
+  $: filtered = visiblePlatforms();
 </script>
 
 <div class="mx-auto w-full max-w-6xl">
@@ -108,6 +142,12 @@
   <form on:submit={submit} class="grid gap-6 pb-24 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:pb-0">
     <div class="min-w-0">
       <p class="mb-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">Platform</p>
+      <div class="mb-3 flex flex-wrap gap-1">
+        {#each categories as c}
+          <Button size="sm" variant={category === c.id && !query.trim() ? "default" : "outline"} on:click={() => { category = c.id; }}>{c.label}</Button>
+        {/each}
+      </div>
+      <div class="mb-3"><Input bind:value={query} placeholder="Search platforms… (e.g. django, nextjs, go)" autocomplete="off" /></div>
       {#if !platforms.length && !error}
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label="Loading platforms">
           <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
@@ -117,8 +157,10 @@
           <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
           <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
         </div>
+      {:else if !filtered.length}
+        <p class="rounded-md border border-border p-6 text-center text-sm text-muted-foreground">No platforms match “{query.trim()}”.</p>
       {:else}
-        <PlatformGrid {platforms} value={platform} disabled={busy} onSelect={handlePlatformChange} />
+        <PlatformGrid platforms={filtered} value={platform} disabled={busy} onSelect={handlePlatformChange} />
       {/if}
       {#if fieldError && !platform}<p class="mt-2 text-xs text-destructive">{fieldError}</p>{/if}
     </div>
@@ -126,7 +168,7 @@
     <aside class="rounded-xl border bg-card p-5 lg:sticky lg:top-6">
       <div class="flex items-center gap-3 border-b pb-4">
         {#if platform}
-          <PlatformIcon {platform} size={32} />
+          <PlatformIcon {platform} language={selectedLanguage} size={32} />
           <div class="min-w-0">
             <p class="truncate text-sm font-bold">{selectedLabel}</p>
             <p class="truncate font-mono text-xs text-muted-foreground">{platform}</p>
@@ -191,7 +233,7 @@
     <div class="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 px-4 py-3 backdrop-blur lg:hidden">
       <div class="mx-auto flex max-w-6xl items-center gap-3">
         {#if platform}
-          <PlatformIcon {platform} size={24} />
+          <PlatformIcon {platform} language={selectedLanguage} size={24} />
           <span class="min-w-0 flex-1 truncate text-sm font-medium">{selectedLabel}</span>
         {:else}
           <span class="min-w-0 flex-1 truncate text-sm text-muted-foreground">Pick a platform</span>
