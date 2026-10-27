@@ -223,7 +223,7 @@ func (s *Server) apiIssuesList(w http.ResponseWriter, r *http.Request) {
 	for _, iss := range list {
 		rows = append(rows, map[string]any{
 			"id": iss.ID, "title": iss.Title, "culprit": iss.Culprit, "level": iss.Level,
-			"status": string(iss.Status),
+			"status":      string(iss.Status),
 			"projectName": names[iss.ProjectID], "environment": iss.Environment,
 			"eventCount": iss.EventCount, "userCount": iss.UserCount,
 			"lastSeen": iss.LastSeen, "lastSeenRelative": relativeTime(iss.LastSeen),
@@ -370,8 +370,9 @@ func (s *Server) apiIssueSetStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Status     string `json:"status"`
-		MutedUntil string `json:"mutedUntil"`
+		Status           string `json:"status"`
+		MutedUntil       string `json:"mutedUntil"`
+		ResolveInRelease bool   `json:"resolveInRelease"`
 	}
 	if !decodeJSON(r, &input) {
 		// Also accept form posts for curl convenience.
@@ -386,6 +387,13 @@ func (s *Server) apiIssueSetStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	if issue, err := s.Issues.Get(id); err != nil || !s.authenticate(r).inProject(issue.ProjectID) {
 		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if status == issues.StatusResolved && input.ResolveInRelease {
+		if err := s.Issues.ResolveInNextRelease(id); err != nil {
+			s.Logger.Error("resolve issue in next release", "error", err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
 	}
 	if status == issues.StatusMuted {
@@ -449,7 +457,8 @@ func issueJSON(iss *issues.Issue) map[string]any {
 		"eventCount": iss.EventCount, "userCount": iss.UserCount,
 		"firstSeen": iss.FirstSeen, "lastSeen": iss.LastSeen,
 		"environment": iss.Environment, "release": iss.Release,
-		"mutedUntil": mutedUntil,
+		"mutedUntil":        mutedUntil,
+		"resolvedInRelease": iss.ResolvedInRelease,
 	}
 }
 

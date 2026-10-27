@@ -144,6 +144,7 @@
               "level": { "type": "string" },
               "status": { "type": "string", "enum": ["unresolved", "resolved", "ignored", "muted"] },
               "mutedUntil": { "type": ["string", "null"], "format": "date-time", "description": "Mute expiry, or null when not muted / muted forever." },
+              "resolvedInRelease": { "type": "string", "description": "Release pin for resolve-in-next-release, or empty." },
               "eventCount": { "type": "integer" },
               "userCount": { "type": "integer" },
               "firstSeen": { "type": "string", "format": "date-time" },
@@ -439,7 +440,8 @@
                 "required": ["status"],
                 "properties": {
                   "status": { "type": "string", "enum": ["unresolved", "resolved", "ignored", "muted"] },
-                  "mutedUntil": { "type": "string", "description": "RFC3339 expiry for status muted; empty mutes forever." }
+                  "mutedUntil": { "type": "string", "description": "RFC3339 expiry for status muted; empty mutes forever." },
+                  "resolveInRelease": { "type": "boolean", "description": "With status resolved: pin to the issue's current release and reopen only on a different release." }
                 }
               }
             }

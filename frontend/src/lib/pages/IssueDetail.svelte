@@ -26,6 +26,11 @@
     await load();
   }
 
+  async function resolveInNextRelease() {
+    await api.setIssueStatus(id, "resolved", undefined, true);
+    await load();
+  }
+
   async function mute() {
     let mutedUntil: string | undefined;
     if (muteFor !== "forever") {
@@ -57,6 +62,7 @@
           <LevelBadge level={data.issue.level} />
           <StatusBadge status={data.issue.status} />
           {#if data.issue.status === "muted"}<span class="text-xs text-muted-foreground">{formatMutedUntil(data.issue.mutedUntil)}</span>{/if}
+          {#if data.issue.status === "resolved" && data.issue.resolvedInRelease}<span class="text-xs text-muted-foreground" title="Reopens automatically if the bug appears in a different release">pinned to {data.issue.resolvedInRelease}</span>{/if}
           <span class="text-xs text-muted-foreground">{data.project.name} · {data.issue.environment} · {data.issue.eventCount} events</span>
         </div>
         <h2 class="mt-2 text-xl font-bold">{data.issue.title}</h2>
@@ -64,6 +70,7 @@
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="outline" on:click={() => setStatus("resolved")}>Resolve</Button>
+        <Button size="sm" variant="outline" title="Resolve, but reopen automatically if the bug appears in a different release" on:click={() => resolveInNextRelease()}>Resolve in next release</Button>
         <Button size="sm" variant="outline" on:click={() => setStatus("ignored")}>Ignore</Button>
         {#if data.issue.status === "muted"}
           <Button size="sm" variant="outline" on:click={() => setStatus("unresolved")}>Unmute</Button>

@@ -1,0 +1,1 @@
+ALTER TABLE issues ADD COLUMN IF NOT EXISTS resolved_in_release TEXT NOT NULL DEFAULT '';

@@ -247,3 +247,67 @@ func TestSetStatusClearsMute(t *testing.T) {
 		t.Fatalf("resolve should clear mute, got %+v", got)
 	}
 }
+
+func TestResolveInNextReleaseKeepsSameReleaseResolved(t *testing.T) {
+	db, projectID := newTestDB(t)
+	store := NewStore(db)
+	ctx := context.Background()
+
+	r1, _ := store.Upsert(ctx, projectID, "fp-rnr", "t", "T", "v", "c", "error", "production", "1.2.3", time.Now())
+	if err := store.ResolveInNextRelease(r1.Issue.ID); err != nil {
+		t.Fatalf("resolve in next release: %v", err)
+	}
+	got, _ := store.Get(r1.Issue.ID)
+	if got.Status != StatusResolved || got.ResolvedInRelease != "1.2.3" {
+		t.Fatalf("pin mismatch: %+v", got)
+	}
+
+	// Same release: stays resolved, no reopen.
+	r2, err := store.Upsert(ctx, projectID, "fp-rnr", "t", "T", "v", "c", "error", "production", "1.2.3", time.Now())
+	if err != nil {
+		t.Fatalf("same-release upsert: %v", err)
+	}
+	if r2.Issue.Status != StatusResolved || r2.Reopened {
+		t.Fatalf("same release must stay resolved, got %+v", r2)
+	}
+}
+
+func TestResolveInNextReleaseReopensOnNewRelease(t *testing.T) {
+	db, projectID := newTestDB(t)
+	store := NewStore(db)
+	ctx := context.Background()
+
+	r1, _ := store.Upsert(ctx, projectID, "fp-rnr2", "t", "T", "v", "c", "error", "production", "1.2.3", time.Now())
+	if err := store.ResolveInNextRelease(r1.Issue.ID); err != nil {
+		t.Fatalf("resolve in next release: %v", err)
+	}
+
+	r2, err := store.Upsert(ctx, projectID, "fp-rnr2", "t", "T", "v", "c", "error", "production", "1.2.4", time.Now())
+	if err != nil {
+		t.Fatalf("new-release upsert: %v", err)
+	}
+	if r2.Issue.Status != StatusUnresolved || !r2.Reopened {
+		t.Fatalf("new release must reopen, got %+v", r2)
+	}
+	if r2.Issue.ResolvedInRelease != "" {
+		t.Fatalf("pin should be cleared on reopen, got %q", r2.Issue.ResolvedInRelease)
+	}
+}
+
+func TestPlainResolveStillReopensOnAnyRelease(t *testing.T) {
+	db, projectID := newTestDB(t)
+	store := NewStore(db)
+	ctx := context.Background()
+
+	r1, _ := store.Upsert(ctx, projectID, "fp-plain", "t", "T", "v", "c", "error", "production", "1.2.3", time.Now())
+	if err := store.SetStatus(r1.Issue.ID, StatusResolved); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	r2, err := store.Upsert(ctx, projectID, "fp-plain", "t", "T", "v", "c", "error", "production", "1.2.3", time.Now())
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if r2.Issue.Status != StatusUnresolved || !r2.Reopened {
+		t.Fatalf("plain resolve must reopen on any event, got %+v", r2)
+	}
+}

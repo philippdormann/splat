@@ -49,10 +49,10 @@ export const api = {
   issues: (params: URLSearchParams) =>
     req<IssuesData>(`/api/v1/issues?${params.toString()}`),
   issue: (id: number | string) => req<IssueDetail>(`/api/v1/issues/${id}`),
-  setIssueStatus: (id: number | string, status: string, mutedUntil?: string) =>
+  setIssueStatus: (id: number | string, status: string, mutedUntil?: string, resolveInRelease?: boolean) =>
     req<{ ok: boolean }>(`/api/v1/issues/${id}/status`, {
       method: "POST",
-      body: JSON.stringify({ status, mutedUntil }),
+      body: JSON.stringify({ status, mutedUntil, resolveInRelease }),
     }),
   bulkIssueStatus: (ids: number[], status: string) =>
     req<{ ok: boolean }>("/api/v1/issues/bulk", {
@@ -299,6 +299,7 @@ export interface IssueDetail {
     level: string;
     status: string;
     mutedUntil: string | null;
+    resolvedInRelease: string;
     eventCount: number;
     userCount: number;
     firstSeen: string;
