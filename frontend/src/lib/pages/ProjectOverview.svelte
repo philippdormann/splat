@@ -257,7 +257,7 @@
               <Timer class="text-muted-foreground size-4" />
               <Card.Title class="text-sm">Latency</Card.Title>
             </div>
-            <Card.Description>Percentiles need sampled APM data, which errgotrack does not collect. Stored transactions live under Traces.</Card.Description>
+            <Card.Description>Percentiles need sampled APM data, which Splat does not collect. Stored transactions live under Traces.</Card.Description>
           </Card.Header>
           <Card.Content>
             <p class="py-10 text-center text-sm text-muted-foreground">No transaction data.</p>

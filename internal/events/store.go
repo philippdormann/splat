@@ -4,9 +4,9 @@ package events
 
 import (
 	"database/sql"
-	"github.com/philippdormann/splat/internal/database"
 	"errors"
 	"fmt"
+	"github.com/philippdormann/splat/internal/database"
 	"strings"
 	"time"
 )

@@ -16,7 +16,7 @@ func testAlert() Alert {
 }
 
 func TestSubject(t *testing.T) {
-	if s := Subject(testAlert()); s != "[Errgotrack] New issue in Shop: ValueError" {
+	if s := Subject(testAlert()); s != "[Splat] New issue in Shop: ValueError" {
 		t.Fatalf("subject = %q", s)
 	}
 	a := testAlert()

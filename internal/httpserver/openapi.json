@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Errgotrack API",
+    "title": "Splat API",
     "version": "1.0.0",
-    "description": "JSON API for the Errgotrack dashboard SPA plus the Sentry-compatible ingestion endpoints. Dashboard endpoints authenticate with the session cookie set by POST /api/v1/login (401 JSON when missing)."
+    "description": "JSON API for the Splat dashboard SPA plus the Sentry-compatible ingestion endpoints. Dashboard endpoints authenticate with the session cookie set by POST /api/v1/login (401 JSON when missing)."
   },
   "servers": [
     {
@@ -20,7 +20,7 @@
       "cookieAuth": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "errgotrack_session"
+        "name": "splat_session"
       },
       "bearerAuth": {
         "type": "http",
@@ -2954,7 +2954,7 @@
     },
     "/api/v1/issues/{id}/links": {
       "get": {
-        "summary": "External issues of an errgotrack issue",
+        "summary": "External issues of a Splat issue",
         "parameters": [
           {
             "name": "id",

@@ -75,7 +75,7 @@ func loggingMiddleware(logger *slog.Logger, m *metrics.Registry, next http.Handl
 					route = pattern
 				}
 			}
-			m.Inc("errgotrack_http_requests_total", route, strconv.Itoa(rec.status))
+			m.Inc("splat_http_requests_total", route, strconv.Itoa(rec.status))
 		}
 	})
 }

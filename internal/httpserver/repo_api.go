@@ -18,7 +18,7 @@ import (
 // Reading a project's repo config needs project access; writing it
 // (including the token) and testing the connection are admin-only: the
 // token posts to a third-party API as whoever owns it. Creating and
-// unlinking external issues from an errgotrack issue needs project
+// unlinking external issues from an Splat issue needs project
 // access - that is the day-to-day "work with issues" flow for members.
 
 func repoJSON(r *repolink.Repo) map[string]any {
@@ -191,10 +191,10 @@ func (s *Server) apiIssueLinksCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	body := strings.TrimSpace(input.Body)
 	if body == "" {
-		body = fmt.Sprintf("%s: %s\n\nTracked in errgotrack: %s/issues/%d",
+		body = fmt.Sprintf("%s: %s\n\nTracked in Splat: %s/issues/%d",
 			issue.ExceptionType, issue.ExceptionValue, s.PublicURL, issue.ID)
 		if strings.TrimSpace(issue.ExceptionType) == "" {
-			body = fmt.Sprintf("%s\n\nTracked in errgotrack: %s/issues/%d",
+			body = fmt.Sprintf("%s\n\nTracked in Splat: %s/issues/%d",
 				issue.Title, s.PublicURL, issue.ID)
 		}
 	}

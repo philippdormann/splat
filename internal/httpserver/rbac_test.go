@@ -74,7 +74,7 @@ func sessionCookie(t *testing.T, a *auth.Store, userID int64) string {
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	return "errgotrack_session=" + token
+	return "splat_session=" + token
 }
 
 func get(t *testing.T, s *Server, path, cookie string) *httptest.ResponseRecorder {

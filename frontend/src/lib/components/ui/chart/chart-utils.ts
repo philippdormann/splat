@@ -9,7 +9,7 @@ export type ChartConfig = Record<
   }
 >;
 
-const CHART_CONTEXT_KEY = Symbol("errgotrack-chart-config");
+const CHART_CONTEXT_KEY = Symbol("splat-chart-config");
 
 export function setChartContext(config: ChartConfig): void {
   setContext(CHART_CONTEXT_KEY, config);

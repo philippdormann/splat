@@ -107,23 +107,23 @@ func (s *Server) routes() {
 
 	if s.Metrics != nil {
 		m := s.Metrics
-		m.CounterVec("errgotrack_http_requests_total", "HTTP requests by route and status.", []string{"route", "code"})
-		m.Counter("errgotrack_events_ingested_total", "Events stored via ingestion.")
-		m.CounterVec("errgotrack_events_rejected_total", "Events rejected before storage, by reason.", []string{"reason"})
-		m.Counter("errgotrack_logs_ingested_total", "Log batches stored via ingestion.")
-		m.Counter("errgotrack_transactions_ingested_total", "Transactions stored via ingestion.")
-		m.CounterVec("errgotrack_envelope_items_skipped_total", "Envelope items accepted but not stored, by item type.", []string{"type"})
-		m.GaugeFunc("errgotrack_db_events_total", "Rows in events.", func() float64 {
+		m.CounterVec("splat_http_requests_total", "HTTP requests by route and status.", []string{"route", "code"})
+		m.Counter("splat_events_ingested_total", "Events stored via ingestion.")
+		m.CounterVec("splat_events_rejected_total", "Events rejected before storage, by reason.", []string{"reason"})
+		m.Counter("splat_logs_ingested_total", "Log batches stored via ingestion.")
+		m.Counter("splat_transactions_ingested_total", "Transactions stored via ingestion.")
+		m.CounterVec("splat_envelope_items_skipped_total", "Envelope items accepted but not stored, by item type.", []string{"type"})
+		m.GaugeFunc("splat_db_events_total", "Rows in events.", func() float64 {
 			return countOr(s.DB, `SELECT COUNT(*) FROM events`)
 		})
-		m.GaugeFunc("errgotrack_db_issues_unresolved_total", "Unresolved issues.", func() float64 {
+		m.GaugeFunc("splat_db_issues_unresolved_total", "Unresolved issues.", func() float64 {
 			return countOr(s.DB, `SELECT COUNT(*) FROM issues WHERE status = 'unresolved'`)
 		})
-		m.GaugeFunc("errgotrack_notifications_pending_total", "Queued pending notifications.", func() float64 {
+		m.GaugeFunc("splat_notifications_pending_total", "Queued pending notifications.", func() float64 {
 			return countOr(s.DB, `SELECT COUNT(*) FROM notification_queue WHERE status = 'pending'`)
 		})
 		if s.Storage != nil {
-			m.GaugeFunc("errgotrack_db_size_bytes", "Database size in bytes.", func() float64 {
+			m.GaugeFunc("splat_db_size_bytes", "Database size in bytes.", func() float64 {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				u, err := s.Storage.Usage(ctx)

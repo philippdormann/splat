@@ -129,7 +129,7 @@
       <button aria-label="Close menu" class="fixed inset-0 z-10 bg-black/50 md:hidden" on:click={() => (sidebarOpen = false)} />
     {/if}
     <aside class={`fixed inset-y-0 left-0 z-20 flex w-60 flex-col border-r border-zinc-800 bg-zinc-950 p-4 text-zinc-200 transition-transform md:static md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
-      <div class="mb-4 flex items-center gap-2 font-semibold text-white"><Bug class="h-5 w-5 text-primary-foreground bg-primary rounded-md p-0.5" /> Errgotrack</div>
+      <div class="mb-4 flex items-center gap-2 font-semibold text-white"><Bug class="h-5 w-5 text-primary-foreground bg-primary rounded-md p-0.5" /> Splat</div>
       <nav class="space-y-1">
         <a href="/" class={navClass(path === "/")} on:click|preventDefault={() => navigate("/")}><LayoutDashboard class="h-4 w-4" /> Dashboard</a>
         <a href="/issues" class={navClass(path.startsWith("/issues"))} on:click|preventDefault={() => navigate("/issues")}><TriangleAlert class="h-4 w-4" /> Issues</a>

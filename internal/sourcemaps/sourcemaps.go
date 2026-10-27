@@ -3,7 +3,7 @@
 // (project, release, bundle URL); re-uploading replaces the previous map.
 //
 // The mappings consumer below is deliberately hand-rolled (~150 lines of
-// base64-VLQ decoding) instead of a third-party dependency: errgotrack
+// base64-VLQ decoding) instead of a third-party dependency: splat
 // ships as a single static binary and only needs the forward lookup
 // (generated line/col -> original location), not the full source-map spec
 // (indexed maps with "sections" are rejected as unsupported).

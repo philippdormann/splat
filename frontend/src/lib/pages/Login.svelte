@@ -35,7 +35,7 @@
         <Bug class="text-primary-foreground size-5" />
       </span>
       <div>
-        <Card.Title class="text-lg">Errgotrack</Card.Title>
+        <Card.Title class="text-lg">Splat</Card.Title>
         <Card.Description>Sign in to continue</Card.Description>
       </div>
     </Card.Header>

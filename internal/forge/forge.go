@@ -1,5 +1,5 @@
 // Package forge links a project to its code repository and works with
-// issues there: it creates external issues from errgotrack issues and
+// issues there: it creates external issues from Splat issues and
 // checks the connection, against four providers - GitHub, GitLab, Gitea,
 // and Forgejo (which speaks Gitea's API).
 //

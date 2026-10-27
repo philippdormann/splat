@@ -91,7 +91,7 @@ func (s *Store) SendTestEmail(ctx context.Context) error {
 		Host: cfg.Host, Port: cfg.Port, Username: cfg.Username,
 		Password: cfg.Password, From: cfg.From, UseTLS: cfg.UseTLS,
 	}, cfg.To, email.Alert{
-		ProjectName: "Errgotrack", ExceptionType: "Test",
+		ProjectName: "Splat", ExceptionType: "Test",
 		Message: "Test notification - if you can read this, email alerts are working.",
 		IsNew:   true, Timestamp: time.Now(),
 	})
@@ -99,7 +99,7 @@ func (s *Store) SendTestEmail(ctx context.Context) error {
 
 // GenericWebhook is a user-defined HTTP endpoint receiving the standard
 // JSON alert payload. Secret signs the body (HMAC-SHA256, sent as
-// X-Errgotrack-Signature); Headers are extra request headers merged in,
+// X-Splat-Signature); Headers are extra request headers merged in,
 // one per line as "Name: value" in storage, parsed on send.
 type GenericWebhook struct {
 	ID      int64
@@ -111,7 +111,7 @@ type GenericWebhook struct {
 }
 
 // SignatureHeader is the HMAC header name receivers should verify.
-const SignatureHeader = "X-Errgotrack-Signature"
+const SignatureHeader = "X-Splat-Signature"
 
 func (s *Store) GenericWebhooks() ([]GenericWebhook, error) {
 	rows, err := s.db.Query(`SELECT id, name, url, secret, headers, enabled FROM generic_webhooks ORDER BY id`)
@@ -231,7 +231,7 @@ func (s *Store) SendTestGeneric(ctx context.Context, id int64) error {
 			continue
 		}
 		return s.sendGeneric(ctx, h, webhooks.Alert{
-			ProjectName: "Errgotrack", ExceptionType: "Test",
+			ProjectName: "Splat", ExceptionType: "Test",
 			Message: "Test notification - if you can read this, it's working.",
 			IsNew:   true, Timestamp: time.Now(),
 		})
@@ -323,7 +323,7 @@ func (s *Store) SendTest(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return s.telegram.Send(ctx, cfg.BotToken, cfg.ChatID, "<b>Errgotrack</b>\nTest notification - if you can read this, Telegram alerts are working.")
+	return s.telegram.Send(ctx, cfg.BotToken, cfg.ChatID, "<b>Splat</b>\nTest notification - if you can read this, Telegram alerts are working.")
 }
 
 // GetWebhookConfig and SetWebhookConfig manage Slack/Discord/Teams, which
@@ -349,7 +349,7 @@ func (s *Store) SendTestWebhook(ctx context.Context, channel string) error {
 		return err
 	}
 	body := formatForChannel(channel, webhooks.Alert{
-		ProjectName: "Errgotrack", ExceptionType: "Test",
+		ProjectName: "Splat", ExceptionType: "Test",
 		Message: "Test notification - if you can read this, it's working.", IsNew: true, Timestamp: time.Now(),
 	})
 	return s.webhook.Send(ctx, cfg.URL, body)

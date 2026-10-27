@@ -1,6 +1,6 @@
 // Package tracing links a trace_id already captured in an event's "trace"
 // context out to whatever external tracing backend (Jaeger, Tempo,
-// Honeycomb, ...) the operator runs. errgotrack does not ingest or store
+// Honeycomb, ...) the operator runs. Splat does not ingest or store
 // spans itself - this is correlation, not APM.
 package tracing
 

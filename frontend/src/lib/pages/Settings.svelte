@@ -643,7 +643,7 @@
           <div class="space-y-1"><label class="text-xs">Port</label><Input type="number" bind:value={smtp.port} /></div>
           <div class="space-y-1"><label class="text-xs">Username</label><Input bind:value={smtp.username} /></div>
           <div class="space-y-1"><label class="text-xs">Password</label><Input type="password" bind:value={smtp.password} placeholder="leave blank to keep" /></div>
-          <div class="space-y-1"><label class="text-xs">From address</label><Input bind:value={smtp.from} placeholder="errgotrack@example.com" /></div>
+          <div class="space-y-1"><label class="text-xs">From address</label><Input bind:value={smtp.from} placeholder="splat@example.com" /></div>
           <div class="space-y-1"><label class="text-xs">To address (on-call)</label><Input bind:value={smtp.to} placeholder="oncall@example.com" /></div>
         </div>
         <div class="flex gap-4 text-sm">
@@ -659,7 +659,7 @@
 
     <Dialog open={channelDialog === "generic"} title="Generic webhooks" onClose={closeChannelDialog}>
       <div class="space-y-3">
-        <p class="text-xs text-muted-foreground">Any HTTPS endpoint receives the JSON alert payload. With a secret set, each delivery carries <span class="font-mono">X-Errgotrack-Signature: sha256=&lt;hmac&gt;</span> over the body. Select the <span class="font-mono">generic</span> channel in alert rules to route here.</p>
+        <p class="text-xs text-muted-foreground">Any HTTPS endpoint receives the JSON alert payload. With a secret set, each delivery carries <span class="font-mono">X-Splat-Signature: sha256=&lt;hmac&gt;</span> over the body. Select the <span class="font-mono">generic</span> channel in alert rules to route here.</p>
         {#if generic.length === 0 && !editingHook}
           <p class="text-xs text-muted-foreground">No generic webhooks yet.</p>
         {:else}

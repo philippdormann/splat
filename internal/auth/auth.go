@@ -29,7 +29,7 @@ const (
 
 func validRole(r string) bool { return r == RoleAdmin || r == RoleMember }
 
-const sessionCookieName = "errgotrack_session"
+const sessionCookieName = "splat_session"
 const sessionDuration = 30 * 24 * time.Hour
 
 type Store struct{ db *database.DB }
@@ -280,7 +280,7 @@ func SessionTokenFromRequest(r *http.Request) string {
 
 // CSRF: a double-submit token stored in a non-HttpOnly cookie and echoed
 // back in a hidden form field / HTMX header on state-changing requests.
-const csrfCookieName = "errgotrack_csrf"
+const csrfCookieName = "splat_csrf"
 
 func EnsureCSRFCookie(w http.ResponseWriter, r *http.Request, secure bool) string {
 	if c, err := r.Cookie(csrfCookieName); err == nil && c.Value != "" {

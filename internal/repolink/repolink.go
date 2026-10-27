@@ -1,6 +1,6 @@
 // Package repolink persists the repository integration: one linked forge
 // repository per project plus the external issues created from (or
-// tracked against) errgotrack issues. The forge APIs themselves live in
+// tracked against) Splat issues. The forge APIs themselves live in
 // internal/forge; this package is storage only.
 package repolink
 

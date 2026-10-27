@@ -49,7 +49,7 @@ func Subject(a Alert) string {
 	if title == "" {
 		title = "message"
 	}
-	return fmt.Sprintf("[Errgotrack] %s in %s: %s", kind, a.ProjectName, title)
+	return fmt.Sprintf("[Splat] %s in %s: %s", kind, a.ProjectName, title)
 }
 
 // Body is plain text - no HTML, no tracking pixels, nothing to render.

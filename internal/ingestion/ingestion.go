@@ -47,14 +47,14 @@ type Handler struct {
 
 func (h *Handler) reject(w http.ResponseWriter, reason string, code int, msg string) {
 	if h.Metrics != nil {
-		h.Metrics.Inc("errgotrack_events_rejected_total", reason)
+		h.Metrics.Inc("splat_events_rejected_total", reason)
 	}
 	http.Error(w, msg, code)
 }
 
 func (h *Handler) ingested() {
 	if h.Metrics != nil {
-		h.Metrics.Inc("errgotrack_events_ingested_total")
+		h.Metrics.Inc("splat_events_ingested_total")
 	}
 }
 
@@ -75,7 +75,7 @@ func (h *Handler) skipped(itemType string) {
 	if itemType == "" {
 		itemType = "unknown"
 	}
-	h.Metrics.Inc("errgotrack_envelope_items_skipped_total", itemType)
+	h.Metrics.Inc("splat_envelope_items_skipped_total", itemType)
 }
 
 // Envelope handles POST /api/{project}/envelope/.
@@ -125,7 +125,7 @@ func (h *Handler) Envelope(w http.ResponseWriter, r *http.Request) {
 				} else if err := h.Logs.InsertBatch(project.ID, project.DefaultEnvironment, batch); err != nil {
 					h.Logger.Error("log batch insert failed", "error", err, "project", project.Slug)
 				} else {
-					h.counted("errgotrack_logs_ingested_total")
+					h.counted("splat_logs_ingested_total")
 				}
 			}
 			continue
@@ -141,7 +141,7 @@ func (h *Handler) Envelope(w http.ResponseWriter, r *http.Request) {
 					if err := h.Traces.Insert(project.ID, project.DefaultEnvironment, txn); err != nil {
 						h.Logger.Error("transaction insert failed", "error", err, "project", project.Slug)
 					} else {
-						h.counted("errgotrack_transactions_ingested_total")
+						h.counted("splat_transactions_ingested_total")
 					}
 				}
 			}
@@ -386,10 +386,10 @@ func (h *Handler) SendTestEvent(ctx context.Context, project *projects.Project) 
 		Environment: project.DefaultEnvironment,
 		Exception: &sentryprotocol.ExceptionValues{Values: []sentryprotocol.ExceptionValue{{
 			Type:  "TestError",
-			Value: "This is a test event sent from Errgotrack - safe to resolve once received.",
+			Value: "This is a test event sent from Splat - safe to resolve once received.",
 			Stacktrace: &sentryprotocol.Stacktrace{Frames: []sentryprotocol.Frame{{
-				Filename: "github.com/philippdormann/splat/test.py", Function: "send_test_event",
-				LineNo: 1, InApp: true, ContextLine: "raise TestError('hello from errgotrack')",
+				Filename: "splat/test.py", Function: "send_test_event",
+				LineNo: 1, InApp: true, ContextLine: "raise TestError('hello from splat')",
 			}}},
 		}}},
 		Tags: sentryprotocol.Tags{"test-event": "true"},
