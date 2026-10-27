@@ -10,8 +10,58 @@
   export let onConfirm: () => void = () => {};
   export let onCancel: () => void = () => {};
 
+  let panel: HTMLElement | null = null;
+  let previouslyFocused: Element | null = null;
+
+  const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+  function focusables(): HTMLElement[] {
+    if (!panel) return [];
+    return Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+      (el) => el.offsetParent !== null,
+    );
+  }
+
+  // Focus trap: keep Tab inside the dialog, focus the confirm control on
+  // open, and hand focus back to whatever opened it on close.
   function onKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && !busy) onCancel();
+    if (e.key === "Escape" && !busy) {
+      onCancel();
+      return;
+    }
+    if (e.key !== "Tab" || !panel) return;
+    const items = focusables();
+    if (items.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    const first = items[0];
+    const last = items[items.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || !panel.contains(active))) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+
+  // `open` is driven by the parent, so react to it rather than mount: the
+  // component instance outlives any single opening.
+  $: if (open && typeof document !== "undefined") {
+    previouslyFocused = document.activeElement;
+    queueMicrotask(() => {
+      const items = focusables();
+      // Prefer the confirm control (last button); fall back to first.
+      const target = items[items.length - 1] ?? items[0];
+      target?.focus();
+    });
+  }
+  $: if (!open && previouslyFocused instanceof HTMLElement) {
+    const el = previouslyFocused;
+    previouslyFocused = null;
+    queueMicrotask(() => el.focus());
   }
 </script>
 
@@ -26,6 +76,7 @@
     }}
   >
     <div
+      bind:this={panel}
       class="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg"
       role="alertdialog"
       aria-modal="true"
