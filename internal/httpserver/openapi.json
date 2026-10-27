@@ -276,6 +276,17 @@
           "createdAt": { "type": "string", "format": "date-time" }
         }
       },
+      "GenericWebhook": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "url": { "type": "string" },
+          "hasSecret": { "type": "boolean" },
+          "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+          "enabled": { "type": "boolean" }
+        }
+      },
       "StorageUsage": {
         "type": "object",
         "properties": {
@@ -673,6 +684,89 @@
       "post": {
         "summary": "Send channel test",
         "parameters": [{ "name": "channel", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "{ok, message}." } }
+      }
+    },
+    "/api/v1/settings/generic-webhooks": {
+      "get": {
+        "summary": "List generic webhooks (secrets never returned)",
+        "responses": {
+          "200": {
+            "description": "Generic webhooks.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/GenericWebhook" } }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create generic webhook",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["url"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "url": { "type": "string" },
+                  "secret": { "type": "string", "description": "HMAC-SHA256 signing secret; blank means unsigned." },
+                  "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+                  "enabled": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GenericWebhook" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/generic-webhooks/{id}": {
+      "put": {
+        "summary": "Update generic webhook (blank secret keeps the stored one)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "url": { "type": "string" },
+                  "secret": { "type": "string" },
+                  "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+                  "enabled": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GenericWebhook" } } }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete generic webhook",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Deleted." } }
+      }
+    },
+    "/api/v1/settings/generic-webhooks/{id}/test": {
+      "post": {
+        "summary": "Send generic webhook test",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "responses": { "200": { "description": "{ok, message}." } }
       }
     },

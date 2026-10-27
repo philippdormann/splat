@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -189,6 +190,14 @@ func ValidateURL(rawURL string) error {
 // retry/backoff (see internal/notifications) - this is a single best-effort
 // attempt bounded by the client's timeout.
 func (c *Client) Send(ctx context.Context, url string, body []byte) error {
+	return c.SendWithHeaders(ctx, url, nil, body)
+}
+
+// SendWithHeaders is Send plus extra request headers (e.g. an HMAC
+// signature or authorization token for generic webhooks). Content-Type
+// stays application/json unless explicitly overridden; Host and
+// Content-Length are never taken from callers.
+func (c *Client) SendWithHeaders(ctx context.Context, url string, headers map[string]string, body []byte) error {
 	if url == "" {
 		return fmt.Errorf("webhook not configured")
 	}
@@ -197,6 +206,12 @@ func (c *Client) Send(ctx context.Context, url string, body []byte) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	for k, v := range headers {
+		if strings.EqualFold(k, "host") || strings.EqualFold(k, "content-length") {
+			continue
+		}
+		req.Header.Set(k, v)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

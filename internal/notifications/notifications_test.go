@@ -3,16 +3,19 @@ package notifications
 import (
 	"context"
 	"database/sql"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"errgotrack/internal/database"
 	"errgotrack/internal/issues"
 	"errgotrack/internal/projects"
+	"errgotrack/internal/webhooks"
 )
 
 // newTestStore sets up a project with Telegram enabled and the default
@@ -244,5 +247,92 @@ func TestSMTPConfigRoundTrip(t *testing.T) {
 	}
 	if !ValidChannel("email") || ValidChannel("pager") {
 		t.Fatal("ValidChannel wrong")
+	}
+}
+
+func TestGenericWebhookCRUD(t *testing.T) {
+	store, _, _ := newTestStore(t)
+	h, err := store.CreateGenericWebhook(GenericWebhook{Name: "ops", URL: "http://example.invalid/hook", Secret: "s3cr3t", Headers: map[string]string{"X-Team": "ops"}, Enabled: true})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if h.ID == 0 || h.Headers["X-Team"] != "ops" {
+		t.Fatalf("round trip mismatch: %+v", h)
+	}
+	if _, err := store.CreateGenericWebhook(GenericWebhook{Name: "no-url"}); err == nil {
+		t.Fatal("want error on empty URL")
+	}
+	hooks, err := store.GenericWebhooks()
+	if err != nil || len(hooks) != 1 {
+		t.Fatalf("list = %v, %v", hooks, err)
+	}
+	h.Name = "ops-renamed"
+	updated, err := store.UpdateGenericWebhook(h)
+	if err != nil || updated.Name != "ops-renamed" {
+		t.Fatalf("update = %+v, %v", updated, err)
+	}
+	if err := store.DeleteGenericWebhook(h.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	hooks, _ = store.GenericWebhooks()
+	if len(hooks) != 0 {
+		t.Fatalf("want empty list after delete, got %v", hooks)
+	}
+}
+
+func TestGenericWebhookDeliverySignsAndMergesHeaders(t *testing.T) {
+	store, _, _ := newTestStore(t)
+	var gotSig, gotTeam, gotCT string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSig, gotTeam, gotCT = r.Header.Get(SignatureHeader), r.Header.Get("X-Team"), r.Header.Get("Content-Type")
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	// Read the body in a second server round-trip is awkward; instead verify
+	// the signature inline below against genericPayload directly.
+	h, err := store.CreateGenericWebhook(GenericWebhook{Name: "ops", URL: srv.URL, Secret: "s3cr3t", Headers: map[string]string{"X-Team": "ops"}, Enabled: true})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	a := webhooks.Alert{ProjectName: "P", Environment: "prod", ExceptionType: "E", Message: "boom", IsNew: true, Timestamp: time.Now()}
+	if err := store.sendGeneric(context.Background(), h, a); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if gotTeam != "ops" {
+		t.Fatalf("custom header not merged, got %q", gotTeam)
+	}
+	if gotCT != "application/json" {
+		t.Fatalf("content-type = %q", gotCT)
+	}
+	wantSig := signBody("s3cr3t", genericPayload(a))
+	if gotSig != wantSig || !strings.HasPrefix(gotSig, "sha256=") {
+		t.Fatalf("signature = %q, want %q", gotSig, wantSig)
+	}
+	if signBody("", genericPayload(a)) != "" {
+		t.Fatal("empty secret must mean unsigned")
+	}
+}
+
+func TestGenericChannelFanout(t *testing.T) {
+	store, projectID, issueID := newTestStore(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
+	defer srv.Close()
+	if _, err := store.CreateGenericWebhook(GenericWebhook{Name: "ops", URL: srv.URL, Enabled: true}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	// Default rule (no explicit channels) must include the generic channel
+	// once at least one generic webhook is enabled.
+	store.Evaluate(context.Background(), AlertEvent{IssueID: issueID, ProjectID: projectID, IsNew: true, EventCount: 1, Timestamp: time.Now()})
+	channels := pendingChannels(t, store)
+	found := false
+	for _, c := range channels {
+		if c == "generic" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want generic in %v", channels)
 	}
 }

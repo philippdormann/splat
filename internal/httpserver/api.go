@@ -704,6 +704,11 @@ func (s *Server) apiSettingsData() map[string]any {
 		webhooks[channel] = map[string]any{"urlMasked": maskToken(wc.URL), "enabled": wc.Enabled}
 	}
 	smtp, _ := s.Notifications.GetSMTPConfig()
+	generic, _ := s.Notifications.GenericWebhooks()
+	genericJSON := make([]map[string]any, 0, len(generic))
+	for _, h := range generic {
+		genericJSON = append(genericJSON, genericWebhookJSON(h))
+	}
 	return map[string]any{
 		"telegram":       map[string]any{"chatId": cfg.ChatID, "enabled": cfg.Enabled},
 		"botTokenMasked": maskToken(cfg.BotToken),
@@ -714,6 +719,7 @@ func (s *Server) apiSettingsData() map[string]any {
 			"useTLS": smtp.UseTLS, "enabled": smtp.Enabled,
 		},
 		"traceURLTemplate": traceTmpl,
+		"genericWebhooks":  genericJSON,
 	}
 }
 
@@ -792,6 +798,134 @@ func (s *Server) apiSettingsTestWebhook(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	err := s.Notifications.SendTestWebhook(r.Context(), channel)
+	msg := "Test notification sent."
+	ok := true
+	if err != nil {
+		msg = "Failed to send: " + err.Error()
+		ok = false
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": ok, "message": msg})
+}
+
+func genericWebhookJSON(w notifications.GenericWebhook) map[string]any {
+	return map[string]any{
+		"id": w.ID, "name": w.Name, "url": w.URL,
+		"hasSecret": w.Secret != "", "headers": w.Headers, "enabled": w.Enabled,
+	}
+}
+
+func (s *Server) apiGenericWebhooksList(w http.ResponseWriter, r *http.Request) {
+	hooks, err := s.Notifications.GenericWebhooks()
+	if err != nil {
+		s.Logger.Error("list generic webhooks", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	out := make([]map[string]any, 0, len(hooks))
+	for _, h := range hooks {
+		out = append(out, genericWebhookJSON(h))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) apiGenericWebhooksCreate(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Name    string            `json:"name"`
+		URL     string            `json:"url"`
+		Secret  string            `json:"secret"`
+		Headers map[string]string `json:"headers"`
+		Enabled bool              `json:"enabled"`
+	}
+	if !decodeJSON(r, &input) {
+		writeAPIError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if input.URL != "" {
+		if err := webhooks.ValidateURL(input.URL); err != nil {
+			writeAPIError(w, http.StatusBadRequest, "Not saved: "+err.Error())
+			return
+		}
+	}
+	h, err := s.Notifications.CreateGenericWebhook(notifications.GenericWebhook{
+		Name: input.Name, URL: input.URL, Secret: input.Secret,
+		Headers: input.Headers, Enabled: input.Enabled,
+	})
+	if err != nil {
+		s.Logger.Error("create generic webhook", "error", err)
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, genericWebhookJSON(h))
+}
+
+func (s *Server) apiGenericWebhooksUpdate(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	var input struct {
+		Name    string            `json:"name"`
+		URL     string            `json:"url"`
+		Secret  string            `json:"secret"`
+		Headers map[string]string `json:"headers"`
+		Enabled bool              `json:"enabled"`
+	}
+	if !decodeJSON(r, &input) {
+		writeAPIError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if input.URL != "" {
+		if err := webhooks.ValidateURL(input.URL); err != nil {
+			writeAPIError(w, http.StatusBadRequest, "Not saved: "+err.Error())
+			return
+		}
+	}
+	// Blank secret keeps the stored one (mirrors the bot-token convention).
+	hooks, err := s.Notifications.GenericWebhooks()
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	secret := input.Secret
+	for _, h := range hooks {
+		if h.ID == id && secret == "" {
+			secret = h.Secret
+		}
+	}
+	h, err := s.Notifications.UpdateGenericWebhook(notifications.GenericWebhook{
+		ID: id, Name: input.Name, URL: input.URL, Secret: secret,
+		Headers: input.Headers, Enabled: input.Enabled,
+	})
+	if err != nil {
+		s.Logger.Error("update generic webhook", "error", err)
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, genericWebhookJSON(h))
+}
+
+func (s *Server) apiGenericWebhooksDelete(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if err := s.Notifications.DeleteGenericWebhook(id); err != nil {
+		s.Logger.Error("delete generic webhook", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) apiGenericWebhooksTest(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	err = s.Notifications.SendTestGeneric(r.Context(), id)
 	msg := "Test notification sent."
 	ok := true
 	if err != nil {

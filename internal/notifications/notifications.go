@@ -6,12 +6,17 @@ package notifications
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"math"
+	"sort"
+	"strings"
 	"time"
 
 	"errgotrack/internal/database"
@@ -37,7 +42,7 @@ var webhookChannelNames = []string{"slack", "discord", "teams", "sheets"}
 
 // allChannelNames is every deliverable destination, used to validate
 // per-rule channel selections.
-var allChannelNames = []string{"telegram", "slack", "discord", "teams", "sheets", "email"}
+var allChannelNames = []string{"telegram", "slack", "discord", "teams", "sheets", "email", "generic"}
 
 // ValidChannel reports whether c names a deliverable destination.
 func ValidChannel(c string) bool {
@@ -90,6 +95,202 @@ func (s *Store) SendTestEmail(ctx context.Context) error {
 		Message: "Test notification - if you can read this, email alerts are working.",
 		IsNew:   true, Timestamp: time.Now(),
 	})
+}
+
+// GenericWebhook is a user-defined HTTP endpoint receiving the standard
+// JSON alert payload. Secret signs the body (HMAC-SHA256, sent as
+// X-Errgotrack-Signature); Headers are extra request headers merged in,
+// one per line as "Name: value" in storage, parsed on send.
+type GenericWebhook struct {
+	ID      int64
+	Name    string
+	URL     string
+	Secret  string
+	Headers map[string]string
+	Enabled bool
+}
+
+// SignatureHeader is the HMAC header name receivers should verify.
+const SignatureHeader = "X-Errgotrack-Signature"
+
+func (s *Store) GenericWebhooks() ([]GenericWebhook, error) {
+	rows, err := s.db.Query(`SELECT id, name, url, secret, headers, enabled FROM generic_webhooks ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []GenericWebhook
+	for rows.Next() {
+		var w GenericWebhook
+		var headersJSON string
+		var enabled int
+		if err := rows.Scan(&w.ID, &w.Name, &w.URL, &w.Secret, &headersJSON, &enabled); err != nil {
+			return nil, err
+		}
+		w.Enabled = enabled != 0
+		w.Headers = parseHeaders(headersJSON)
+		out = append(out, w)
+	}
+	return out, rows.Err()
+}
+
+// parseHeaders turns stored "Name: value" lines into a map, skipping
+// blank lines and malformed rows (header values may contain colons; only
+// the first colon splits).
+func parseHeaders(raw string) map[string]string {
+	out := map[string]string{}
+	for _, line := range strings.Split(raw, "\n") {
+		name, value, ok := strings.Cut(strings.TrimSpace(line), ":")
+		if !ok {
+			continue
+		}
+		name, value = strings.TrimSpace(name), strings.TrimSpace(value)
+		if name == "" || value == "" {
+			continue
+		}
+		out[name] = value
+	}
+	return out
+}
+
+func encodeHeaders(headers map[string]string) string {
+	names := make([]string, 0, len(headers))
+	for k, v := range headers {
+		if strings.TrimSpace(k) == "" || strings.TrimSpace(v) == "" {
+			continue
+		}
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	var b strings.Builder
+	for _, k := range names {
+		b.WriteString(strings.TrimSpace(k))
+		b.WriteString(": ")
+		b.WriteString(strings.TrimSpace(headers[k]))
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func (s *Store) CreateGenericWebhook(w GenericWebhook) (GenericWebhook, error) {
+	if strings.TrimSpace(w.URL) == "" {
+		return GenericWebhook{}, fmt.Errorf("url is required")
+	}
+	headers := encodeHeaders(w.Headers)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if s.db.IsPostgres() {
+		var id int64
+		err := s.db.QueryRow(`INSERT INTO generic_webhooks (name, url, secret, headers, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+			w.Name, w.URL, w.Secret, headers, w.Enabled, now).Scan(&id)
+		if err != nil {
+			return GenericWebhook{}, err
+		}
+		w.ID = id
+		return w, nil
+	}
+	res, err := s.db.Exec(`INSERT INTO generic_webhooks (name, url, secret, headers, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		w.Name, w.URL, w.Secret, headers, w.Enabled, now)
+	if err != nil {
+		return GenericWebhook{}, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return GenericWebhook{}, err
+	}
+	w.ID = id
+	w.Headers = parseHeaders(headers)
+	return w, nil
+}
+
+func (s *Store) UpdateGenericWebhook(w GenericWebhook) (GenericWebhook, error) {
+	if strings.TrimSpace(w.URL) == "" {
+		return GenericWebhook{}, fmt.Errorf("url is required")
+	}
+	headers := encodeHeaders(w.Headers)
+	_, err := s.db.Exec(`UPDATE generic_webhooks SET name = ?, url = ?, secret = ?, headers = ?, enabled = ? WHERE id = ?`,
+		w.Name, w.URL, w.Secret, headers, w.Enabled, w.ID)
+	if err != nil {
+		return GenericWebhook{}, err
+	}
+	w.Headers = parseHeaders(headers)
+	return w, nil
+}
+
+func (s *Store) DeleteGenericWebhook(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM generic_webhooks WHERE id = ?`, id)
+	return err
+}
+
+func (s *Store) SendTestGeneric(ctx context.Context, id int64) error {
+	hooks, err := s.GenericWebhooks()
+	if err != nil {
+		return err
+	}
+	for _, h := range hooks {
+		if h.ID != id {
+			continue
+		}
+		return s.sendGeneric(ctx, h, webhooks.Alert{
+			ProjectName: "Errgotrack", ExceptionType: "Test",
+			Message: "Test notification - if you can read this, it's working.",
+			IsNew:   true, Timestamp: time.Now(),
+		})
+	}
+	return fmt.Errorf("generic webhook %d not found", id)
+}
+
+// genericPayload is the JSON body every generic webhook receives.
+func genericPayload(a webhooks.Alert) []byte {
+	b, _ := json.Marshal(map[string]any{
+		"project":        a.ProjectName,
+		"environment":    a.Environment,
+		"kind":           kindOf(a),
+		"exception_type": a.ExceptionType,
+		"message":        a.Message,
+		"event_count":    a.EventCount,
+		"issue_url":      a.IssueURL,
+		"timestamp":      a.Timestamp.UTC().Format(time.RFC3339),
+	})
+	return b
+}
+
+func kindOf(a webhooks.Alert) string {
+	switch {
+	case a.IsNew:
+		return "new_issue"
+	case a.Reopened:
+		return "reopened"
+	default:
+		return "recurring"
+	}
+}
+
+// signBody returns "sha256=<hex HMAC-SHA256(body, secret)>" - empty secret
+// means unsigned.
+func signBody(secret string, body []byte) string {
+	if secret == "" {
+		return ""
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(body)
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
+}
+
+func (s *Store) sendGeneric(ctx context.Context, h GenericWebhook, a webhooks.Alert) error {
+	if h.URL == "" {
+		return fmt.Errorf("generic webhook %q has no URL", h.Name)
+	}
+	// No ValidateURL here: the URL was validated on save (same as the
+	// fixed channels, which also only validate at save time).
+	body := genericPayload(a)
+	headers := map[string]string{}
+	for k, v := range h.Headers {
+		headers[k] = v
+	}
+	if sig := signBody(h.Secret, body); sig != "" {
+		headers[SignatureHeader] = sig
+	}
+	return s.webhook.SendWithHeaders(ctx, h.URL, headers, body)
 }
 
 type Store struct {
@@ -423,6 +624,14 @@ func (s *Store) enabledChannels() []string {
 	if cfg, err := s.GetSMTPConfig(); err == nil && cfg.Enabled {
 		out = append(out, "email")
 	}
+	if hooks, err := s.GenericWebhooks(); err == nil {
+		for _, h := range hooks {
+			if h.Enabled {
+				out = append(out, "generic")
+				break
+			}
+		}
+	}
 	return out
 }
 
@@ -560,6 +769,29 @@ func (s *Store) send(ctx context.Context, channel string, e AlertEvent) (skip bo
 			ProjectName: e.ProjectName, Environment: e.Environment, ExceptionType: e.ExceptionType, Message: e.Message,
 			IsNew: e.IsNew, Reopened: e.Reopened, EventCount: e.EventCount, Timestamp: e.Timestamp, IssueURL: e.IssueURL,
 		})
+
+	case "generic":
+		hooks, err := s.GenericWebhooks()
+		if err != nil {
+			return false, err
+		}
+		var anyEnabled bool
+		for _, h := range hooks {
+			if !h.Enabled {
+				continue
+			}
+			anyEnabled = true
+			if err := s.sendGeneric(ctx, h, webhooks.Alert{
+				ProjectName: e.ProjectName, Environment: e.Environment, ExceptionType: e.ExceptionType, Message: e.Message,
+				IsNew: e.IsNew, Reopened: e.Reopened, EventCount: e.EventCount, Timestamp: e.Timestamp, IssueURL: e.IssueURL,
+			}); err != nil {
+				return false, err
+			}
+		}
+		if !anyEnabled {
+			return true, nil
+		}
+		return false, nil
 
 	default:
 		return false, fmt.Errorf("unknown notification channel %q", channel)

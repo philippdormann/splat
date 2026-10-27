@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput, type APIKey } from "$lib/api";
+  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput, type APIKey, type GenericWebhook } from "$lib/api";
   import Card from "$lib/components/card.svelte";
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
@@ -22,8 +22,59 @@
   let freshSecret = "";
 
   const channels = ["slack", "discord", "teams", "sheets"];
-  const allChannels = ["telegram", "slack", "discord", "teams", "sheets", "email"];
+  const allChannels = ["telegram", "slack", "discord", "teams", "sheets", "email", "generic"];
   const allScopes = ["ingest", "read", "write"];
+
+  let generic: GenericWebhook[] = [];
+  let editingHook: { id?: number; name: string; url: string; secret: string; headersText: string; enabled: boolean } | null = null;
+
+  function headersToText(h: Record<string, string>): string {
+    return Object.entries(h ?? {}).map(([k, v]) => `${k}: ${v}`).join("\n");
+  }
+
+  function textToHeaders(t: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const line of t.split("\n")) {
+      const i = line.indexOf(":");
+      if (i < 0) continue;
+      const k = line.slice(0, i).trim();
+      const v = line.slice(i + 1).trim();
+      if (k && v) out[k] = v;
+    }
+    return out;
+  }
+
+  function newHook() {
+    editingHook = { name: "", url: "", secret: "", headersText: "", enabled: true };
+  }
+
+  function editHook(h: GenericWebhook) {
+    editingHook = { id: h.id, name: h.name, url: h.url, secret: "", headersText: headersToText(h.headers), enabled: h.enabled };
+  }
+
+  async function saveHook(e: Event) {
+    e.preventDefault();
+    if (!editingHook) return;
+    const input = { name: editingHook.name, url: editingHook.url, secret: editingHook.secret, headers: textToHeaders(editingHook.headersText), enabled: editingHook.enabled };
+    if (editingHook.id) {
+      await api.updateGenericWebhook(editingHook.id, input);
+      notice = "Generic webhook updated.";
+    } else {
+      await api.createGenericWebhook(input);
+      notice = "Generic webhook created.";
+    }
+    editingHook = null;
+    generic = await api.genericWebhooks();
+    data = await api.settings();
+  }
+
+  async function deleteHook(id: number) {
+    if (!confirm("Delete this generic webhook?")) return;
+    await api.deleteGenericWebhook(id);
+    generic = await api.genericWebhooks();
+    data = await api.settings();
+    notice = "Generic webhook deleted.";
+  }
 
   function formatBytes(n: number): string {
     if (n < 1024) return `${n} B`;
@@ -83,6 +134,7 @@
       rules = await api.rules();
       projects = await api.projects();
       keys = await api.apiKeys();
+      generic = data.genericWebhooks ?? [];
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load settings.";
     }
@@ -238,6 +290,51 @@
         </form>
       </Card>
     {/each}
+
+    <Card cls="p-4">
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium">Generic webhooks</p>
+          <Button size="sm" variant="outline" on:click={newHook}>New webhook</Button>
+        </div>
+        <p class="text-xs text-muted-foreground">Any HTTPS endpoint receives the JSON alert payload. With a secret set, each delivery carries <span class="font-mono">X-Errgotrack-Signature: sha256=&lt;hmac&gt;</span> over the body. Select the <span class="font-mono">generic</span> channel in alert rules to route here.</p>
+        {#if generic.length === 0 && !editingHook}
+          <p class="text-xs text-muted-foreground">No generic webhooks yet.</p>
+        {:else}
+          <div class="divide-y divide-border rounded-md border border-border">
+            {#each generic as h}
+              <div class="flex flex-wrap items-center justify-between gap-2 p-2 text-xs">
+                <span>
+                  <span class="font-medium">{h.name || "(unnamed)"}</span>
+                  {#if h.enabled}<span class="text-green-600"> (enabled)</span>{/if}
+                  <span class="block font-mono text-muted-foreground">{h.url}{h.hasSecret ? " · signed" : ""}</span>
+                </span>
+                <span class="flex gap-2">
+                  <Button size="sm" variant="outline" on:click={() => editHook(h)}>Edit</Button>
+                  <Button size="sm" variant="outline" on:click={async () => { const r = await api.testGenericWebhook(h.id); notice = r.message; }}>Send test</Button>
+                  <Button size="sm" variant="outline" on:click={() => deleteHook(h.id)}>Delete</Button>
+                </span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+        {#if editingHook}
+          <form on:submit={saveHook} class="space-y-3 rounded-md border border-border p-3">
+            <div class="grid grid-cols-2 gap-3">
+              <div class="space-y-1"><label class="text-xs">Name</label><Input bind:value={editingHook.name} placeholder="Ops endpoint" /></div>
+              <div class="space-y-1"><label class="text-xs">URL</label><Input bind:value={editingHook.url} placeholder="https://ops.example.com/hook" /></div>
+              <div class="space-y-1"><label class="text-xs">Secret (blank = keep/unsigned)</label><Input type="password" bind:value={editingHook.secret} placeholder="leave blank to keep" /></div>
+              <div class="space-y-1"><label class="text-xs">Extra headers (one "Name: value" per line)</label><textarea rows="3" bind:value={editingHook.headersText} placeholder={"Authorization: Bearer …\nX-Team: ops"} class="flex w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" /></div>
+            </div>
+            <label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={editingHook.enabled} /> Enabled</label>
+            <div class="flex gap-2">
+              <Button type="submit" size="sm">Save webhook</Button>
+              <Button size="sm" variant="outline" on:click={() => (editingHook = null)}>Cancel</Button>
+            </div>
+          </form>
+        {/if}
+      </div>
+    </Card>
 
     <Card cls="p-4">
       <form on:submit={saveTracing} class="space-y-3">

@@ -130,6 +130,27 @@ export const api = {
       `/api/v1/settings/webhooks/${channel}/test`,
       { method: "POST", body: "{}" },
     ),
+
+  genericWebhooks: () => req<GenericWebhook[]>("/api/v1/settings/generic-webhooks"),
+  createGenericWebhook: (input: { name: string; url: string; secret: string; headers: Record<string, string>; enabled: boolean }) =>
+    req<GenericWebhook>("/api/v1/settings/generic-webhooks", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateGenericWebhook: (id: number, input: { name: string; url: string; secret: string; headers: Record<string, string>; enabled: boolean }) =>
+    req<GenericWebhook>(`/api/v1/settings/generic-webhooks/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+  deleteGenericWebhook: (id: number) =>
+    req<{ ok: boolean }>(`/api/v1/settings/generic-webhooks/${id}`, {
+      method: "DELETE",
+    }),
+  testGenericWebhook: (id: number) =>
+    req<{ ok: boolean; message: string }>(
+      `/api/v1/settings/generic-webhooks/${id}/test`,
+      { method: "POST", body: "{}" },
+    ),
   saveTracing: (urlTemplate: string) =>
     req<SettingsData>("/api/v1/settings/tracing", {
       method: "PUT",
@@ -372,6 +393,7 @@ export interface SettingsData {
   botTokenMasked: string;
   webhooks: Record<string, { urlMasked: string; enabled: boolean }>;
   smtp: SMTPSettings;
+  genericWebhooks: GenericWebhook[];
   traceURLTemplate: string;
 }
 
@@ -412,6 +434,15 @@ export interface SMTPSettings {
   from: string;
   to: string;
   useTLS: boolean;
+  enabled: boolean;
+}
+
+export interface GenericWebhook {
+  id: number;
+  name: string;
+  url: string;
+  hasSecret: boolean;
+  headers: Record<string, string>;
   enabled: boolean;
 }
 
