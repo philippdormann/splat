@@ -40,9 +40,10 @@ func TestUsageOnFreshDB(t *testing.T) {
 	if _, ok := got["events"]; !ok {
 		t.Fatal("expected events table in usage report")
 	}
-	// Tables from future migrations must be skipped, not fatal.
-	if _, ok := got["source_maps"]; ok {
-		t.Fatal("source_maps should be absent before its migration exists")
+	// source_maps exists since migration 0007; a genuinely unknown table
+	// must be skipped, not fatal (covered implicitly - no error above).
+	if _, ok := got["source_maps"]; !ok {
+		t.Fatal("expected source_maps table in usage report")
 	}
 }
 

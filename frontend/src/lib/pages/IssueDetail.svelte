@@ -65,6 +65,14 @@
           {#each data.stacktrace as f}
             <div class="rounded-md bg-muted p-2 font-mono text-xs">
               <p>{f.module ? `${f.module}.` : ""}{f.function} — {f.file}:{f.line}</p>
+              {#if f.original}
+                <p class="mt-0.5 text-green-600 dark:text-green-400">
+                  ↳ {f.original.function ? `${f.original.function} — ` : ""}{f.original.source}:{f.original.line}{f.original.column ? `:${f.original.column}` : ""} <span class="text-muted-foreground">(via source map)</span>
+                </p>
+                {#if f.original.context?.length}
+                  <pre class="mt-1 overflow-x-auto whitespace-pre-wrap text-muted-foreground">{f.original.context.join("\n")}</pre>
+                {/if}
+              {/if}
               {#if f.contextLine}<pre class="mt-1 overflow-x-auto whitespace-pre-wrap">{f.contextLine}</pre>{/if}
               {#if f.vars.length}
                 <div class="mt-1 space-y-0.5">

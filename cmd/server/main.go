@@ -22,6 +22,7 @@ import (
 	"errgotrack/internal/notifications"
 	"errgotrack/internal/projects"
 	"errgotrack/internal/retention"
+	"errgotrack/internal/sourcemaps"
 	"errgotrack/internal/storage"
 	"errgotrack/internal/tracing"
 )
@@ -110,6 +111,7 @@ func main() {
 		Tracing:       tracing.NewStore(db),
 		Retention:     sweeper,
 		Storage:       storage.NewStore(db, dbPath),
+		SourceMaps:    sourcemaps.NewStore(db),
 		Logger:        logger,
 		PublicURL:     cfg.PublicURL,
 		CookieSecure:  strings.HasPrefix(cfg.PublicURL, "https://"),

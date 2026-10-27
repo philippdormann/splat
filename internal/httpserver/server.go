@@ -18,6 +18,7 @@ import (
 	"errgotrack/internal/notifications"
 	"errgotrack/internal/projects"
 	"errgotrack/internal/retention"
+	"errgotrack/internal/sourcemaps"
 	"errgotrack/internal/storage"
 	"errgotrack/internal/tracing"
 	"errgotrack/web"
@@ -33,6 +34,7 @@ type Server struct {
 	Tracing       *tracing.Store
 	Retention     *retention.Sweeper
 	Storage       *storage.Store
+	SourceMaps    *sourcemaps.Store
 	Logger        *slog.Logger
 	PublicURL     string
 	CookieSecure  bool
@@ -97,6 +99,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/storage", s.requireAPIAuth(s.apiStorageUsage))
 	s.mux.HandleFunc("POST /api/v1/storage/sweep", s.requireAPIAuth(s.apiStorageSweep))
 	s.mux.HandleFunc("POST /api/v1/storage/vacuum", s.requireAPIAuth(s.apiStorageVacuum))
+
+	s.mux.HandleFunc("GET /api/v1/projects/{id}/sourcemaps", s.requireAPIAuth(s.apiSourceMapsList))
+	s.mux.HandleFunc("POST /api/v1/projects/{id}/sourcemaps", s.requireAPIAuth(s.apiSourceMapsUpload))
+	s.mux.HandleFunc("DELETE /api/v1/projects/{id}/sourcemaps/{mapId}", s.requireAPIAuth(s.apiSourceMapsDelete))
 
 	// Built Svelte assets (fingerprinted files under /assets/).
 	dist := web.Sub()

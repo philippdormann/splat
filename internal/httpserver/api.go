@@ -15,6 +15,8 @@ package httpserver
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -27,6 +29,7 @@ import (
 	"errgotrack/internal/platforms"
 	"errgotrack/internal/projects"
 	"errgotrack/internal/sentryprotocol"
+	"errgotrack/internal/sourcemaps"
 	"errgotrack/internal/tracing"
 	"errgotrack/internal/webhooks"
 )
@@ -335,7 +338,12 @@ func (s *Server) apiIssueDetail(w http.ResponseWriter, r *http.Request) {
 			}
 			return out
 		}(),
-		"stacktrace": framesJSON(buildFrameViews(frames)),
+		"stacktrace": framesJSON(buildFrameViews(frames), func(file string, line, col int) (sourcemaps.MappedLoc, bool) {
+			if s.SourceMaps == nil {
+				return sourcemaps.MappedLoc{}, false
+			}
+			return s.SourceMaps.Resolve(issue.ProjectID, event.Release, file, line, col)
+		}),
 		"events":     evJSON,
 		"latestEventId": func() any {
 			if latest, err := s.Events.Latest(issue.ID); err == nil {
@@ -443,7 +451,7 @@ func requestJSON(v *requestView) any {
 	return map[string]any{"url": v.URL, "queryParams": kvJSON(v.QueryParams)}
 }
 
-func framesJSON(frames []frameView) []map[string]any {
+func framesJSON(frames []frameView, resolve func(file string, line, col int) (sourcemaps.MappedLoc, bool)) []map[string]any {
 	out := make([]map[string]any, 0, len(frames))
 	for _, f := range frames {
 		var contextLine string
@@ -467,9 +475,18 @@ func framesJSON(frames []frameView) []map[string]any {
 			vars = append(vars, map[string]string{"key": k, "value": f.Vars[k]})
 		}
 		out = append(out, map[string]any{
-			"file": f.Filename, "line": f.LineNo, "function": f.Function,
+			"file": f.Filename, "line": f.LineNo, "col": f.ColNo, "function": f.Function,
 			"module": "", "contextLine": contextLine,
 			"preContext": pre, "postContext": post, "vars": vars, "inApp": f.InApp,
+			"original": func() any {
+				if resolve == nil {
+					return nil
+				}
+				if loc, ok := resolve(f.Filename, f.LineNo, f.ColNo); ok {
+					return loc
+				}
+				return nil
+			}(),
 		})
 	}
 	return out
@@ -812,6 +829,112 @@ func (s *Server) apiStorageVacuum(w http.ResponseWriter, r *http.Request) {
 	if err := s.Storage.Vacuum(r.Context()); err != nil {
 		s.Logger.Error("vacuum", "error", err)
 		writeAPIError(w, http.StatusInternalServerError, "vacuum failed: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// --- source maps ---
+
+func (s *Server) apiSourceMapsList(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if s.SourceMaps == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "source maps not configured")
+		return
+	}
+	list, err := s.SourceMaps.List(id)
+	if err != nil {
+		s.Logger.Error("list source maps", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+// apiSourceMapsUpload accepts either a JSON body
+// {release, bundleUrl, content} or a multipart form with fields
+// "release", "bundleUrl" and a "file" upload.
+func (s *Server) apiSourceMapsUpload(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if s.SourceMaps == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "source maps not configured")
+		return
+	}
+	if _, err := s.Projects.Get(id); err != nil {
+		writeAPIError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	var release, bundleURL string
+	var content []byte
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		if err := r.ParseMultipartForm(sourcemaps.MaxMapBytes + (1 << 20)); err != nil {
+			writeAPIError(w, http.StatusBadRequest, "invalid multipart body: "+err.Error())
+			return
+		}
+		release = r.FormValue("release")
+		bundleURL = r.FormValue("bundleUrl")
+		f, _, err := r.FormFile("file")
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, "missing file part")
+			return
+		}
+		defer f.Close()
+		content, err = io.ReadAll(io.LimitReader(f, sourcemaps.MaxMapBytes+1))
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, "cannot read file: "+err.Error())
+			return
+		}
+	} else {
+		var input struct {
+			Release   string `json:"release"`
+			BundleURL string `json:"bundleUrl"`
+			Content   string `json:"content"`
+		}
+		if !decodeJSON(r, &input) {
+			writeAPIError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+		release, bundleURL, content = input.Release, input.BundleURL, []byte(input.Content)
+	}
+	meta, err := s.SourceMaps.Upload(id, release, bundleURL, content)
+	if err != nil {
+		s.Logger.Error("upload source map", "error", err, "project_id", id)
+		if errors.Is(err, sourcemaps.ErrTooLarge) || errors.Is(err, sourcemaps.ErrUnsupported) {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, meta)
+}
+
+func (s *Server) apiSourceMapsDelete(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	mapID, err := strconv.ParseInt(r.PathValue("mapId"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if s.SourceMaps == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "source maps not configured")
+		return
+	}
+	if err := s.SourceMaps.Delete(id, mapID); err != nil {
+		s.Logger.Error("delete source map", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})

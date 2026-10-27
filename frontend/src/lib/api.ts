@@ -97,6 +97,18 @@ export const api = {
 
   platforms: () => req<Platform[]>("/api/v1/platforms"),
 
+  sourceMaps: (projectId: number | string) =>
+    req<SourceMapMeta[]>(`/api/v1/projects/${projectId}/sourcemaps`),
+  uploadSourceMap: (projectId: number | string, input: { release: string; bundleUrl: string; content: string }) =>
+    req<SourceMapMeta>(`/api/v1/projects/${projectId}/sourcemaps`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  deleteSourceMap: (projectId: number | string, mapId: number) =>
+    req<{ ok: boolean }>(`/api/v1/projects/${projectId}/sourcemaps/${mapId}`, {
+      method: "DELETE",
+    }),
+
   settings: () => req<SettingsData>("/api/v1/settings"),
   saveTelegram: (input: { botToken: string; chatId: string; enabled: boolean }) =>
     req<SettingsData>("/api/v1/settings/telegram", {
@@ -234,6 +246,7 @@ export interface IssueDetail {
   stacktrace: {
     file: string;
     line: number;
+    col: number;
     function: string;
     module: string;
     contextLine: string;
@@ -241,6 +254,13 @@ export interface IssueDetail {
     postContext: string[];
     vars: KeyValue[];
     inApp: boolean;
+    original: {
+      source: string;
+      line: number;
+      column: number;
+      function?: string;
+      context?: string[];
+    } | null;
   }[];
   events: { eventId: string; timestamp: string; message: string }[];
   latestEventId: string | null;
@@ -284,6 +304,14 @@ export interface ProjectDetail {
 export interface Platform {
   id: string;
   label: string;
+}
+
+export interface SourceMapMeta {
+  id: number;
+  release: string;
+  bundleUrl: string;
+  sizeBytes: number;
+  createdAt: string;
 }
 
 export interface SettingsData {
