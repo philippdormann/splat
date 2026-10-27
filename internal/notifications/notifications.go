@@ -14,6 +14,7 @@ import (
 	"math"
 	"time"
 
+	"errgotrack/internal/database"
 	"errgotrack/internal/telegram"
 	"errgotrack/internal/webhooks"
 )
@@ -34,13 +35,13 @@ type WebhookConfig struct {
 var webhookChannelNames = []string{"slack", "discord", "teams", "sheets"}
 
 type Store struct {
-	db       *sql.DB
+	db       *database.DB
 	telegram *telegram.Client
 	webhook  *webhooks.Client
 	logger   *slog.Logger
 }
 
-func NewStore(db *sql.DB, logger *slog.Logger) *Store {
+func NewStore(db *database.DB, logger *slog.Logger) *Store {
 	return &Store{db: db, telegram: telegram.NewClient(), webhook: webhooks.NewClient(), logger: logger}
 }
 

@@ -6,7 +6,7 @@ package retention
 
 import (
 	"context"
-	"database/sql"
+	"errgotrack/internal/database"
 	"log/slog"
 	"time"
 )
@@ -14,11 +14,11 @@ import (
 const batchSize = 500
 
 type Sweeper struct {
-	db     *sql.DB
+	db     *database.DB
 	logger *slog.Logger
 }
 
-func NewSweeper(db *sql.DB, logger *slog.Logger) *Sweeper {
+func NewSweeper(db *database.DB, logger *slog.Logger) *Sweeper {
 	return &Sweeper{db: db, logger: logger}
 }
 

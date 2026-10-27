@@ -5,6 +5,7 @@ package issues
 import (
 	"context"
 	"database/sql"
+	"errgotrack/internal/database"
 	"errors"
 	"fmt"
 	"strings"
@@ -39,9 +40,9 @@ type Issue struct {
 
 var ErrNotFound = errors.New("issue not found")
 
-type Store struct{ db *sql.DB }
+type Store struct{ db *database.DB }
 
-func NewStore(db *sql.DB) *Store { return &Store{db: db} }
+func NewStore(db *database.DB) *Store { return &Store{db: db} }
 
 // UpsertResult tells the caller whether this event started a new issue or
 // reopened a previously-resolved one, so the notification layer can decide
@@ -57,9 +58,14 @@ type UpsertResult struct {
 // counters. A resolved issue that sees a new occurrence is reopened; an
 // ignored issue stays ignored (that's the point of ignoring it).
 //
-// Runs under BEGIN IMMEDIATE so concurrent ingestion requests serialize on
-// SQLite's single writer instead of racing a read-then-write.
+// On SQLite runs under BEGIN IMMEDIATE so concurrent ingestion requests
+// serialize on SQLite's single writer instead of racing a read-then-write.
+// On Postgres it uses a regular transaction with SELECT ... FOR UPDATE,
+// letting Postgres row locking serialize the same race.
 func (s *Store) Upsert(ctx context.Context, projectID int64, fingerprint string, title, excType, excValue, culprit, level, environment, release string, seenAt time.Time) (*UpsertResult, error) {
+	if s.db.IsPostgres() {
+		return s.upsertPostgres(ctx, projectID, fingerprint, title, excType, excValue, culprit, level, environment, release, seenAt)
+	}
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
 		return nil, err
@@ -80,7 +86,76 @@ func (s *Store) Upsert(ctx context.Context, projectID int64, fingerprint string,
 	return issue, nil
 }
 
-func (s *Store) upsertTx(ctx context.Context, conn *sql.Conn, projectID int64, fingerprint string, title, excType, excValue, culprit, level, environment, release string, seenAt time.Time) (*UpsertResult, error) {
+// upsertPostgres is the Postgres variant of Upsert: one transaction, row
+// lock on the matching issue when it exists, INSERT ... RETURNING id when
+// it does not.
+func (s *Store) upsertPostgres(ctx context.Context, projectID int64, fingerprint, title, excType, excValue, culprit, level, environment, release string, seenAt time.Time) (*UpsertResult, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	seenStr := seenAt.UTC().Format(time.RFC3339Nano)
+	var id int64
+	var status string
+	err = tx.QueryRowContext(ctx, `SELECT id, status FROM issues WHERE project_id = ? AND fingerprint = ? FOR UPDATE`, projectID, fingerprint).Scan(&id, &status)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		var newID int64
+		if err := tx.QueryRowContext(ctx, `
+			INSERT INTO issues (project_id, fingerprint, title, exception_type, exception_value, culprit, level, status, event_count, user_count, first_seen, last_seen, environment, release)
+			VALUES (?, ?, ?, ?, ?, ?, ?, 'unresolved', 1, 0, ?, ?, ?, ?) RETURNING id`,
+			projectID, fingerprint, title, excType, excValue, culprit, level, seenStr, seenStr, environment, release).Scan(&newID); err != nil {
+			tx.Rollback()
+			return nil, fmt.Errorf("insert issue: %w", err)
+		}
+		row := tx.QueryRowContext(ctx, `SELECT `+selectCols+` FROM issues WHERE id = ?`, newID)
+		issue, err := scan(row)
+		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return &UpsertResult{Issue: issue, IsNew: true}, nil
+	case err != nil:
+		tx.Rollback()
+		return nil, fmt.Errorf("lookup issue: %w", err)
+	}
+	newStatus := status
+	reopened := false
+	if Status(status) == StatusResolved {
+		newStatus = string(StatusUnresolved)
+		reopened = true
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE issues SET
+			event_count = event_count + 1,
+			last_seen = ?,
+			status = ?,
+			title = ?,
+			exception_value = ?,
+			culprit = ?,
+			environment = ?,
+			release = ?
+		WHERE id = ?`,
+		seenStr, newStatus, title, excValue, culprit, environment, release, id); err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("update issue: %w", err)
+	}
+	row := tx.QueryRowContext(ctx, `SELECT `+selectCols+` FROM issues WHERE id = ?`, id)
+	issue, err := scan(row)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &UpsertResult{Issue: issue, IsNew: false, Reopened: reopened}, nil
+}
+
+func (s *Store) upsertTx(ctx context.Context, conn *database.Conn, projectID int64, fingerprint string, title, excType, excValue, culprit, level, environment, release string, seenAt time.Time) (*UpsertResult, error) {
 	var id int64
 	var status string
 	seenStr := seenAt.UTC().Format(time.RFC3339Nano)
@@ -154,7 +229,7 @@ func scan(row interface{ Scan(...any) error }) (*Issue, error) {
 	return &iss, nil
 }
 
-func (s *Store) getTx(ctx context.Context, conn *sql.Conn, id int64) (*Issue, error) {
+func (s *Store) getTx(ctx context.Context, conn *database.Conn, id int64) (*Issue, error) {
 	row := conn.QueryRowContext(ctx, `SELECT `+selectCols+` FROM issues WHERE id = ?`, id)
 	return scan(row)
 }
@@ -267,10 +342,14 @@ func (s *Store) Sparkline24h(ids []int64) (map[int64][]int64, error) {
 	}
 	args = append(args, since.Format(time.RFC3339Nano))
 
+	bucketExpr := `strftime('%Y-%m-%d %H', timestamp)`
+	if s.db.IsPostgres() {
+		bucketExpr = `to_char(timestamp::timestamptz, 'YYYY-MM-DD HH24')`
+	}
 	query := fmt.Sprintf(`
-		SELECT issue_id, strftime('%%Y-%%m-%%d %%H', timestamp) AS bucket, COUNT(*)
+		SELECT issue_id, %s AS bucket, COUNT(*)
 		FROM events WHERE issue_id IN (%s) AND timestamp >= ?
-		GROUP BY issue_id, bucket`, placeholders)
+		GROUP BY issue_id, bucket`, bucketExpr, placeholders)
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, err

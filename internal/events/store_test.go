@@ -2,7 +2,6 @@ package events
 
 import (
 	"context"
-	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -12,7 +11,7 @@ import (
 	"errgotrack/internal/projects"
 )
 
-func setup(t *testing.T) (*sql.DB, int64, int64) {
+func setup(t *testing.T) (*database.DB, int64, int64) {
 	t.Helper()
 	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {

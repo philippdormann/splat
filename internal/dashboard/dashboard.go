@@ -6,13 +6,14 @@ package dashboard
 
 import (
 	"database/sql"
+	"errgotrack/internal/database"
 	"fmt"
 	"time"
 )
 
-type Store struct{ db *sql.DB }
+type Store struct{ db *database.DB }
 
-func NewStore(db *sql.DB) *Store { return &Store{db: db} }
+func NewStore(db *database.DB) *Store { return &Store{db: db} }
 
 type Stats struct {
 	TotalEvents      int64
@@ -91,7 +92,31 @@ func bucketFormat(since time.Time) string {
 	}
 }
 
+// pgBucketFormat is the Postgres to_char equivalent of bucketFormat.
+func pgBucketFormat(since time.Time) string {
+	span := time.Since(since)
+	switch {
+	case span <= 2*time.Hour:
+		return "YYYY-MM-DD HH24:MI"
+	case span <= 2*24*time.Hour:
+		return "YYYY-MM-DD HH24:00"
+	default:
+		return "YYYY-MM-DD"
+	}
+}
+
 func (s *Store) EventsOverTime(since time.Time) ([]Point, error) {
+	if s.db.IsPostgres() {
+		format := pgBucketFormat(since)
+		rows, err := s.db.Query(`
+			SELECT to_char(timestamp::timestamptz, ?) AS bucket, COUNT(*) FROM events
+			WHERE timestamp >= ? GROUP BY bucket ORDER BY bucket`, format, fmtTime(since))
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		return scanPoints(rows)
+	}
 	format := bucketFormat(since)
 	rows, err := s.db.Query(`
 		SELECT strftime(?, timestamp) AS bucket, COUNT(*) FROM events

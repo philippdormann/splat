@@ -61,14 +61,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	if dir := filepath.Dir(cfg.DatabasePath); dir != "." {
-		if err := os.MkdirAll(dir, 0o750); err != nil {
-			logger.Error("create db directory", "error", err)
-			os.Exit(1)
+	if cfg.DBDriver == "postgres" {
+		logger.Info("database backend", "driver", "postgres")
+	} else {
+		if dir := filepath.Dir(cfg.DatabasePath); dir != "." {
+			if err := os.MkdirAll(dir, 0o750); err != nil {
+				logger.Error("create db directory", "error", err)
+				os.Exit(1)
+			}
 		}
 	}
 
-	db, err := database.Open(cfg.DatabasePath)
+	var db *database.DB
+	if cfg.DBDriver == "postgres" {
+		db, err = database.OpenPostgres(cfg.DatabaseURL)
+	} else {
+		db, err = database.OpenSQLite(cfg.DatabasePath)
+	}
 	if err != nil {
 		logger.Error("open database", "error", err)
 		os.Exit(1)

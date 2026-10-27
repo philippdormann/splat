@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"time"
 
+	"errgotrack/internal/database"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -20,9 +21,9 @@ var ErrInvalidCredentials = errors.New("invalid username or password")
 const sessionCookieName = "errgotrack_session"
 const sessionDuration = 30 * 24 * time.Hour
 
-type Store struct{ db *sql.DB }
+type Store struct{ db *database.DB }
 
-func NewStore(db *sql.DB) *Store { return &Store{db: db} }
+func NewStore(db *database.DB) *Store { return &Store{db: db} }
 
 // EnsureAdmin creates the admin user from env-provided credentials if no
 // admin exists yet. Safe to call on every startup.

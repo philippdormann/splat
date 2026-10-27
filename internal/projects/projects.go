@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"time"
 
+	"errgotrack/internal/database"
 	"errgotrack/internal/platforms"
 )
 
@@ -28,9 +29,9 @@ type Project struct {
 
 var ErrNotFound = errors.New("project not found")
 
-type Store struct{ db *sql.DB }
+type Store struct{ db *database.DB }
 
-func NewStore(db *sql.DB) *Store { return &Store{db: db} }
+func NewStore(db *database.DB) *Store { return &Store{db: db} }
 
 func generateKey() (string, error) {
 	buf := make([]byte, 16)
@@ -53,6 +54,15 @@ func (s *Store) Create(name, slug, defaultEnv, platform string, retentionDays in
 	}
 	if !platforms.Valid(platform) {
 		platform = platforms.DefaultID
+	}
+	if s.db.IsPostgres() {
+		var id int64
+		err := s.db.QueryRow(`INSERT INTO projects (name, slug, public_key, default_environment, retention_days, platform) VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+			name, slug, key, defaultEnv, retentionDays, platform).Scan(&id)
+		if err != nil {
+			return nil, err
+		}
+		return s.Get(id)
 	}
 	res, err := s.db.Exec(`INSERT INTO projects (name, slug, public_key, default_environment, retention_days, platform) VALUES (?, ?, ?, ?, ?, ?)`,
 		name, slug, key, defaultEnv, retentionDays, platform)

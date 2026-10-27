@@ -11,6 +11,8 @@ import (
 type Config struct {
 	Addr            string
 	DatabasePath    string
+	DatabaseURL     string
+	DBDriver        string // "sqlite" (default) or "postgres"
 	PublicURL       string // used to build DSNs and notification links, e.g. https://errors.example.com
 	AdminUsername   string
 	AdminPassword   string // only used to bootstrap the first admin user if none exists
@@ -23,6 +25,8 @@ func Load() (Config, error) {
 	c := Config{
 		Addr:            getenv("ERRGOTRACK_ADDR", ":8080"),
 		DatabasePath:    getenv("ERRGOTRACK_DB_PATH", "data/errgotrack.db"),
+		DatabaseURL:     getenv("ERRGOTRACK_DATABASE_URL", ""),
+		DBDriver:        getenv("ERRGOTRACK_DB_DRIVER", "sqlite"),
 		PublicURL:       getenv("ERRGOTRACK_PUBLIC_URL", "http://localhost:8080"),
 		AdminUsername:   getenv("ERRGOTRACK_ADMIN_USERNAME", ""),
 		AdminPassword:   getenv("ERRGOTRACK_ADMIN_PASSWORD", ""),
@@ -32,6 +36,17 @@ func Load() (Config, error) {
 	}
 	if c.SessionSecret == "" {
 		return c, fmt.Errorf("ERRGOTRACK_SESSION_SECRET must be set (random 32+ byte string)")
+	}
+	switch c.DBDriver {
+	case "", "sqlite":
+		c.DBDriver = "sqlite"
+	case "postgres", "postgresql", "pg":
+		c.DBDriver = "postgres"
+		if c.DatabaseURL == "" {
+			return c, fmt.Errorf("ERRGOTRACK_DATABASE_URL must be set when ERRGOTRACK_DB_DRIVER=postgres")
+		}
+	default:
+		return c, fmt.Errorf("unknown ERRGOTRACK_DB_DRIVER %q (want sqlite or postgres)", c.DBDriver)
 	}
 	return c, nil
 }

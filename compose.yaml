@@ -1,7 +1,7 @@
 services:
   errgotrack:
     build: .
-    image: errgotrack:latest
+    image: ghcr.io/philippdormann/errgotrack:latest
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
@@ -12,11 +12,39 @@ services:
       ERRGOTRACK_ADMIN_USERNAME: ${ERRGOTRACK_ADMIN_USERNAME}
       ERRGOTRACK_ADMIN_PASSWORD: ${ERRGOTRACK_ADMIN_PASSWORD}
       ERRGOTRACK_SESSION_SECRET: ${ERRGOTRACK_SESSION_SECRET}
+      # Database: sqlite is the default (ERRGOTRACK_DB_DRIVER=sqlite,
+      # ERRGOTRACK_DB_PATH=/data/errgotrack.db). To use Postgres instead, set:
+      # ERRGOTRACK_DB_DRIVER: ${ERRGOTRACK_DB_DRIVER:-sqlite}
+      # ERRGOTRACK_DATABASE_URL: ${ERRGOTRACK_DATABASE_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+        restart: true
     healthcheck:
       test: ["CMD", "/app/errgotrack", "-healthcheck"]
       interval: 30s
       timeout: 3s
       retries: 3
 
+  # Optional Postgres backend. The app still defaults to SQLite; only used
+  # when ERRGOTRACK_DB_DRIVER=postgres + ERRGOTRACK_DATABASE_URL is set.
+  # Kept as a commented-out profile? No - runs but unused by default, so
+  # switching backends is just env vars, no compose edit.
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-errgotrack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-errgotrack}
+      POSTGRES_DB: ${POSTGRES_DB:-errgotrack}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-errgotrack} -d $${POSTGRES_DB:-errgotrack}"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
 volumes:
   errgotrack-data:
+  postgres-data:

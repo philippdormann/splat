@@ -4,6 +4,7 @@ package events
 
 import (
 	"database/sql"
+	"errgotrack/internal/database"
 	"errors"
 	"fmt"
 	"strings"
@@ -35,9 +36,9 @@ type Event struct {
 
 var ErrNotFound = errors.New("event not found")
 
-type Store struct{ db *sql.DB }
+type Store struct{ db *database.DB }
 
-func NewStore(db *sql.DB) *Store { return &Store{db: db} }
+func NewStore(db *database.DB) *Store { return &Store{db: db} }
 
 func (s *Store) Insert(e *Event) error {
 	_, err := s.db.Exec(`
@@ -141,20 +142,35 @@ type SearchFilter struct {
 
 // Search finds individual events, using FTS5 when free text is given and
 // falling back to plain indexed filters otherwise so a filter-only query
-// doesn't pay for a full-text match.
+// doesn't pay for a full-text match. On Postgres the same free text uses
+// a trigram-friendly ILIKE disjunction (plus the GIN tsvector index from
+// the migrations for larger installs) instead of FTS5.
 func (s *Store) Search(f SearchFilter) ([]*Event, error) {
 	where := "WHERE 1=1"
 	var args []any
 	joinFTS := ""
 
-	// Built from f.Text rather than checking f.Text != "" directly: a
-	// whitespace-only search string is non-empty but produces no FTS5
-	// terms, and "events_fts MATCH ''" is a syntax error, not an empty
-	// result - so the emptiness check has to happen after tokenizing.
-	if ftsTerms := ftsQuery(f.Text); ftsTerms != "" {
-		joinFTS = "JOIN events_fts ON events_fts.rowid = events.pk"
-		where += " AND events_fts MATCH ?"
-		args = append(args, ftsTerms)
+	if s.db.IsPostgres() {
+		if text := strings.TrimSpace(f.Text); text != "" {
+			words := strings.Fields(text)
+			var ors []string
+			for _, w := range words {
+				like := "%" + w + "%"
+				ors = append(ors, "(events.message ILIKE ? OR events.exception_type ILIKE ? OR events.exception_value ILIKE ?)")
+				args = append(args, like, like, like)
+			}
+			where += " AND (" + strings.Join(ors, " OR ") + ")"
+		}
+	} else {
+		// Built from f.Text rather than checking f.Text != "" directly: a
+		// whitespace-only search string is non-empty but produces no FTS5
+		// terms, and "events_fts MATCH ''" is a syntax error, not an empty
+		// result - so the emptiness check has to happen after tokenizing.
+		if ftsTerms := ftsQuery(f.Text); ftsTerms != "" {
+			joinFTS = "JOIN events_fts ON events_fts.rowid = events.pk"
+			where += " AND events_fts MATCH ?"
+			args = append(args, ftsTerms)
+		}
 	}
 	if f.ProjectID != 0 {
 		where += " AND events.project_id = ?"

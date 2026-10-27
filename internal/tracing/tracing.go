@@ -5,13 +5,13 @@
 package tracing
 
 import (
-	"database/sql"
+	"errgotrack/internal/database"
 	"strings"
 )
 
-type Store struct{ db *sql.DB }
+type Store struct{ db *database.DB }
 
-func NewStore(db *sql.DB) *Store { return &Store{db: db} }
+func NewStore(db *database.DB) *Store { return &Store{db: db} }
 
 func (s *Store) GetURLTemplate() (string, error) {
 	var tmpl string

@@ -2,7 +2,6 @@ package issues
 
 import (
 	"context"
-	"database/sql"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -12,7 +11,7 @@ import (
 	"errgotrack/internal/projects"
 )
 
-func newTestDB(t *testing.T) (*sql.DB, int64) {
+func newTestDB(t *testing.T) (*database.DB, int64) {
 	t.Helper()
 	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -152,10 +151,10 @@ func TestSparkline24hBucketsByHourAndZeroFillsGaps(t *testing.T) {
 			t.Fatalf("insert event: %v", err)
 		}
 	}
-	insert("e1", now)                     // current hour
-	insert("e2", now)                     // same hour, should add to the same bucket
-	insert("e3", now.Add(-5*time.Hour))   // an older bucket
-	insert("e4", now.Add(-30*time.Hour))  // outside the 24h window entirely
+	insert("e1", now)                    // current hour
+	insert("e2", now)                    // same hour, should add to the same bucket
+	insert("e3", now.Add(-5*time.Hour))  // an older bucket
+	insert("e4", now.Add(-30*time.Hour)) // outside the 24h window entirely
 
 	out, err := store.Sparkline24h([]int64{issueID})
 	if err != nil {
