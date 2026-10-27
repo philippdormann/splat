@@ -31,9 +31,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go test -race ./...
-      - run: go vet ./...
-      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -41,6 +38,9 @@ jobs:
           if [ -d frontend ]; then
             cd frontend && bun install --frozen-lockfile && bun run check && bun run build
           fi
+      - run: go test -race ./...
+      - run: go vet ./...
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - run: |
           if [ -d frontend ]; then
             cd frontend && bun audit

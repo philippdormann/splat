@@ -13,7 +13,12 @@ import (
 // present so `go build` also works on a fresh checkout before the frontend
 // has been built (the server then serves a "UI not built" placeholder).
 //
-//go:embed dist
+// `all:` is required so the embed also matches the committed .gitkeep
+// dotfile: plain `//go:embed dist` ignores dotfiles/underscore files, so a
+// fresh checkout (dist/ containing only .gitkeep) fails to compile with
+// "pattern dist: cannot embed directory dist: contains no embeddable files".
+//
+//go:embed all:dist
 var Dist embed.FS
 
 // Sub returns the dist subtree as an fs.FS for http.FileServerFS.
