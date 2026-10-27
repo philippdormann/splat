@@ -1,10 +1,10 @@
 # Errgotrack
 
 **A lightweight, self-hosted, Sentry-compatible error tracker.** One Go
-binary, one SQLite file, a 15MB Docker image. No Redis, no Postgres, no
-Node build step, no CDN at runtime. Point your app's official Sentry SDK at
-it and it just works - built to run comfortably on a small VPS instead of
-needing a cluster.
+binary, SQLite by default (Postgres optional), a small Docker image. No
+Redis, no Node build step at runtime, no CDN at runtime. Point your app's
+official Sentry SDK at it and it just works - built to run comfortably on
+a small VPS instead of needing a cluster.
 
 ![Errgotrack dashboard](docs/screenshot.png)
 
@@ -50,11 +50,13 @@ command.
   resolve/ignore.
 - **Configurable retention** - old events age out in the background without
   ever touching issue history (counts, first/last seen stay intact).
-- **Dark/light theme, keyboard-friendly, no CDN** - every asset (HTMX,
-  Chart.js, icons) is embedded in the binary.
-- **Deploys in one command** - a 15MB Docker image, non-root, with its own
-  health check (no shell needed), or a single static binary with no
-  dependencies at all.
+- **Dark/light theme, keyboard-friendly, no CDN** - the dashboard is a
+  Svelte 5 + shadcn-svelte SPA (built with bun, embedded in the binary),
+  with every runtime asset served locally.
+- **Deploys in one command** - a small Docker image published to
+  `ghcr.io/philippdormann/errgotrack` (`:latest`, `:1`, `:1.2`, `:1.2.3`
+  on tags), non-root, with its own health check (no shell needed), or a
+  single static binary with no dependencies at all.
 
 ## Supported platforms
 
@@ -78,29 +80,31 @@ compatibility wall:
 **Docker:**
 
 ```bash
-docker build -t errgotrack:latest .
-
 docker run -d --name errgotrack -p 8080:8080 \
   -v errgotrack-data:/data \
   -e ERRGOTRACK_SESSION_SECRET=$(openssl rand -hex 32) \
   -e ERRGOTRACK_ADMIN_USERNAME=admin \
   -e ERRGOTRACK_ADMIN_PASSWORD='change-me' \
   -e ERRGOTRACK_PUBLIC_URL=http://localhost:8080 \
-  errgotrack:latest
+  ghcr.io/philippdormann/errgotrack:latest
 ```
 
-(If you've pushed this repo to GitHub, CI builds and publishes the image to
-`ghcr.io/<you>/errgotrack:latest` on every push to `main` - see
-[`.github/workflows/docker.yml`](.github/workflows/docker.yml) - so you can
-`docker pull` that instead of building locally.)
+Images are published by CI to `ghcr.io/philippdormann/errgotrack` on every
+push to `main` (`:latest`, `:sha-<commit>`) and on every `v*` tag
+(`:1.2.3`, `:1.2`, `:1`, `:latest`, `:sha-<commit>` - so tag `v1.2.3`
+publishes all four version tags at once), for both `linux/amd64` and
+`linux/arm64` - see [`.github/workflows/docker.yml`](.github/workflows/docker.yml).
+To pin a version: `ghcr.io/philippdormann/errgotrack:1.2.3` (or `:1` / `:1.2`
+to float on patch/minor releases).
 
 **Or run it directly with Go, no Docker at all:**
 
 Requires Go 1.26+ (`go build` auto-downloads the matching toolchain if
-your installed Go is older, per the `go` directive in `go.mod`).
+your installed Go is older, per the `go` directive in `go.mod`) and
+[bun](https://bun.sh) 1.x for the frontend build.
 
 ```bash
-go build -o bin/errgotrack ./cmd/server
+make build   # bun install + bun run build (frontend/) + go build, UI embedded
 
 ERRGOTRACK_SESSION_SECRET=$(openssl rand -hex 32) \
 ERRGOTRACK_ADMIN_USERNAME=admin \
@@ -110,7 +114,8 @@ ERRGOTRACK_PUBLIC_URL=http://localhost:8080 \
 ```
 
 Or skip the explicit build and just `go run ./cmd/server` with the same
-environment variables, if you're iterating rather than deploying.
+environment variables, if you're iterating rather than deploying (run
+`make frontend-build` once first so the embedded UI exists).
 
 Then:
 
@@ -134,8 +139,10 @@ All configuration is environment variables (see `internal/config/config.go`):
 | Variable | Default | Purpose |
 |---|---|---|
 | `ERRGOTRACK_ADDR` | `:8080` | listen address |
-| `ERRGOTRACK_DB_PATH` | `data/errgotrack.db` | SQLite file path |
-| `ERRGOTRACK_PUBLIC_URL` | `http://localhost:8080` | used to build DSNs and alert links; `https://` here also makes session/CSRF cookies `Secure` |
+| `ERRGOTRACK_DB_DRIVER` | `sqlite` | `sqlite` (default, zero-ops) or `postgres` |
+| `ERRGOTRACK_DB_PATH` | `data/errgotrack.db` | SQLite file path (sqlite driver only) |
+| `ERRGOTRACK_DATABASE_URL` | - | Postgres connection URL, e.g. `postgres://errgotrack:errgotrack@localhost:5432/errgotrack?sslmode=disable` (postgres driver only, **required** there) |
+| `ERRGOTRACK_PUBLIC_URL` | `http://localhost:8080` | used to build DSNs and alert links; `https://` here also makes session cookies `Secure` |
 | `ERRGOTRACK_ADMIN_USERNAME` / `ERRGOTRACK_ADMIN_PASSWORD` | - | bootstraps the one admin account on first run only |
 | `ERRGOTRACK_SESSION_SECRET` | - | **required**; any random 32+ byte string |
 | `ERRGOTRACK_RETENTION_SWEEP` | `1h` | how often the retention sweeper runs |
@@ -195,13 +202,13 @@ ignoring it.
 
 ## Dashboard
 
-Server-rendered Go templates + HTMX for interactivity + a small hand-written
-CSS theme (light/dark via `prefers-color-scheme` and a manual toggle) +
-Chart.js for charts. No Tailwind build step: deliberately a plain CSS file
-with a small utility-class layer instead, to avoid needing a Node/Tailwind
-toolchain in the build. HTMX, Chart.js and all icons (inlined Lucide SVGs)
-are vendored under `web/static/`, so the running app needs no CDN or
-internet access to render.
+Svelte 5 + shadcn-svelte SPA in [`frontend/`](frontend/), built with bun
+(`bun install && bun run build`) and embedded into the Go binary as
+`web/dist` - the server only serves the built `index.html` + fingerprinted
+assets and a JSON API under `/api/v1/` (same-origin, session-cookie auth).
+Dark/light theme via a class toggle (system preference by default),
+Chart.js for charts, lucide-svelte icons. For local UI iteration,
+`cd frontend && bun run dev` proxies `/api` to a Go server on `:8080`.
 
 ## Notifications
 
@@ -245,25 +252,33 @@ event rows backing them age out.
 
 ## Storage
 
-SQLite via `modernc.org/sqlite` (pure Go, no CGO - a single static binary,
-no libsqlite3 to manage). WAL mode, `busy_timeout=5000`, foreign keys on,
-and a capped connection pool (8), since SQLite has exactly one writer
-regardless of pool size. Issue-counter updates run under `BEGIN IMMEDIATE`
-to serialize concurrent ingestion correctly instead of racing a
-read-then-write (see `internal/issues/store.go` and the concurrency test in
-`internal/issues/store_test.go`, which fires 40 concurrent events at the
-same fingerprint and checks the final count is exactly 40, with
+SQLite by default via `modernc.org/sqlite` (pure Go, no CGO - a single
+static binary, no libsqlite3 to manage). WAL mode, `busy_timeout=5000`,
+foreign keys on, and a capped connection pool (8), since SQLite has exactly
+one writer regardless of pool size. Issue-counter updates run under
+`BEGIN IMMEDIATE` to serialize concurrent ingestion correctly instead of
+racing a read-then-write (see `internal/issues/store.go` and the concurrency
+test in `internal/issues/store_test.go`, which fires 40 concurrent events at
+the same fingerprint and checks the final count is exactly 40, with
 `-race` clean).
 
 Event search uses an FTS5 virtual table over message/exception
-type/value, kept in sync via triggers, so free-text search doesn't scan
-every row.
+type/value on SQLite, kept in sync via triggers, so free-text search doesn't
+scan every row.
 
-PostgreSQL isn't implemented. If you outgrow single-writer SQLite, the
-natural path is swapping `internal/database` for a `pgx`-backed
-implementation behind the same store interfaces - nothing else depends on
-SQLite specifics except the FTS5 search query and the `BEGIN IMMEDIATE`
-locking trick, both isolated to small, easy to find call sites.
+**Postgres (optional):** set `ERRGOTRACK_DB_DRIVER=postgres` +
+`ERRGOTRACK_DATABASE_URL` (see [`.env.example`](.env.example) and
+[`compose.yaml`](compose.yaml), which ships a `postgres` service alongside
+the app). Schema and migrations are ported 1:1
+(`internal/database/migrations/postgres/`); timestamps stay RFC3339 TEXT on
+both backends so every store query works unchanged. Backend differences are
+isolated to small call sites: `?` placeholders are rebound to `$n`
+(`internal/database.DB`), inserts use `RETURNING id` instead of
+`LastInsertId`, issue upserts use a transaction + `SELECT ... FOR UPDATE`
+instead of `BEGIN IMMEDIATE`, free-text search uses `ILIKE` (+ a GIN
+tsvector index) instead of FTS5, and time bucketing uses `to_char` instead
+of `strftime`. The `?`-placeholder queries in every store work on both
+backends untouched thanks to the `database.DB` wrapper.
 
 ## Benchmark
 
@@ -289,14 +304,16 @@ go test -race ./...           # same, with the race detector
 Covers: envelope/store parsing (including length-prefixed items with
 embedded newlines), auth/project resolution, fingerprinting and grouping
 edge cases, concurrent ingestion, migrations (idempotent re-open, FK
-enforcement), FTS5 search and pagination, notification formatting/retry/
+enforcement, on both SQLite and Postgres), FTS5/ILIKE search and pagination,
+notification formatting/retry/
 backoff/cooldowns across all four channels and their independence from
 each other, retention deletion vs. issue summary preservation, and
-HTML-escaping of untrusted event data (a regression test renders an issue
-detail page with a `<script>` payload in the exception type/tags/project
-name and asserts it never appears unescaped - stored XSS is the main
-injection risk here, since exception messages and tags come straight from
-the instrumented app).
+JSON-escaping of untrusted event data (a regression test serializes an issue
+with a `<script>` payload in the exception type/tags/project
+name through the JSON API and asserts it never appears unescaped - stored
+XSS is the main injection risk here, since exception messages and tags come
+straight from the instrumented app; the Svelte frontend additionally renders
+all API values as text, never as raw HTML).
 
 ## Deployment
 
@@ -307,9 +324,12 @@ cp .env.example .env   # set ERRGOTRACK_SESSION_SECRET, ERRGOTRACK_ADMIN_USERNAM
 docker compose up -d
 ```
 
-Runs as a non-root user on a `distroless/static` base image (15MB), SQLite
-data on a named volume, health-checked via the binary's own `-healthcheck`
-flag (the runtime image has no shell/curl for a traditional `HEALTHCHECK`).
+Runs as a non-root user on a `distroless/static` base image, SQLite data on
+a named volume (or set `ERRGOTRACK_DB_DRIVER=postgres` +
+`ERRGOTRACK_DATABASE_URL` in `.env` to use the bundled `postgres` service
+instead - SQLite stays the default), health-checked via the binary's own
+`-healthcheck` flag (the runtime image has no shell/curl for a traditional
+`HEALTHCHECK`).
 
 **Standalone binary**, no Docker:
 
@@ -328,7 +348,7 @@ marked `Secure`.
 it again - migrations in `internal/database/migrations/` run automatically
 and are idempotent.
 
-**Backup:** the entire database is one file (plus its `-wal`/`-shm`
+**Backup (SQLite):** the entire database is one file (plus its `-wal`/`-shm`
 sidecars while running). Simplest safe backup:
 
 ```bash
@@ -337,7 +357,8 @@ sqlite3 /data/errgotrack.db ".backup /backup/errgotrack-$(date +%F).db"
 
 (`.backup` is safe against a concurrently-running writer; `cp`-ing the file
 directly while the server is live is not.) **Restore:** stop the server,
-replace the file, start it again.
+replace the file, start it again. **Backup (Postgres):** use `pg_dump` /
+your provider's snapshots as usual.
 
 ## What's deliberately not here
 
@@ -345,17 +366,18 @@ replace the file, start it again.
   error tracker. See Trace correlation above for linking out instead.
 - No multi-user/team/RBAC model - one admin account, matching "a private
   dashboard on a VPS."
-- No PostgreSQL backend yet (see Storage above).
 - No source map resolution for minified JS stacks.
 
 ## Layout
 
 ```
 cmd/server/            entrypoint, wiring, graceful shutdown
+frontend/              Svelte 5 + shadcn-svelte SPA (bun, vite, tailwind);
+                       `bun run build` emits web/dist, embedded in the binary
 internal/sentryprotocol/  envelope + store parsing, auth/DSN parsing
 internal/ingestion/    HTTP handlers for the Sentry-compatible endpoints
 internal/issues/       fingerprinting, grouping, status transitions
-internal/events/       event storage, FTS5 search
+internal/events/       event storage, FTS5 (sqlite) / ILIKE (postgres) search
 internal/dashboard/    aggregate queries behind the dashboard/stat panels
 internal/projects/     project CRUD, DSN/key rotation
 internal/platforms/    per-framework setup snippets shown on a project's page
@@ -364,9 +386,9 @@ internal/telegram/ + internal/webhooks/   channel-specific formatting/delivery c
 internal/tracing/      trace_id -> external tracing backend URL correlation
 internal/auth/         admin login, sessions, CSRF
 internal/retention/    bounded-batch event cleanup
-internal/database/     SQLite open + embedded migrations
-internal/httpserver/   routes, middleware, template rendering
-web/                   templates + vendored static assets (embedded into the binary)
+internal/database/     sqlite (default) + postgres backends, embedded migrations
+internal/httpserver/   routes, middleware, JSON API (/api/v1/), SPA serving
+web/dist               built Svelte UI, embedded into the binary (gitignored)
 examples/django/       settings snippet + a view that deliberately throws
 tests/                 the real-SDK integration script
 ```
