@@ -92,6 +92,21 @@ Sentry.init({
 		},
 	},
 	{
+		ID:      "bun",
+		Label:   "Bun",
+		Install: "bun add @sentry/bun",
+		Snippet: func(dsn, env string) string {
+			return fmt.Sprintf(`// Import and call Sentry.init as the very first thing in your entrypoint.
+import * as Sentry from "@sentry/bun";
+
+Sentry.init({
+  dsn: Bun.env.SENTRY_DSN,
+  environment: Bun.env.SENTRY_ENVIRONMENT || %q,
+  tracesSampleRate: 0,
+});`, env)
+		},
+	},
+	{
 		ID:      "nextjs",
 		Label:   "Next.js",
 		Install: "npx @sentry/wizard@latest -i nextjs",
