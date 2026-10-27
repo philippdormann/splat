@@ -1,13 +1,15 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api, type IssueDetail, type IssueLink } from "$lib/api";
-  import Card from "$lib/components/card.svelte";
+  import * as CardUI from "$lib/components/ui/card/index.js";
+  import * as Alert from "$lib/components/ui/alert/index.js";
+  import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
   import Input from "$lib/components/input.svelte";
   import LevelBadge from "$lib/components/LevelBadge.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import Button from "$lib/components/button.svelte";
   import Dialog from "$lib/components/Dialog.svelte";
-  import { Copy, Check, CalendarClock, EyeOff, BellOff, Bell, Undo2, ExternalLink } from "lucide-svelte";
+  import { Copy, Check, CalendarClock, EyeOff, BellOff, Bell, Undo2, ExternalLink, TriangleAlert } from "lucide-svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import DateTime from "$lib/components/DateTime.svelte";
 
@@ -176,16 +178,20 @@
       : "";</script>
 
 {#if error}
-  <p class="text-sm text-destructive">{error}</p>
+  <Alert.Root variant="destructive">
+    <TriangleAlert />
+    <Alert.Title>Couldn't load the issue</Alert.Title>
+    <Alert.Description>{error}</Alert.Description>
+  </Alert.Root>
 {:else if !data}
   <div class="space-y-4" aria-label="Loading issue">
-    <div class="h-6 w-2/3 animate-pulse rounded bg-muted"></div>
-    <div class="h-4 w-1/3 animate-pulse rounded bg-muted"></div>
-    <div class="h-48 animate-pulse rounded-lg bg-muted"></div>
-    <div class="h-32 animate-pulse rounded-lg bg-muted"></div>
+    <Skeleton class="h-6 w-2/3" />
+    <Skeleton class="h-4 w-1/3" />
+    <Skeleton class="h-48 w-full" />
+    <Skeleton class="h-32 w-full" />
   </div>
 {:else}
-  <div class="space-y-4">
+  <div class="space-y-6">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
         <div class="flex flex-wrap items-center gap-2">
@@ -195,7 +201,7 @@
           {#if data.issue.status === "resolved" && data.issue.resolvedInRelease}<span class="text-xs text-muted-foreground" title="Reopens automatically if the bug appears in a different release">pinned to {data.issue.resolvedInRelease}</span>{/if}
           <span class="text-xs text-muted-foreground">{data.project.name} · {data.issue.environment} · {data.issue.eventCount} events</span>
         </div>
-        <h2 class="mt-2 text-xl font-bold">{data.issue.title}</h2>
+        <h2 class="mt-2 text-xl font-semibold tracking-tight">{data.issue.title}</h2>
         <p class="mt-1 font-mono text-xs text-muted-foreground">{data.issue.exceptionType}: {data.issue.exceptionValue}</p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
@@ -234,131 +240,157 @@
     </ConfirmDialog>
 
     {#if data.traceId}
-      <Card cls="flex flex-wrap items-center gap-2 p-3 text-sm">
-        <span class="text-muted-foreground">trace_id</span>
-        <code class="font-mono text-xs">{data.traceId}</code>
-        {#if localSpans !== null && tracePath}
-          <Button size="sm" variant="outline" on:click={() => navigate(tracePath)}>View trace ({localSpans} spans)</Button>
-        {/if}
-        {#if data.traceURL}<a class="text-primary hover:underline" href={data.traceURL} target="_blank" rel="noreferrer">Open in tracing backend</a>{/if}
-      </Card>
+      <CardUI.Root class="gap-0">
+        <CardUI.Content class="flex flex-wrap items-center gap-2 pt-6 text-sm">
+          <span class="text-muted-foreground">trace_id</span>
+          <code class="font-mono text-xs">{data.traceId}</code>
+          {#if localSpans !== null && tracePath}
+            <Button size="sm" variant="outline" on:click={() => navigate(tracePath)}>View trace ({localSpans} spans)</Button>
+          {/if}
+          {#if data.traceURL}<a class="text-primary hover:underline" href={data.traceURL} target="_blank" rel="noreferrer">Open in tracing backend</a>{/if}
+        </CardUI.Content>
+      </CardUI.Root>
     {/if}
 
     {#if data.stacktrace.length}
-      <Card cls="p-4">
-        <p class="mb-2 text-sm font-medium">Stacktrace</p>
-        <div class="space-y-3">
-          {#each data.stacktrace as f}
-            <div class="rounded-md bg-muted p-2 font-mono text-xs">
-              <p>{f.module ? `${f.module}.` : ""}{f.function} — {f.file}:{f.line}</p>
-              {#if f.original}
-                <p class="mt-0.5 text-green-600 dark:text-green-400">
-                  ↳ {f.original.function ? `${f.original.function} — ` : ""}{f.original.source}:{f.original.line}{f.original.column ? `:${f.original.column}` : ""} <span class="text-muted-foreground">(via source map)</span>
-                </p>
-                {#if f.original.context?.length}
-                  <pre class="mt-1 overflow-x-auto whitespace-pre-wrap text-muted-foreground">{f.original.context.join("\n")}</pre>
+      <CardUI.Root class="gap-0">
+        <CardUI.Header>
+          <CardUI.Title>Stacktrace</CardUI.Title>
+        </CardUI.Header>
+        <CardUI.Content>
+          <div class="space-y-3">
+            {#each data.stacktrace as f}
+              <div class="rounded-md bg-muted p-2 font-mono text-xs">
+                <p>{f.module ? `${f.module}.` : ""}{f.function} — {f.file}:{f.line}</p>
+                {#if f.original}
+                  <p class="mt-0.5 text-green-600 dark:text-green-400">
+                    ↳ {f.original.function ? `${f.original.function} — ` : ""}{f.original.source}:{f.original.line}{f.original.column ? `:${f.original.column}` : ""} <span class="text-muted-foreground">(via source map)</span>
+                  </p>
+                  {#if f.original.context?.length}
+                    <pre class="mt-1 overflow-x-auto whitespace-pre-wrap text-muted-foreground">{f.original.context.join("\n")}</pre>
+                  {/if}
                 {/if}
-              {/if}
-              {#if f.contextLine}<pre class="mt-1 overflow-x-auto whitespace-pre-wrap">{f.contextLine}</pre>{/if}
-              {#if f.vars.length}
-                <div class="mt-1 space-y-0.5">
-                  {#each f.vars as v}<p><span class="text-muted-foreground">{v.key}:</span> {v.value}</p>{/each}
-                </div>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      </Card>
+                {#if f.contextLine}<pre class="mt-1 overflow-x-auto whitespace-pre-wrap">{f.contextLine}</pre>{/if}
+                {#if f.vars.length}
+                  <div class="mt-1 space-y-0.5">
+                    {#each f.vars as v}<p><span class="text-muted-foreground">{v.key}:</span> {v.value}</p>{/each}
+                  </div>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        </CardUI.Content>
+      </CardUI.Root>
     {/if}
 
-    <div class="grid gap-3 lg:grid-cols-2">
+    <div class="grid gap-4 lg:grid-cols-2">
       {#if data.tags.length}
-        <Card cls="p-4"><p class="mb-2 text-sm font-medium">Tags</p>
-          {#each data.tags as t}<p class="flex justify-between gap-2 font-mono text-xs"><span class="text-muted-foreground">{t.key}</span><span class="truncate">{t.value}</span></p>{/each}
-        </Card>
+        <CardUI.Root class="gap-0">
+          <CardUI.Header><CardUI.Title>Tags</CardUI.Title></CardUI.Header>
+          <CardUI.Content>
+            {#each data.tags as t}<p class="flex justify-between gap-2 font-mono text-xs"><span class="text-muted-foreground">{t.key}</span><span class="truncate">{t.value}</span></p>{/each}
+          </CardUI.Content>
+        </CardUI.Root>
       {/if}
       {#if data.contexts.length}
-        <Card cls="p-4"><p class="mb-2 text-sm font-medium">Contexts</p>
-          {#each data.contexts as c}
-            <p class="mt-2 text-xs font-semibold">{c.name}</p>
-            {#each c.fields as f}<p class="flex justify-between gap-2 font-mono text-xs"><span class="text-muted-foreground">{f.key}</span><span class="truncate">{f.value}</span></p>{/each}
-          {/each}
-        </Card>
+        <CardUI.Root class="gap-0">
+          <CardUI.Header><CardUI.Title>Contexts</CardUI.Title></CardUI.Header>
+          <CardUI.Content>
+            {#each data.contexts as c}
+              <p class="mt-2 text-xs font-semibold first:mt-0">{c.name}</p>
+              {#each c.fields as f}<p class="flex justify-between gap-2 font-mono text-xs"><span class="text-muted-foreground">{f.key}</span><span class="truncate">{f.value}</span></p>{/each}
+            {/each}
+          </CardUI.Content>
+        </CardUI.Root>
       {/if}
       {#if data.breadcrumbs.length}
-        <Card cls="p-4"><p class="mb-2 text-sm font-medium">Breadcrumbs</p>
-          {#each data.breadcrumbs as b}<p class="font-mono text-xs">[{b.timestamp}] {b.type}/{b.level}: {b.message}</p>{/each}
-        </Card>
+        <CardUI.Root class="gap-0">
+          <CardUI.Header><CardUI.Title>Breadcrumbs</CardUI.Title></CardUI.Header>
+          <CardUI.Content>
+            {#each data.breadcrumbs as b}<p class="font-mono text-xs">[{b.timestamp}] {b.type}/{b.level}: {b.message}</p>{/each}
+          </CardUI.Content>
+        </CardUI.Root>
       {/if}
       {#if data.user}
-        <Card cls="p-4"><p class="mb-2 text-sm font-medium">User</p>
-          <p class="font-mono text-xs">{data.user.username}</p>
-          {#each data.user.extra as e}<p class="flex justify-between gap-2 font-mono text-xs"><span class="text-muted-foreground">{e.key}</span><span class="truncate">{e.value}</span></p>{/each}
-        </Card>
+        <CardUI.Root class="gap-0">
+          <CardUI.Header><CardUI.Title>User</CardUI.Title></CardUI.Header>
+          <CardUI.Content>
+            <p class="font-mono text-xs">{data.user.username}</p>
+            {#each data.user.extra as e}<p class="flex justify-between gap-2 font-mono text-xs"><span class="text-muted-foreground">{e.key}</span><span class="truncate">{e.value}</span></p>{/each}
+          </CardUI.Content>
+        </CardUI.Root>
       {/if}
     </div>
 
     {#if data.events.length > 1}
       {@const prevId = data.prevEventId}
       {@const nextId = data.nextEventId}
-      <Card cls="p-4">
-        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <p class="text-sm font-medium">Events ({data.events.length})</p>
+      <CardUI.Root class="gap-0">
+        <CardUI.Header class="flex-row items-center justify-between">
+          <CardUI.Title>Events ({data.events.length})</CardUI.Title>
           <div class="flex items-center gap-1 text-xs">
             <Button size="sm" variant="outline" disabled={!prevId} on:click={() => prevId && showEvent(prevId)}>← Older</Button>
             <Button size="sm" variant="outline" disabled={!nextId} on:click={() => nextId && showEvent(nextId)}>Newer →</Button>
           </div>
-        </div>
-        {#if data.currentEventId}
-          <p class="mb-2 font-mono text-xs text-muted-foreground">Showing event <span class="text-foreground">{data.currentEventId}</span>{data.latestEventId && data.currentEventId !== data.latestEventId ? " (not the latest)" : ""}</p>
-        {/if}
-        <div class="max-h-64 space-y-1 overflow-y-auto">
-          {#each data.events as e}
-            <button class="block w-full truncate text-left font-mono text-xs hover:underline {e.eventId === data.currentEventId ? 'text-foreground' : 'text-muted-foreground'}" on:click={() => showEvent(e.eventId)}><DateTime iso={e.timestamp} /> — {e.eventId}</button>
-          {/each}
-        </div>
-      </Card>
+        </CardUI.Header>
+        <CardUI.Content>
+          {#if data.currentEventId}
+            <p class="mb-2 font-mono text-xs text-muted-foreground">Showing event <span class="text-foreground">{data.currentEventId}</span>{data.latestEventId && data.currentEventId !== data.latestEventId ? " (not the latest)" : ""}</p>
+          {/if}
+          <div class="max-h-64 space-y-1 overflow-y-auto">
+            {#each data.events as e}
+              <button class="block w-full truncate text-left font-mono text-xs hover:underline {e.eventId === data.currentEventId ? 'text-foreground' : 'text-muted-foreground'}" on:click={() => showEvent(e.eventId)}><DateTime iso={e.timestamp} /> — {e.eventId}</button>
+            {/each}
+          </div>
+        </CardUI.Content>
+      </CardUI.Root>
     {/if}
 
     {#if data.rawEvent}
-      <Card cls="p-4">
-        <div class="flex flex-wrap items-center justify-between gap-2">
+      <CardUI.Root class="gap-0">
+        <CardUI.Header class="flex-row items-center justify-between">
           <button class="text-sm font-medium hover:underline" on:click={() => (showRaw = !showRaw)}>{showRaw ? "▾" : "▸"} Raw event JSON</button>
           {#if showRaw}
-            <span class="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400" aria-live="polite">
-              {#if copiedRaw}<Check class="h-3 w-3" /> Copied{/if}
+            <span class="flex items-center gap-2">
+              <span class="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400" aria-live="polite">
+                {#if copiedRaw}<Check class="h-3 w-3" /> Copied{/if}
+              </span>
+              <Button size="sm" variant="outline" on:click={copyRaw}><Copy class="h-3.5 w-3.5" /> Copy</Button>
             </span>
-            <Button size="sm" variant="outline" on:click={copyRaw}><Copy class="h-3.5 w-3.5" /> Copy</Button>
           {/if}
-        </div>
+        </CardUI.Header>
         {#if showRaw}
-          <pre class="mt-2 max-h-96 overflow-auto rounded-md bg-muted p-3 font-mono text-xs">{JSON.stringify(data.rawEvent, null, 2)}</pre>
+          <CardUI.Content>
+            <pre class="max-h-96 overflow-auto rounded-md bg-muted p-3 font-mono text-xs">{JSON.stringify(data.rawEvent, null, 2)}</pre>
+          </CardUI.Content>
         {/if}
-      </Card>
+      </CardUI.Root>
     {/if}
 
-    <Card cls="p-4">
-      <p class="mb-2 text-sm font-medium">Notes ({data.notes.length})</p>
-      {#if data.notes.length}
-        <div class="mb-3 space-y-2">
-          {#each data.notes as n}
-            <div class="rounded-md bg-muted p-2">
-              <p class="whitespace-pre-wrap text-sm">{n.body}</p>
-              <div class="mt-1 flex items-center justify-between gap-2">
-                <span class="font-mono text-xs text-muted-foreground"><DateTime iso={n.createdAt} /></span>
-                <Button size="sm" variant="ghost" on:click={() => (confirmDeleteNote = n.id)}>Delete</Button>
+    <CardUI.Root class="gap-0">
+      <CardUI.Header><CardUI.Title>Notes ({data.notes.length})</CardUI.Title></CardUI.Header>
+      <CardUI.Content>
+        {#if data.notes.length}
+          <div class="mb-3 space-y-2">
+            {#each data.notes as n}
+              <div class="rounded-md bg-muted p-2">
+                <p class="whitespace-pre-wrap text-sm">{n.body}</p>
+                <div class="mt-1 flex items-center justify-between gap-2">
+                  <span class="font-mono text-xs text-muted-foreground"><DateTime iso={n.createdAt} /></span>
+                  <Button size="sm" variant="ghost" on:click={() => (confirmDeleteNote = n.id)}>Delete</Button>
+                </div>
               </div>
-            </div>
-          {/each}
-        </div>
-      {:else}
-        <p class="mb-3 text-xs text-muted-foreground">No notes yet — jot down context for your future self.</p>
-      {/if}
-      <form on:submit={addNote} class="flex gap-2">
-        <Input bind:value={noteBody} placeholder="Add a note…" disabled={noteBusy} class="flex-1" />
-        <Button type="submit" size="sm" disabled={noteBusy || !noteBody.trim()}>Add</Button>
-      </form>
-    </Card>
+            {/each}
+          </div>
+        {:else}
+          <p class="mb-3 text-xs text-muted-foreground">No notes yet — jot down context for your future self.</p>
+        {/if}
+        <form on:submit={addNote} class="flex gap-2">
+          <Input bind:value={noteBody} placeholder="Add a note…" disabled={noteBusy} class="flex-1" />
+          <Button type="submit" size="sm" disabled={noteBusy || !noteBody.trim()}>Add</Button>
+        </form>
+      </CardUI.Content>
+    </CardUI.Root>
 
     <ConfirmDialog
       open={confirmDeleteNote !== null}
@@ -369,28 +401,30 @@
       onCancel={() => (confirmDeleteNote = null)}
     />
 
-    <Card cls="p-4">
-      <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <p class="text-sm font-medium">External issues ({links.length})</p>
+    <CardUI.Root class="gap-0">
+      <CardUI.Header class="flex-row items-center justify-between">
+        <CardUI.Title>External issues ({links.length})</CardUI.Title>
         <Button size="sm" variant="outline" on:click={openFileDialog}><ExternalLink class="h-3.5 w-3.5" /> File issue</Button>
-      </div>
-      {#if links.length}
-        <div class="mb-1 divide-y divide-border rounded-md border border-border">
-          {#each links as l}
-            <div class="flex flex-wrap items-center justify-between gap-2 p-2 text-xs">
-              <span class="min-w-0">
-                <a class="font-medium text-primary hover:underline" href={l.url} target="_blank" rel="noreferrer">{l.repo}#{l.number}</a>
-                <span class="text-muted-foreground"> · {l.provider}{l.title ? ` · ${l.title}` : ""}</span>
-              </span>
-              <Button size="sm" variant="ghost" on:click={() => (confirmUnlink = l)}>Unlink</Button>
-            </div>
-          {/each}
-        </div>
-        <p class="text-xs text-muted-foreground">Unlinking only removes the reference here — the forge issue itself is untouched.</p>
-      {:else}
-        <p class="text-xs text-muted-foreground">Not filed anywhere yet. Needs a repository linked on the project page first.</p>
-      {/if}
-    </Card>
+      </CardUI.Header>
+      <CardUI.Content>
+        {#if links.length}
+          <div class="mb-1 divide-y divide-border rounded-md border border-border">
+            {#each links as l}
+              <div class="flex flex-wrap items-center justify-between gap-2 p-2 text-xs">
+                <span class="min-w-0">
+                  <a class="font-medium text-primary hover:underline" href={l.url} target="_blank" rel="noreferrer">{l.repo}#{l.number}</a>
+                  <span class="text-muted-foreground"> · {l.provider}{l.title ? ` · ${l.title}` : ""}</span>
+                </span>
+                <Button size="sm" variant="ghost" on:click={() => (confirmUnlink = l)}>Unlink</Button>
+              </div>
+            {/each}
+          </div>
+          <p class="text-xs text-muted-foreground">Unlinking only removes the reference here — the forge issue itself is untouched.</p>
+        {:else}
+          <p class="text-xs text-muted-foreground">Not filed anywhere yet. Needs a repository linked on the project page first.</p>
+        {/if}
+      </CardUI.Content>
+    </CardUI.Root>
 
     {#if showFileIssue}
       <Dialog open={true} title="File as external issue" onClose={() => (showFileIssue = false)}>

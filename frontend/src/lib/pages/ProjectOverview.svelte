@@ -1,13 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { AreaChart } from "layerchart";
-  import { Activity, HeartPulse, Timer, Trophy, Zap, CircleDot, Gauge } from "lucide-svelte";
+  import { Activity, HeartPulse, Timer, Trophy, Zap, CircleDot, Gauge, TriangleAlert } from "lucide-svelte";
   import { api, type ProjectOverview, type SessionSummary } from "$lib/api";
+  import * as Card from "$lib/components/ui/card/index.js";
+  import * as Tabs from "$lib/components/ui/tabs/index.js";
+  import * as Alert from "$lib/components/ui/alert/index.js";
+  import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
   import * as Chart from "$lib/components/ui/chart/index.js";
   import Button from "$lib/components/button.svelte";
-  import Tile from "$lib/components/Tile.svelte";
-  import TileSkeleton from "$lib/components/TileSkeleton.svelte";
-  import StatTile from "$lib/components/StatTile.svelte";
   import LevelBadge from "$lib/components/LevelBadge.svelte";
   import RelativeTime from "$lib/components/RelativeTime.svelte";
 
@@ -15,9 +16,9 @@
   export let navigate: (path: string) => void;
 
   const periods = [
-    { value: "24h", label: "24h" },
-    { value: "7d", label: "7d" },
-    { value: "30d", label: "30d" },
+    { value: "24h", label: "24H" },
+    { value: "7d", label: "7D" },
+    { value: "30d", label: "30D" },
   ];
 
   const levelStyle: Record<string, { color: string; order: number }> = {
@@ -32,8 +33,6 @@
   let data: ProjectOverview | null = null;
   let sessions: SessionSummary | null = null;
   let error = "";
-
-  const dark = () => document.documentElement.classList.contains("dark");
 
   function tierColor(pct: number | null): string {
     if (pct === null || pct === undefined) return "text-muted-foreground";
@@ -118,123 +117,181 @@
 <div class="space-y-4">
   <div class="flex flex-wrap items-center justify-between gap-3">
     <p class="text-sm font-semibold">Overview</p>
-    <div class="flex gap-2">
-      {#each periods as p}
-        <Button variant={period === p.value ? "default" : "outline"} size="sm" on:click={() => (period = p.value)}>{p.label}</Button>
-      {/each}
-    </div>
+    <Tabs.Root bind:value={period}>
+      <Tabs.List aria-label="Period">
+        {#each periods as p}
+          <Tabs.Trigger value={p.value}>{p.label}</Tabs.Trigger>
+        {/each}
+      </Tabs.List>
+    </Tabs.Root>
   </div>
 
   {#if error}
-    <p class="text-sm text-destructive">{error}</p>
+    <Alert.Root variant="destructive">
+      <TriangleAlert />
+      <Alert.Title>Couldn't load the overview</Alert.Title>
+      <Alert.Description>{error}</Alert.Description>
+    </Alert.Root>
   {:else if !data}
-    <div class="grid gap-4 xl:grid-cols-4">
-      <div class="min-w-0 xl:col-span-2"><TileSkeleton height={300} /></div>
+    <div class="grid gap-4 xl:grid-cols-4" aria-label="Loading overview">
+      <div class="min-w-0 xl:col-span-2">
+        <Card.Root><Card.Content class="pt-6"><Skeleton class="h-72 w-full" /></Card.Content></Card.Root>
+      </div>
       <div class="grid min-w-0 gap-4 sm:grid-cols-2 xl:col-span-2">
-        <TileSkeleton height={56} />
-        <TileSkeleton height={56} />
-        <div class="min-w-0 sm:col-span-2"><TileSkeleton height={132} /></div>
+        <Card.Root><Card.Content class="pt-6"><Skeleton class="h-14 w-full" /></Card.Content></Card.Root>
+        <Card.Root><Card.Content class="pt-6"><Skeleton class="h-14 w-full" /></Card.Content></Card.Root>
+        <div class="min-w-0 sm:col-span-2">
+          <Card.Root><Card.Content class="pt-6"><Skeleton class="h-32 w-full" /></Card.Content></Card.Root>
+        </div>
       </div>
     </div>
   {:else}
     <div class="grid gap-4 xl:grid-cols-4">
       <div class="min-w-0 xl:col-span-2">
-        <Tile icon={Activity}>
-          <span slot="title">Error volume by severity</span>
-          {#if data.volumeBySeverity.length}
-            <Chart.Container config={severityConfig()} class="min-h-[300px]">
-              <AreaChart
-                data={severityRows()}
-                x="bucket"
-                series={severitySeries()}
-                seriesLayout="stack"
-                legend
-                props={{ xAxis: { format: (d: string) => d.slice(5) } }}
-              >
-                {#snippet tooltip()}
-                  <Chart.Tooltip labelKey="bucket" />
-                {/snippet}
-              </AreaChart>
-            </Chart.Container>
-          {:else}
-            <p class="py-10 text-center text-sm text-muted-foreground">No events in this window.</p>
-          {/if}
-        </Tile>
+        <Card.Root class="h-full">
+          <Card.Header class="flex-row items-center gap-2">
+            <Activity class="text-muted-foreground size-4" />
+            <Card.Title class="text-sm">Error volume by severity</Card.Title>
+          </Card.Header>
+          <Card.Content>
+            {#if data.volumeBySeverity.length}
+              <Chart.Container config={severityConfig()} class="min-h-[300px]">
+                <AreaChart
+                  data={severityRows()}
+                  x="bucket"
+                  series={severitySeries()}
+                  seriesLayout="stack"
+                  legend
+                  props={{ xAxis: { format: (d: string) => d.slice(5) } }}
+                >
+                  {#snippet tooltip()}
+                    <Chart.Tooltip labelKey="bucket" />
+                  {/snippet}
+                </AreaChart>
+              </Chart.Container>
+            {:else}
+              <p class="py-10 text-center text-sm text-muted-foreground">No events in this window.</p>
+            {/if}
+          </Card.Content>
+        </Card.Root>
       </div>
 
       <div class="grid min-w-0 gap-4 sm:grid-cols-2 xl:col-span-2">
-        <StatTile icon={Zap} label="Events" value={data.events.toLocaleString()} />
-        <StatTile icon={CircleDot} label="New issues" value={data.newIssues.toLocaleString()} footnote={`${data.openIssues.toLocaleString()} open issues`} />
+        <Card.Root class="gap-0">
+          <Card.Header class="flex-row items-center gap-2 pb-2">
+            <Zap class="text-muted-foreground size-4" />
+            <Card.Description>Events</Card.Description>
+          </Card.Header>
+          <Card.Content>
+            <p class="text-3xl font-semibold tracking-tight tabular-nums">{data.events.toLocaleString()}</p>
+          </Card.Content>
+        </Card.Root>
+        <Card.Root class="gap-0">
+          <Card.Header class="flex-row items-center gap-2 pb-2">
+            <CircleDot class="text-muted-foreground size-4" />
+            <Card.Description>New issues</Card.Description>
+          </Card.Header>
+          <Card.Content>
+            <p class="text-3xl font-semibold tracking-tight tabular-nums">{data.newIssues.toLocaleString()}</p>
+          </Card.Content>
+          <Card.Footer class="pt-2">
+            <span class="text-muted-foreground text-xs">{data.openIssues.toLocaleString()} open issues</span>
+          </Card.Footer>
+        </Card.Root>
         <div class="min-w-0 sm:col-span-2">
-          <Tile icon={HeartPulse}>
-            <span slot="title">Crash-free sessions</span>
-            {#if sessions && sessions.summary.totalSessions > 0}
-              <div class="flex flex-wrap items-baseline gap-x-6 gap-y-1">
-                <p class="text-3xl font-extrabold tabular-nums {tierColor(sessions.summary.crashFreeSessions)}">{fmtPct(sessions.summary.crashFreeSessions)}</p>
-                <p class="text-sm text-muted-foreground">sessions · <span class="{tierColor(sessions.summary.crashFreeUsers)} font-semibold">{fmtPct(sessions.summary.crashFreeUsers)}</span> users</p>
-              </div>
-              <p class="mt-1 text-xs text-muted-foreground">{sessions.summary.totalSessions.toLocaleString()} sessions · {sessions.summary.users.toLocaleString()} users</p>
-            {:else}
-              <p class="py-4 text-center text-sm text-muted-foreground">No sessions yet — enable session tracking in your SDK to see release health.</p>
-            {/if}
-          </Tile>
+          <Card.Root class="h-full">
+            <Card.Header class="flex-row items-center gap-2">
+              <HeartPulse class="text-muted-foreground size-4" />
+              <Card.Title class="text-sm">Crash-free sessions</Card.Title>
+            </Card.Header>
+            <Card.Content>
+              {#if sessions && sessions.summary.totalSessions > 0}
+                <div class="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                  <p class="text-3xl font-semibold tracking-tight tabular-nums {tierColor(sessions.summary.crashFreeSessions)}">{fmtPct(sessions.summary.crashFreeSessions)}</p>
+                  <p class="text-sm text-muted-foreground">sessions · <span class="{tierColor(sessions.summary.crashFreeUsers)} font-semibold">{fmtPct(sessions.summary.crashFreeUsers)}</span> users</p>
+                </div>
+                <p class="mt-1 text-xs text-muted-foreground">{sessions.summary.totalSessions.toLocaleString()} sessions · {sessions.summary.users.toLocaleString()} users</p>
+              {:else}
+                <p class="py-4 text-center text-sm text-muted-foreground">No sessions yet — enable session tracking in your SDK to see release health.</p>
+              {/if}
+            </Card.Content>
+          </Card.Root>
         </div>
       </div>
 
       <div class="min-w-0 xl:col-span-3">
-        <Tile icon={Gauge}>
-          <span slot="title">Session health</span>
-          {#if sessions && sessions.timeseries.length}
-            <Chart.Container config={sessionConfig} class="min-h-[220px]">
-              <AreaChart
-                data={sessionRows()}
-                x="bucket"
-                series={[
-                  { key: "healthy", label: "Healthy", color: "#16a34a" },
-                  { key: "crashed", label: "Crashed", color: "#dc2626" },
-                ]}
-                seriesLayout="stack"
-                legend
-              >
-                {#snippet tooltip()}
-                  <Chart.Tooltip labelKey="bucket" />
-                {/snippet}
-              </AreaChart>
-            </Chart.Container>
-          {:else}
-            <p class="py-10 text-center text-sm text-muted-foreground">No sessions yet — enable session tracking in your SDK to see release health.</p>
-          {/if}
-        </Tile>
+        <Card.Root class="h-full">
+          <Card.Header class="flex-row items-center gap-2">
+            <Gauge class="text-muted-foreground size-4" />
+            <Card.Title class="text-sm">Session health</Card.Title>
+          </Card.Header>
+          <Card.Content>
+            {#if sessions && sessions.timeseries.length}
+              <Chart.Container config={sessionConfig} class="min-h-[220px]">
+                <AreaChart
+                  data={sessionRows()}
+                  x="bucket"
+                  series={[
+                    { key: "healthy", label: "Healthy", color: "#16a34a" },
+                    { key: "crashed", label: "Crashed", color: "#dc2626" },
+                  ]}
+                  seriesLayout="stack"
+                  legend
+                >
+                  {#snippet tooltip()}
+                    <Chart.Tooltip labelKey="bucket" />
+                  {/snippet}
+                </AreaChart>
+              </Chart.Container>
+            {:else}
+              <p class="py-10 text-center text-sm text-muted-foreground">No sessions yet — enable session tracking in your SDK to see release health.</p>
+            {/if}
+          </Card.Content>
+        </Card.Root>
       </div>
 
       <div class="min-w-0">
-        <Tile icon={Timer}>
-          <span slot="title">Latency</span>
-          <span slot="subtitle">All-time · needs transaction data, which errgotrack does not collect.</span>
-          <p class="py-10 text-center text-sm text-muted-foreground">No transaction data.</p>
-        </Tile>
+        <Card.Root class="h-full">
+          <Card.Header>
+            <div class="flex items-center gap-2">
+              <Timer class="text-muted-foreground size-4" />
+              <Card.Title class="text-sm">Latency</Card.Title>
+            </div>
+            <Card.Description>Percentiles need sampled APM data, which errgotrack does not collect. Stored transactions live under Traces.</Card.Description>
+          </Card.Header>
+          <Card.Content>
+            <p class="py-10 text-center text-sm text-muted-foreground">No transaction data.</p>
+          </Card.Content>
+        </Card.Root>
       </div>
 
       <div class="min-w-0 xl:col-span-4">
-        <Tile icon={Trophy}>
-          <span slot="title">Top issues</span>
-          <span slot="subtitle">Open issues by lifetime event count.</span>
-          {#if data.topIssues.length === 0}
-            <p class="py-6 text-center text-sm text-muted-foreground">No open issues. Enjoy the quiet.</p>
-          {:else}
-            <div class="divide-y divide-border">
-              {#each data.topIssues as i}
-                <button class="flex w-full items-center justify-between gap-3 py-2 text-left" on:click={() => navigate(`/issues/${i.id}`)}>
-                  <span class="flex min-w-0 items-center gap-2">
-                    <LevelBadge level={i.level} />
-                    <span class="truncate text-sm font-medium hover:underline">{i.title}</span>
-                  </span>
-                  <span class="shrink-0 text-xs text-muted-foreground">{i.eventCount.toLocaleString()} events · <RelativeTime iso={i.lastSeen} /></span>
-                </button>
-              {/each}
+        <Card.Root class="gap-0">
+          <Card.Header>
+            <div class="flex items-center gap-2">
+              <Trophy class="text-muted-foreground size-4" />
+              <Card.Title class="text-sm">Top issues</Card.Title>
             </div>
-          {/if}
-        </Tile>
+            <Card.Description>Open issues by lifetime event count</Card.Description>
+          </Card.Header>
+          <Card.Content>
+            {#if data.topIssues.length === 0}
+              <p class="py-6 text-center text-sm text-muted-foreground">No open issues. Enjoy the quiet.</p>
+            {:else}
+              <div class="divide-y divide-border">
+                {#each data.topIssues as i}
+                  <button class="flex w-full items-center justify-between gap-3 py-2 text-left" on:click={() => navigate(`/issues/${i.id}`)}>
+                    <span class="flex min-w-0 items-center gap-2">
+                      <LevelBadge level={i.level} />
+                      <span class="truncate text-sm font-medium hover:underline">{i.title}</span>
+                    </span>
+                    <span class="shrink-0 text-xs text-muted-foreground tabular-nums">{i.eventCount.toLocaleString()} events · <RelativeTime iso={i.lastSeen} /></span>
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </Card.Content>
+        </Card.Root>
       </div>
     </div>
   {/if}

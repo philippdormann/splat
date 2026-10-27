@@ -1,10 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api, type LogEntry } from "$lib/api";
-  import Card from "$lib/components/card.svelte";
+  import * as Card from "$lib/components/ui/card/index.js";
+  import * as Alert from "$lib/components/ui/alert/index.js";
+  import * as Empty from "$lib/components/ui/empty/index.js";
+  import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
   import DateTime from "$lib/components/DateTime.svelte";
+  import { TriangleAlert, ScrollText } from "lucide-svelte";
 
   export let projectId: string;
   export let navigate: (path: string) => void;
@@ -55,12 +59,15 @@
   onMount(load);
 </script>
 
-<Card cls="p-4">
+<Card.Root class="gap-0">
+  <Card.Header>
+    <Card.Title>Logs</Card.Title>
+    <Card.Description>Structured log records the SDKs send (<span class="font-mono">logger.info/warn/error…</span>). Newest first.</Card.Description>
+  </Card.Header>
+  <Card.Content>
   <div class="space-y-3">
-    <p class="text-sm font-medium">Logs</p>
-    <p class="text-xs text-muted-foreground">Structured log records the SDKs send (<span class="font-mono">logger.info/warn/error…</span>). Newest first.</p>
     <form on:submit={search} class="flex flex-wrap gap-2">
-      <select class="h-9 rounded-md border border-input bg-background px-2 text-sm" bind:value={level} on:change={load}>
+      <select class="h-9 rounded-md border border-input bg-background px-2 text-sm" bind:value={level} on:change={load} aria-label="Log level filter">
         <option value="">All levels</option>
         {#each levels.filter((l) => l) as l}<option value={l}>{l}</option>{/each}
       </select>
@@ -68,11 +75,27 @@
       <Button type="submit" size="sm" disabled={busy}>Search</Button>
     </form>
     {#if error}
-      <p class="text-sm text-destructive">{error}</p>
+      <Alert.Root variant="destructive">
+        <TriangleAlert />
+        <Alert.Title>Couldn't load logs</Alert.Title>
+        <Alert.Description>{error}</Alert.Description>
+      </Alert.Root>
     {:else if entries === null}
-      <p class="text-xs text-muted-foreground">Loading…</p>
+      <div class="space-y-2" aria-label="Loading logs">
+        <Skeleton class="h-10 w-full" />
+        <Skeleton class="h-10 w-full" />
+        <Skeleton class="h-10 w-full" />
+      </div>
     {:else if entries.length === 0}
-      <p class="text-xs text-muted-foreground">No log records yet — enable SDK logs (<span class="font-mono">enable_logs</span>) to see them here.</p>
+      <Empty.Root class="border-0">
+        <Empty.Header>
+          <span class="bg-muted flex size-12 items-center justify-center rounded-xl">
+            <ScrollText class="text-muted-foreground size-6" />
+          </span>
+          <Empty.Title>No log records</Empty.Title>
+          <Empty.Description>Enable SDK logs (<span class="font-mono">enable_logs</span>) to see them here.</Empty.Description>
+        </Empty.Header>
+      </Empty.Root>
     {:else}
       <div class="divide-y divide-border rounded-md border border-border font-mono text-xs">
         {#each entries as e}
@@ -88,4 +111,5 @@
       </div>
     {/if}
   </div>
-</Card>
+  </Card.Content>
+</Card.Root>

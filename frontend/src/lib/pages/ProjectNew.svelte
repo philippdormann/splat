@@ -1,12 +1,15 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api, ApiError, type Platform, type ProjectListItem } from "$lib/api";
-  import Card from "$lib/components/card.svelte";
+  import * as Card from "$lib/components/ui/card/index.js";
+  import * as Tabs from "$lib/components/ui/tabs/index.js";
+  import * as Alert from "$lib/components/ui/alert/index.js";
+  import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
   import PlatformGrid from "$lib/components/PlatformGrid.svelte";
   import PlatformIcon from "$lib/components/PlatformIcon.svelte";
-  import { ArrowLeft, Pencil, RotateCcw, LoaderCircle } from "lucide-svelte";
+  import { ArrowLeft, Pencil, RotateCcw, LoaderCircle, TriangleAlert } from "lucide-svelte";
   import { cn } from "$lib/utils";
 
   export let navigate: (path: string) => void;
@@ -137,27 +140,29 @@
   </button>
 
   <div class="mb-6 mt-4">
-    <h1 class="text-xl font-extrabold tracking-tight md:text-2xl">New project</h1>
-    <p class="mt-1 text-muted-foreground">Pick a platform, name it, get a DSN.</p>
+    <h1 class="text-2xl font-semibold tracking-tight">New project</h1>
+    <p class="text-muted-foreground mt-1 text-sm">Pick a platform, name it, get a DSN.</p>
   </div>
 
   <form on:submit={submit} class="grid gap-6 pb-24 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:pb-0">
     <div class="min-w-0">
       <p class="mb-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">Platform</p>
-      <div class="mb-3 flex flex-wrap gap-1">
-        {#each categories as c}
-          <Button size="sm" variant={category === c.id && !query.trim() ? "default" : "outline"} on:click={() => { category = c.id; }}>{c.label}</Button>
-        {/each}
-      </div>
+      <Tabs.Root bind:value={category} class="mb-3">
+        <Tabs.List aria-label="Platform category" class="flex-wrap">
+          {#each categories as c}
+            <Tabs.Trigger value={c.id}>{c.label}</Tabs.Trigger>
+          {/each}
+        </Tabs.List>
+      </Tabs.Root>
       <div class="mb-3"><Input bind:value={query} placeholder="Search platforms… (e.g. django, nextjs, go)" autocomplete="off" /></div>
       {#if !platforms.length && !error}
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label="Loading platforms">
-          <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
-          <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
-          <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
-          <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
-          <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
-          <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
+          <Skeleton class="h-24 w-full" />
+          <Skeleton class="h-24 w-full" />
+          <Skeleton class="h-24 w-full" />
+          <Skeleton class="h-24 w-full" />
+          <Skeleton class="h-24 w-full" />
+          <Skeleton class="h-24 w-full" />
         </div>
       {:else if !filtered.length}
         <p class="rounded-md border border-border p-6 text-center text-sm text-muted-foreground">No platforms match “{query.trim()}”.</p>
@@ -167,20 +172,20 @@
       {#if fieldError && !platform}<p class="mt-2 text-xs text-destructive">{fieldError}</p>{/if}
     </div>
 
-    <aside class="rounded-xl border bg-card p-5 lg:sticky lg:top-6">
-      <div class="flex items-center gap-3 border-b pb-4">
+    <Card.Root class="gap-0 lg:sticky lg:top-6">
+      <Card.Header class="flex-row items-center gap-3">
         {#if platform}
           <PlatformIcon {platform} language={selectedLanguage} size={32} />
           <div class="min-w-0">
-            <p class="truncate text-sm font-bold">{selectedLabel}</p>
-            <p class="truncate font-mono text-xs text-muted-foreground">{platform}</p>
+            <Card.Title class="truncate text-sm">{selectedLabel}</Card.Title>
+            <Card.Description class="truncate font-mono text-xs">{platform}</Card.Description>
           </div>
         {:else}
           <div class="size-8 shrink-0 rounded-md border border-dashed" />
           <p class="text-sm text-muted-foreground">No platform selected</p>
         {/if}
-      </div>
-
+      </Card.Header>
+      <Card.Content>
       <div class="space-y-4 pt-4">
         <div class="space-y-2">
           <label class="text-xs font-bold uppercase tracking-widest text-muted-foreground" for="proj-name">Name</label>
@@ -224,13 +229,20 @@
         </div>
       </div>
 
-      {#if error}<p class="mt-4 text-sm text-destructive">{error}</p>{/if}
+      {#if error}
+        <Alert.Root variant="destructive" class="mt-4">
+          <TriangleAlert />
+          <Alert.Title>Couldn't create the project</Alert.Title>
+          <Alert.Description>{error}</Alert.Description>
+        </Alert.Root>
+      {/if}
 
       <Button type="submit" disabled={busy} class="mt-5 hidden w-full lg:flex">
         {#if busy}<LoaderCircle class="mr-2 h-4 w-4 animate-spin" /> Creating…{:else}Create project{/if}
       </Button>
       <p class="mt-3 hidden text-xs text-muted-foreground lg:block">Next: copy the DSN from the project page.</p>
-    </aside>
+      </Card.Content>
+    </Card.Root>
 
     <div class="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 px-4 py-3 backdrop-blur lg:hidden">
       <div class="mx-auto flex max-w-6xl items-center gap-3">

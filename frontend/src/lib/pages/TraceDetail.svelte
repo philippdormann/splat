@@ -1,9 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api, type TraceDetail } from "$lib/api";
-  import Card from "$lib/components/card.svelte";
+  import * as Card from "$lib/components/ui/card/index.js";
+  import * as Alert from "$lib/components/ui/alert/index.js";
+  import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
   import DateTime from "$lib/components/DateTime.svelte";
-  import { ArrowLeft } from "lucide-svelte";
+  import { ArrowLeft, TriangleAlert } from "lucide-svelte";
 
   export let id: string;
   export let traceId: string;
@@ -78,19 +80,28 @@
     <ArrowLeft class="h-4 w-4" /> Back to project
   </button>
   <div>
-    <h1 class="text-xl font-extrabold tracking-tight md:text-2xl">Trace</h1>
+    <h1 class="text-2xl font-semibold tracking-tight">Trace</h1>
     <p class="mt-1 font-mono text-xs text-muted-foreground">{traceId}</p>
   </div>
 
   {#if error}
-    <p class="text-sm text-destructive">{error}</p>
+    <Alert.Root variant="destructive">
+      <TriangleAlert />
+      <Alert.Title>Couldn't load the trace</Alert.Title>
+      <Alert.Description>{error}</Alert.Description>
+    </Alert.Root>
   {:else if !data}
-    <div class="space-y-3" aria-label="Loading trace">
-      <div class="h-64 animate-pulse rounded-lg bg-muted"></div>
-    </div>
+    <Card.Root>
+      <Card.Content class="space-y-2 pt-6" aria-label="Loading trace">
+        <Skeleton class="h-64 w-full" />
+      </Card.Content>
+    </Card.Root>
   {:else}
-    <Card cls="p-4">
-      <p class="mb-2 text-sm font-medium">Spans ({data.spans.length})</p>
+    <Card.Root class="gap-0">
+      <Card.Header>
+        <Card.Title>Spans ({data.spans.length})</Card.Title>
+      </Card.Header>
+      <Card.Content>
       {#if !rows}
         <p class="text-xs text-muted-foreground">This trace has transactions but no spans.</p>
       {:else}
@@ -123,25 +134,33 @@
           </svg>
         </div>
       {/if}
-    </Card>
+      </Card.Content>
+    </Card.Root>
 
-    <Card cls="p-4">
-      <p class="mb-2 text-sm font-medium">Transactions ({data.transactions.length})</p>
+    <Card.Root class="gap-0">
+      <Card.Header>
+        <Card.Title>Transactions ({data.transactions.length})</Card.Title>
+      </Card.Header>
+      <Card.Content>
       <div class="divide-y divide-border rounded-md border border-border text-sm">
         {#each data.transactions as t}
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1 p-2">
             <span class="min-w-0 flex-1 truncate font-medium">{t.name}</span>
             {#if t.release}<span class="font-mono text-xs text-muted-foreground">{t.release}</span>{/if}
             {#if t.status}<span class="font-mono text-xs text-muted-foreground">{t.status}</span>{/if}
-            <span class="font-mono text-xs text-muted-foreground">{fmtDuration(t.durationMs)}</span>
+            <span class="font-mono text-xs text-muted-foreground tabular-nums">{fmtDuration(t.durationMs)}</span>
           </div>
         {/each}
       </div>
-    </Card>
+      </Card.Content>
+    </Card.Root>
 
     {#if data.logs.length}
-      <Card cls="p-4">
-        <p class="mb-2 text-sm font-medium">Logs in this trace ({data.logs.length})</p>
+      <Card.Root class="gap-0">
+        <Card.Header>
+          <Card.Title>Logs in this trace ({data.logs.length})</Card.Title>
+        </Card.Header>
+        <Card.Content>
         <div class="divide-y divide-border rounded-md border border-border font-mono text-xs">
           {#each data.logs as e}
             <div class="flex flex-wrap items-baseline gap-x-2 p-2">
@@ -151,7 +170,8 @@
             </div>
           {/each}
         </div>
-      </Card>
+        </Card.Content>
+      </Card.Root>
     {/if}
   {/if}
 </div>

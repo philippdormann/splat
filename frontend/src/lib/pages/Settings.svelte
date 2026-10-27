@@ -1,13 +1,15 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput, type APIKey, type GenericWebhook, type User, type Team } from "$lib/api";
-  import Card from "$lib/components/card.svelte";
+  import * as CardUI from "$lib/components/ui/card/index.js";
+  import * as Alert from "$lib/components/ui/alert/index.js";
+  import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
   import { toast } from "svelte-sonner";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import Dialog from "$lib/components/Dialog.svelte";
-  import { Bell, KeyRound, Database, SlidersHorizontal, ScrollText, Users } from "lucide-svelte";
+  import { Bell, KeyRound, Database, SlidersHorizontal, ScrollText, Users, TriangleAlert } from "lucide-svelte";
 
   let tab = "general";
   const tabs = [
@@ -506,9 +508,18 @@
   }
 </script>
 
-<div class="mx-auto max-w-2xl space-y-4">
-  <h2 class="text-2xl font-bold">Settings</h2>
-  {#if error}<p class="text-sm text-destructive">{error}</p>{/if}
+<div class="mx-auto max-w-2xl space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">Settings</h1>
+    <p class="text-muted-foreground mt-1 text-sm">Instance configuration and access</p>
+  </div>
+  {#if error}
+    <Alert.Root variant="destructive">
+      <TriangleAlert />
+      <Alert.Title>Couldn't load settings</Alert.Title>
+      <Alert.Description>{error}</Alert.Description>
+    </Alert.Root>
+  {/if}
 
   <ConfirmDialog
     open={confirmBox !== null}
@@ -520,10 +531,12 @@
     onCancel={() => { if (!confirmBusy) confirmBox = null; }}
   />
   {#if !data}
-    <div class="space-y-3" aria-label="Loading settings">
-      <div class="h-40 animate-pulse rounded-lg bg-muted"></div>
-      <div class="h-40 animate-pulse rounded-lg bg-muted"></div>
-    </div>
+    <CardUI.Root>
+      <CardUI.Content class="space-y-2 pt-6" aria-label="Loading settings">
+        <Skeleton class="h-40 w-full" />
+        <Skeleton class="h-40 w-full" />
+      </CardUI.Content>
+    </CardUI.Root>
   {:else}
     <div class="flex flex-col gap-4 md:flex-row">
       <nav aria-label="Settings sections" class="flex shrink-0 gap-1 overflow-x-auto md:w-48 md:flex-col">
@@ -539,19 +552,26 @@
       </nav>
       <div class="min-w-0 flex-1 space-y-4">
         {#if tab === "general"}
-    <Card cls="p-4">
+    <CardUI.Root class="gap-0">
+      <CardUI.Header>
+        <CardUI.Title>Trace correlation</CardUI.Title>
+        <CardUI.Description>URL template with &#123;trace_id&#125; placeholder, e.g. https://tempo.example.com/explore?traceID=&#123;trace_id&#125;</CardUI.Description>
+      </CardUI.Header>
+      <CardUI.Content>
       <form on:submit={saveTracing} class="space-y-3">
-        <p class="text-sm font-medium">Trace correlation</p>
-        <p class="text-xs text-muted-foreground">URL template with &#123;trace_id&#125; placeholder, e.g. https://tempo.example.com/explore?traceID=&#123;trace_id&#125;</p>
         <Input bind:value={traceURL} placeholder="https://…/&#123;trace_id&#125;" />
         <Button type="submit" size="sm">Save</Button>
       </form>
-    </Card>
+      </CardUI.Content>
+    </CardUI.Root>
 
         {:else if tab === "notifications"}
-    <Card cls="p-4">
-      <p class="mb-1 text-sm font-medium">Notifications</p>
-      <p class="mb-3 text-xs text-muted-foreground">Each destination is configured separately. Alert rules decide which events go where.</p>
+    <CardUI.Root class="gap-0">
+      <CardUI.Header>
+        <CardUI.Title>Notifications</CardUI.Title>
+        <CardUI.Description>Each destination is configured separately. Alert rules decide which events go where.</CardUI.Description>
+      </CardUI.Header>
+      <CardUI.Content>
       <div class="divide-y divide-border rounded-md border border-border">
         <div class="flex items-center justify-between gap-2 p-3">
           <div class="min-w-0">
@@ -583,8 +603,8 @@
           </div>
           <Button size="sm" variant="outline" on:click={() => (channelDialog = "generic")}>Configure</Button>
         </div>
-      </div>
-    </Card>
+      </CardUI.Content>
+    </CardUI.Root>
 
     <Dialog open={channelDialog === "telegram"} title="Configure Telegram" onClose={closeChannelDialog}>
       <form on:submit={saveTelegram} class="space-y-3">
@@ -680,13 +700,16 @@
       </div>
     </Dialog>
         {:else if tab === "rules"}
-    <Card cls="p-4">
-      <div class="space-y-3">
-        <div class="flex items-center justify-between">
-          <p class="text-sm font-medium">Alert rules</p>
-          <Button size="sm" variant="outline" on:click={newRule}>New rule</Button>
+    <CardUI.Root class="gap-0">
+      <CardUI.Header class="flex-row items-start justify-between gap-2">
+        <div>
+          <CardUI.Title>Alert rules</CardUI.Title>
+          <CardUI.Description>Rules decide which events alert and where. A rule with no channels uses every enabled channel; picking channels routes e.g. production to email and staging to chat.</CardUI.Description>
         </div>
-        <p class="text-xs text-muted-foreground">Rules decide which events alert and where. A rule with no channels uses every enabled channel; picking channels routes e.g. production to email and staging to chat.</p>
+        <Button size="sm" variant="outline" class="shrink-0" on:click={newRule}>New rule</Button>
+      </CardUI.Header>
+      <CardUI.Content>
+      <div class="space-y-3">
         {#if rules.length === 0}
           <p class="text-xs text-muted-foreground">No rules yet — nothing will alert.</p>
         {:else}
@@ -744,12 +767,16 @@
           </Dialog>
         {/if}
       </div>
-    </Card>
+      </CardUI.Content>
+    </CardUI.Root>
         {:else if tab === "keys"}
-    <Card cls="p-4">
+    <CardUI.Root class="gap-0">
+      <CardUI.Header>
+        <CardUI.Title>API keys</CardUI.Title>
+        <CardUI.Description>Bearer tokens for automation: <span class="font-mono">ingest</span> posts events without a DSN, <span class="font-mono">read</span>/<span class="font-mono">write</span> use the management API without a session. Optionally bound to one project and with an expiry. Secrets are shown once — only hashes are stored.</CardUI.Description>
+      </CardUI.Header>
+      <CardUI.Content>
       <div class="space-y-3">
-        <p class="text-sm font-medium">API keys</p>
-        <p class="text-xs text-muted-foreground">Bearer tokens for automation: <span class="font-mono">ingest</span> posts events without a DSN, <span class="font-mono">read</span>/<span class="font-mono">write</span> use the management API without a session. Optionally bound to one project and with an expiry. Secrets are shown once — only hashes are stored.</p>
         {#if freshSecret}
           <div class="space-y-2 rounded-md border border-border bg-muted p-3">
             <p class="text-xs font-medium">Copy this secret now — it will never be shown again:</p>
@@ -812,14 +839,16 @@
           </Dialog>
         {/if}
       </div>
-    </Card>
+      </CardUI.Content>
+    </CardUI.Root>
         {:else if tab === "users"}
-    <Card cls="p-4">
+    <CardUI.Root class="gap-0">
+      <CardUI.Header>
+        <CardUI.Title>Users</CardUI.Title>
+        <CardUI.Description>Admins bypass every check. Members only see projects granted to them directly or through a team.</CardUI.Description>
+      </CardUI.Header>
+      <CardUI.Content>
       <div class="space-y-4">
-        <div>
-          <p class="text-sm font-medium">Users</p>
-          <p class="text-xs text-muted-foreground">Admins bypass every check. Members only see projects granted to them directly or through a team.</p>
-        </div>
         {#if users.length}
           <div class="divide-y divide-border rounded-md border border-border">
             {#each users as u}
@@ -879,13 +908,15 @@
           </Dialog>
         {/if}
       </div>
-    </Card>
-    <Card cls="p-4">
+      </CardUI.Content>
+    </CardUI.Root>
+    <CardUI.Root class="gap-0">
+      <CardUI.Header>
+        <CardUI.Title>Teams</CardUI.Title>
+        <CardUI.Description>Group users, then grant whole teams to projects. A member sees a project with a direct grant or any team grant.</CardUI.Description>
+      </CardUI.Header>
+      <CardUI.Content>
       <div class="space-y-4">
-        <div>
-          <p class="text-sm font-medium">Teams</p>
-          <p class="text-xs text-muted-foreground">Group users, then grant whole teams to projects. A member sees a project with a direct grant or any team grant.</p>
-        </div>
         {#if teams.length}
           <div class="space-y-3">
             {#each teams as t}
@@ -956,7 +987,8 @@
           </Dialog>
         {/if}
       </div>
-    </Card>
+      </CardUI.Content>
+    </CardUI.Root>
     {#if resetPw}
       <Dialog open={true} title={`Reset password for ${resetPw.username}`} onClose={() => (resetPw = null)}>
         <form on:submit={saveResetPassword} class="space-y-3">
@@ -969,21 +1001,26 @@
       </Dialog>
     {/if}
         {:else if tab === "storage"}
-    <Card cls="p-4">
-      <div class="space-y-3">
-        <p class="text-sm font-medium">Storage</p>
-        {#if !storage}
-          <p class="text-xs text-muted-foreground">Loading usage…</p>
-        {:else}
-          <p class="text-xs text-muted-foreground">
+    <CardUI.Root class="gap-0">
+      <CardUI.Header>
+        <CardUI.Title>Storage</CardUI.Title>
+        <CardUI.Description>
+          {#if !storage}
+            Loading usage…
+          {:else}
             Backend: <span class="font-mono">{storage.driver}</span>
             · Database size: <span class="font-mono">{formatBytes(storage.sizeBytes)}</span>
-          </p>
+          {/if}
+        </CardUI.Description>
+      </CardUI.Header>
+      <CardUI.Content>
+      <div class="space-y-3">
+        {#if storage}
           <div class="grid grid-cols-2 gap-1 text-xs sm:grid-cols-3">
             {#each storage.tables as t}
               <div class="flex justify-between gap-2 rounded bg-muted px-2 py-1">
                 <span class="font-mono text-muted-foreground">{t.name}</span>
-                <span class="font-mono">{t.rows.toLocaleString()}</span>
+                <span class="font-mono tabular-nums">{t.rows.toLocaleString()}</span>
               </div>
             {/each}
           </div>
@@ -998,7 +1035,8 @@
           </Button>
         </div>
       </div>
-    </Card>
+      </CardUI.Content>
+    </CardUI.Root>
         {/if}
       </div>
     </div>
