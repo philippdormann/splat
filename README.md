@@ -390,6 +390,20 @@ are AES-256-GCM encrypted in the database (keyed by
 `SPLAT_SESSION_SECRET`); recovery codes are stored as hashes. API keys
 are separate automation credentials and are unaffected by 2FA.
 
+**Single sign-on** (generic OIDC: Keycloak, Authentik, Google, …):
+set `SPLAT_OIDC_ISSUER`, `SPLAT_OIDC_CLIENT_ID`, and
+`SPLAT_OIDC_CLIENT_SECRET` (optionally `SPLAT_OIDC_NAME` and
+`SPLAT_OIDC_SCOPES`), register
+`{SPLAT_PUBLIC_URL}/api/v1/sso/callback` at the provider, and restart.
+First login auto-provisions a member; a matching verified email links
+a pre-created account (admins can set the email at user creation).
+Local TOTP is bypassed for SSO sessions — MFA lives at the provider.
+Admins can disable password login in Settings → General for SSO-only
+mode (refused until a provider is configured, so nobody locks the
+instance out). Only RS256 ID tokens are accepted; the flow uses
+HMAC-bound state, nonce, and PKCE, and every SSO sign-in is
+audit-logged.
+
 **Audit log** (Settings → Audit log, admins only): every sign-in
 (success and failure), 2FA change, user/team/role change, settings
 save, API key change, project change, and quota/policy change is

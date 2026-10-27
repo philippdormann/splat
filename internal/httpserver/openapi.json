@@ -3372,6 +3372,75 @@
           }
         }
       }
+    },
+    "/api/v1/sso/config": {
+      "get": {
+        "summary": "SSO availability for the login page",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Provider name and password-login flag."
+          }
+        }
+      }
+    },
+    "/api/v1/sso/login": {
+      "get": {
+        "summary": "Start SSO login (redirects to the provider)",
+        "security": [],
+        "responses": {
+          "302": {
+            "description": "Redirect to the provider."
+          }
+        }
+      }
+    },
+    "/api/v1/sso/callback": {
+      "get": {
+        "summary": "SSO callback (redirects to / or /login?ssoError=...)",
+        "security": [],
+        "responses": {
+          "302": {
+            "description": "Redirect with session cookie set."
+          }
+        }
+      }
+    },
+    "/api/v1/settings/sso": {
+      "get": {
+        "summary": "SSO status and password-login policy",
+        "responses": {
+          "200": {
+            "description": "Provider info and flags."
+          }
+        }
+      },
+      "put": {
+        "summary": "Enable/disable password login (SSO-only mode)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "passwordLoginDisabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated."
+          },
+          "400": {
+            "description": "No provider configured."
+          }
+        }
+      }
     }
   }
 }

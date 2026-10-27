@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { api, ApiError } from "$lib/api";
+  import { onMount } from "svelte";
+  import { api, ApiError, type SSOConfig } from "$lib/api";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
   import Input from "$lib/components/input.svelte";
@@ -20,6 +21,31 @@
   let code = "";
   let copied: Record<string, boolean> = {};
   let recoveryCodes: string[] | null = null;
+
+  let sso: SSOConfig | null = null;
+
+  const ssoErrors: Record<string, string> = {
+    provider: "The identity provider denied the request.",
+    state: "The sign-in attempt expired or was tampered with. Try again.",
+    exchange: "Could not complete sign-in with the identity provider.",
+    verify: "The identity provider response was invalid.",
+    email: "No verified email address was provided. Check your identity provider account.",
+    server: "Single sign-on failed. Contact your administrator.",
+  };
+
+  onMount(async () => {
+    const params = new URLSearchParams(window.location.search);
+    const ssoError = params.get("ssoError");
+    if (ssoError) {
+      error = ssoErrors[ssoError] ?? "Single sign-on failed.";
+      window.history.replaceState({}, "", "/login");
+    }
+    try {
+      sso = await api.ssoConfig();
+    } catch {
+      sso = null;
+    }
+  });
 
   async function submit(e: Event) {
     e.preventDefault();
@@ -145,6 +171,19 @@
           <button type="button" class="w-full text-center text-xs text-muted-foreground hover:text-foreground" on:click={back}>Back to sign-in</button>
         </form>
       {:else}
+        {#if sso?.enabled}
+          <div class="space-y-4">
+            <Button class="w-full" variant={sso.passwordLoginDisabled ? "default" : "outline"} on:click={() => (window.location.href = "/api/v1/sso/login")}>
+              Sign in with {sso.name || "SSO"}
+            </Button>
+            {#if !sso.passwordLoginDisabled}
+              <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                <span class="h-px flex-1 bg-border" /> or with password <span class="h-px flex-1 bg-border" />
+              </div>
+            {/if}
+          </div>
+        {/if}
+        {#if !(sso?.enabled && sso.passwordLoginDisabled)}
         <form on:submit={submit} class="space-y-4">
           <div class="space-y-2">
             <label class="text-sm font-medium" for="username">Username</label>
@@ -163,6 +202,13 @@
           {/if}
           <Button type="submit" disabled={busy} class="w-full">{busy ? "Signing in…" : "Sign in"}</Button>
         </form>
+        {:else if error}
+          <Alert.Root variant="destructive">
+            <TriangleAlert />
+            <Alert.Title>Sign-in failed</Alert.Title>
+            <Alert.Description>{error}</Alert.Description>
+          </Alert.Root>
+        {/if}
       {/if}
     </Card.Content>
   </Card.Root>

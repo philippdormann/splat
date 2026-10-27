@@ -29,6 +29,7 @@ import (
 	"github.com/philippdormann/splat/internal/retention"
 	"github.com/philippdormann/splat/internal/sessions"
 	"github.com/philippdormann/splat/internal/sourcemaps"
+	"github.com/philippdormann/splat/internal/sso"
 	"github.com/philippdormann/splat/internal/storage"
 	"github.com/philippdormann/splat/internal/teams"
 	"github.com/philippdormann/splat/internal/traces"
@@ -52,6 +53,7 @@ type Server struct {
 	Teams         *teams.Store
 	Audit         *audit.Store
 	Quotas        *quotas.Store
+	SSO           *sso.Provider // nil disables single sign-on
 	Logs          *logs.Store
 	Traces        *traces.Store
 	RepoLinks     *repolink.Store
@@ -147,6 +149,11 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/v1/login/2fa", rateLimit(loginLimiter, http.HandlerFunc(s.apiLogin2FA)))
 	s.mux.HandleFunc("GET /api/v1/me", s.apiMe)
 	s.mux.HandleFunc("POST /api/v1/logout", s.apiLogout)
+	s.mux.HandleFunc("GET /api/v1/sso/config", s.apiSSOConfig)
+	s.mux.HandleFunc("GET /api/v1/sso/login", s.apiSSOLogin)
+	s.mux.HandleFunc("GET /api/v1/sso/callback", s.apiSSOCallback)
+	s.mux.HandleFunc("GET /api/v1/settings/sso", s.requireInstance(s.apiSSOSettingsGet))
+	s.mux.HandleFunc("PUT /api/v1/settings/sso", s.requireInstance(s.apiSSOSettingsSave))
 
 	// Two-factor self-service: any session (the challenge authorizes
 	// enrollment inline during login when enforcement requires it).

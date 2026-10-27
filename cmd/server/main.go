@@ -30,6 +30,7 @@ import (
 	"github.com/philippdormann/splat/internal/retention"
 	"github.com/philippdormann/splat/internal/sessions"
 	"github.com/philippdormann/splat/internal/sourcemaps"
+	"github.com/philippdormann/splat/internal/sso"
 	"github.com/philippdormann/splat/internal/storage"
 	"github.com/philippdormann/splat/internal/teams"
 	"github.com/philippdormann/splat/internal/traces"
@@ -130,6 +131,23 @@ func main() {
 		notif.NotifyQuotaBreach(ctx, projectName, projectURL, window, used, limit)
 	}
 
+	var ssoProvider *sso.Provider
+	if cfg.OIDCIssuer != "" {
+		if cfg.OIDCClientID == "" {
+			logger.Error("sso misconfigured", "error", "SPLAT_OIDC_ISSUER is set but SPLAT_OIDC_CLIENT_ID is empty")
+			os.Exit(1)
+		}
+		ssoProvider = sso.NewProvider(sso.Config{
+			Issuer:       cfg.OIDCIssuer,
+			ClientID:     cfg.OIDCClientID,
+			ClientSecret: cfg.OIDCClientSecret,
+			Name:         cfg.OIDCName,
+			Scopes:       cfg.OIDCScopes,
+			RedirectURL:  strings.TrimSuffix(cfg.PublicURL, "/") + "/api/v1/sso/callback",
+		}, cfg.SessionSecret)
+		logger.Info("sso enabled", "issuer", cfg.OIDCIssuer)
+	}
+
 	sweeper := retention.NewSweeper(db, logger)
 
 	var reg *metrics.Registry
@@ -159,6 +177,7 @@ func main() {
 		Teams:         teams.NewStore(db),
 		Audit:         audit.NewStore(db),
 		Quotas:        quotaStore,
+		SSO:           ssoProvider,
 		Logs:          logs.NewStore(db),
 		Traces:        traces.NewStore(db),
 		RepoLinks:     repolink.NewStore(db),

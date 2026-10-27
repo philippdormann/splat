@@ -80,6 +80,13 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ require2fa }),
     }),
+  ssoConfig: () => req<SSOConfig>("/api/v1/sso/config"),
+  ssoSettings: () => req<SSOSettings>("/api/v1/settings/sso"),
+  saveSSOSettings: (passwordLoginDisabled: boolean) =>
+    req<SSOSettings>("/api/v1/settings/sso", {
+      method: "PUT",
+      body: JSON.stringify({ passwordLoginDisabled }),
+    }),
 
   auditLog: (params?: { action?: string; limit?: number; offset?: number }) => {
     const qs = new URLSearchParams();
@@ -343,7 +350,7 @@ export const api = {
     req<{ ok: boolean }>(`/api/v1/api-keys/${id}`, { method: "DELETE" }),
 
   users: () => req<User[]>("/api/v1/users"),
-  createUser: (input: { username: string; password: string; role?: string }) =>
+  createUser: (input: { username: string; password: string; role?: string; email?: string }) =>
     req<User>("/api/v1/users", {
       method: "POST",
       body: JSON.stringify(input),
@@ -732,6 +739,8 @@ export interface User {
   role: string;
   createdAt: string;
   totpEnabled: boolean;
+  email: string;
+  sso: boolean;
 }
 
 export interface LoginResponse {
@@ -755,6 +764,20 @@ export interface TwoFABegin {
 
 export interface SecurityPolicy {
   require2fa: boolean;
+}
+
+export interface SSOConfig {
+  enabled: boolean;
+  name: string;
+  issuer: string;
+  passwordLoginDisabled: boolean;
+}
+
+export interface SSOSettings {
+  enabled: boolean;
+  name: string;
+  issuer: string;
+  passwordLoginDisabled: boolean;
 }
 
 export interface AuditLogEntry {

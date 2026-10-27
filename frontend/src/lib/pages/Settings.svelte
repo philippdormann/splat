@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput, type APIKey, type GenericWebhook, type User, type Team, type SecurityPolicy, type AuditLogEntry, type QuotaDefaults } from "$lib/api";
+  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput, type APIKey, type GenericWebhook, type User, type Team, type SecurityPolicy, type AuditLogEntry, type QuotaDefaults, type SSOSettings } from "$lib/api";
   import * as CardUI from "$lib/components/ui/card/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
   import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
@@ -38,7 +38,7 @@
   let freshSecret = "";
   let users: User[] = [];
   let teams: Team[] = [];
-  let newUser = { username: "", password: "", role: "member" };
+  let newUser = { username: "", password: "", role: "member", email: "" };
   let newTeam = { name: "", slug: "" };
   let showNewUser = false;
   let showNewTeam = false;
@@ -46,6 +46,7 @@
   let meUsername = "";
   let security: SecurityPolicy = { require2fa: false };
   let quotaDefaults: QuotaDefaults = { defaultHourly: 5000, defaultDaily: 50000 };
+  let ssoSettings: SSOSettings = { enabled: false, name: "", issuer: "", passwordLoginDisabled: false };
   let auditEntries: AuditLogEntry[] = [];
   let auditTotal = 0;
   let auditOffset = 0;
@@ -232,6 +233,7 @@
         teams = await api.teams();
         security = await api.security();
         quotaDefaults = await api.quotaDefaults();
+        ssoSettings = await api.ssoSettings();
         meUsername = (await api.me()).username ?? "";
       } catch (e) {
         toast.error(`Could not load users/teams: ${e instanceof Error ? e.message : e}`);
@@ -393,7 +395,7 @@
     e.preventDefault();
     try {
       await api.createUser(newUser);
-      newUser = { username: "", password: "", role: "member" };
+      newUser = { username: "", password: "", role: "member", email: "" };
       showNewUser = false;
       await reloadUsersTeams();
       toast.success("User created.");
@@ -473,6 +475,17 @@
       toast.success("Default quotas saved. Projects without overrides inherit them.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not save quotas.");
+    }
+  }
+
+  async function saveSSO(e: Event) {
+    e.preventDefault();
+    if (ssoSettings.passwordLoginDisabled && !ssoSettings.enabled) return;
+    try {
+      ssoSettings = await api.saveSSOSettings(ssoSettings.passwordLoginDisabled);
+      toast.success(ssoSettings.passwordLoginDisabled ? "Password login disabled — sign-in is SSO-only." : "Password login enabled.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save SSO settings.");
     }
   }
 
@@ -637,6 +650,28 @@
         <div class="space-y-1"><label class="text-xs">Events per day (0 = unlimited)</label><Input type="number" min="0" bind:value={quotaDefaults.defaultDaily} /></div>
         <Button type="submit" size="sm">Save</Button>
       </form>
+      </CardUI.Content>
+    </CardUI.Root>
+    <CardUI.Root class="gap-0">
+      <CardUI.Header>
+        <CardUI.Title>Single sign-on</CardUI.Title>
+        <CardUI.Description>
+          {#if ssoSettings.enabled}
+            {ssoSettings.name} · {ssoSettings.issuer}. First login auto-provisions a member; matching emails link existing accounts.
+          {:else}
+            Not configured. Set SPLAT_OIDC_ISSUER, SPLAT_OIDC_CLIENT_ID, and SPLAT_OIDC_CLIENT_SECRET, then restart.
+          {/if}
+        </CardUI.Description>
+      </CardUI.Header>
+      <CardUI.Content>
+      {#if ssoSettings.enabled}
+        <form on:submit={saveSSO} class="flex flex-wrap items-center gap-3">
+          <label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={ssoSettings.passwordLoginDisabled} /> Disable password login (SSO-only sign-in)</label>
+          <Button type="submit" size="sm">Save</Button>
+        </form>
+      {:else}
+        <p class="text-xs text-muted-foreground">Password login cannot be disabled until a provider is configured — that combination would lock everyone out.</p>
+      {/if}
       </CardUI.Content>
     </CardUI.Root>
     <CardUI.Root class="gap-0">
@@ -945,8 +980,12 @@
                   <span class="font-medium">{u.username}</span>
                   {#if isSelf}<span class="text-muted-foreground"> (you)</span>{/if}
                   <span class="text-muted-foreground"> · {u.role}</span>
+                  {#if u.email}<span class="text-muted-foreground"> · {u.email}</span>{/if}
                   {#if u.totpEnabled}
                     <span class="ml-1 rounded-md bg-green-600/15 px-1.5 py-0.5 text-[11px] font-medium text-green-600" title="Two-factor authentication enabled">2FA</span>
+                  {/if}
+                  {#if u.sso}
+                    <span class="ml-1 rounded-md bg-blue-600/15 px-1.5 py-0.5 text-[11px] font-medium text-blue-600" title="Single sign-on linked">SSO</span>
                   {/if}
                 </span>
                 <span class="flex items-center gap-2">
@@ -986,6 +1025,7 @@
               <div class="grid grid-cols-2 gap-3">
                 <div class="space-y-1"><label class="text-xs">Username</label><Input bind:value={newUser.username} placeholder="jane" autocomplete="off" /></div>
                 <div class="space-y-1"><label class="text-xs">Password (min 8 chars)</label><Input type="password" bind:value={newUser.password} placeholder="••••••••" autocomplete="new-password" /></div>
+                <div class="space-y-1"><label class="text-xs">Email (optional, links SSO)</label><Input bind:value={newUser.email} placeholder="jane@example.com" autocomplete="off" /></div>
                 <div class="space-y-1"><label class="text-xs">Role</label>
                   <select class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={newUser.role}>
                     <option value="member">member</option>

@@ -20,6 +20,12 @@ type Config struct {
 	SessionSecret   string
 	RetentionSweep  time.Duration
 	ShutdownTimeout time.Duration
+	// OIDC SSO (generic provider via discovery). Empty issuer disables SSO.
+	OIDCIssuer       string
+	OIDCClientID     string
+	OIDCClientSecret string
+	OIDCName         string
+	OIDCScopes       string
 	// MetricsEnabled exposes GET /metrics (Prometheus text format).
 	// Off by default: the endpoint leaks operational counts.
 	MetricsEnabled bool
@@ -29,18 +35,23 @@ type Config struct {
 
 func Load() (Config, error) {
 	c := Config{
-		Addr:            getenv("SPLAT_ADDR", ":8080"),
-		DatabasePath:    getenv("SPLAT_DB_PATH", "data/splat.db"),
-		DatabaseURL:     getenv("SPLAT_DATABASE_URL", ""),
-		DBDriver:        getenv("SPLAT_DB_DRIVER", "sqlite"),
-		PublicURL:       getenv("SPLAT_PUBLIC_URL", "http://localhost:8080"),
-		AdminUsername:   getenv("SPLAT_ADMIN_USERNAME", ""),
-		AdminPassword:   getenv("SPLAT_ADMIN_PASSWORD", ""),
-		SessionSecret:   getenv("SPLAT_SESSION_SECRET", ""),
-		RetentionSweep:  getenvDuration("SPLAT_RETENTION_SWEEP", time.Hour),
-		ShutdownTimeout: getenvDuration("SPLAT_SHUTDOWN_TIMEOUT", 10*time.Second),
-		MetricsEnabled:  getenvBool("SPLAT_METRICS", false),
-		LogLevel:        getenv("SPLAT_LOG_LEVEL", "info"),
+		Addr:             getenv("SPLAT_ADDR", ":8080"),
+		DatabasePath:     getenv("SPLAT_DB_PATH", "data/splat.db"),
+		DatabaseURL:      getenv("SPLAT_DATABASE_URL", ""),
+		DBDriver:         getenv("SPLAT_DB_DRIVER", "sqlite"),
+		PublicURL:        getenv("SPLAT_PUBLIC_URL", "http://localhost:8080"),
+		AdminUsername:    getenv("SPLAT_ADMIN_USERNAME", ""),
+		AdminPassword:    getenv("SPLAT_ADMIN_PASSWORD", ""),
+		SessionSecret:    getenv("SPLAT_SESSION_SECRET", ""),
+		RetentionSweep:   getenvDuration("SPLAT_RETENTION_SWEEP", time.Hour),
+		OIDCIssuer:       getenv("SPLAT_OIDC_ISSUER", ""),
+		OIDCClientID:     getenv("SPLAT_OIDC_CLIENT_ID", ""),
+		OIDCClientSecret: getenv("SPLAT_OIDC_CLIENT_SECRET", ""),
+		OIDCName:         getenv("SPLAT_OIDC_NAME", "SSO"),
+		OIDCScopes:       getenv("SPLAT_OIDC_SCOPES", "openid email profile"),
+		ShutdownTimeout:  getenvDuration("SPLAT_SHUTDOWN_TIMEOUT", 10*time.Second),
+		MetricsEnabled:   getenvBool("SPLAT_METRICS", false),
+		LogLevel:         getenv("SPLAT_LOG_LEVEL", "info"),
 	}
 	if c.SessionSecret == "" {
 		return c, fmt.Errorf("SPLAT_SESSION_SECRET must be set (random 32+ byte string)")

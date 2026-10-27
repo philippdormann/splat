@@ -93,6 +93,10 @@ func (s *Server) apiLogin(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
+	if s.Auth.PasswordLoginDisabled() {
+		writeAPIError(w, http.StatusUnauthorized, "password login is disabled - use single sign-on")
+		return
+	}
 	userID, err := s.Auth.Authenticate(input.Username, input.Password)
 	if err != nil {
 		s.auditAs(0, input.Username, clientIP(r), audit.LoginFailed, "user", "", `{"via":"password"}`)

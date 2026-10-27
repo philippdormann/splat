@@ -126,6 +126,8 @@ type User struct {
 	Role        string
 	CreatedAt   string
 	TOTPEnabled bool
+	Email       string
+	SSO         bool
 }
 
 // RoleOf returns the instance role for a user id ("admin"/"member").
@@ -150,7 +152,7 @@ func (s *Store) UsernameOf(userID int64) string {
 }
 
 func (s *Store) ListUsers() ([]User, error) {
-	rows, err := s.db.Query(`SELECT id, username, role, created_at,
+	rows, err := s.db.Query(`SELECT id, username, role, created_at, email, (sso_subject IS NOT NULL),
 		EXISTS(SELECT 1 FROM user_totp WHERE user_id = users.id AND enabled) AS totp_enabled
 		FROM users ORDER BY id`)
 	if err != nil {
@@ -160,17 +162,21 @@ func (s *Store) ListUsers() ([]User, error) {
 	out := []User{}
 	for rows.Next() {
 		var u User
+		var email sql.NullString
 		if s.db.IsPostgres() {
-			if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt, &u.TOTPEnabled); err != nil {
+			var sso, totp bool
+			if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt, &email, &sso, &totp); err != nil {
 				return nil, err
 			}
+			u.SSO, u.TOTPEnabled = sso, totp
 		} else {
-			var enabled int
-			if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt, &enabled); err != nil {
+			var sso, enabled int
+			if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt, &email, &sso, &enabled); err != nil {
 				return nil, err
 			}
-			u.TOTPEnabled = enabled != 0
+			u.SSO, u.TOTPEnabled = sso != 0, enabled != 0
 		}
+		u.Email = email.String
 		out = append(out, u)
 	}
 	return out, rows.Err()

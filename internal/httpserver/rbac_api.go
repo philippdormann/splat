@@ -3,6 +3,7 @@ package httpserver
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/philippdormann/splat/internal/audit"
 	"github.com/philippdormann/splat/internal/auth"
@@ -15,7 +16,7 @@ import (
 // granted to them directly or through a team.
 
 func rbacUserJSON(u auth.User) map[string]any {
-	return map[string]any{"id": u.ID, "username": u.Username, "role": u.Role, "createdAt": u.CreatedAt, "totpEnabled": u.TOTPEnabled}
+	return map[string]any{"id": u.ID, "username": u.Username, "role": u.Role, "createdAt": u.CreatedAt, "totpEnabled": u.TOTPEnabled, "email": u.Email, "sso": u.SSO}
 }
 
 func (s *Server) apiUsersList(w http.ResponseWriter, r *http.Request) {
@@ -37,6 +38,7 @@ func (s *Server) apiUsersCreate(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 		Role     string `json:"role"`
+		Email    string `json:"email"`
 	}
 	if !decodeJSON(r, &input) {
 		writeAPIError(w, http.StatusBadRequest, "invalid JSON")
@@ -49,6 +51,18 @@ func (s *Server) apiUsersCreate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	// Optional email pre-provisions SSO: first login with a matching
+	// verified email links the account automatically.
+	if strings.TrimSpace(input.Email) != "" {
+		if err := s.Auth.SetEmail(u.ID, input.Email); err != nil {
+			// Roll back: a half-created user with a conflicting email
+			// is worse than no user.
+			_ = s.Auth.DeleteUser(u.ID)
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		u.Email = strings.ToLower(strings.TrimSpace(input.Email))
 	}
 	s.audit(r, audit.UserCreated, "user", strconv.FormatInt(u.ID, 10), `{"role":"`+u.Role+`"}`)
 	writeJSON(w, http.StatusCreated, rbacUserJSON(u))
