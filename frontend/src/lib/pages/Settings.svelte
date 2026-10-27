@@ -322,7 +322,10 @@
     onCancel={() => { if (!confirmBusy) confirmBox = null; }}
   />
   {#if !data}
-    <p class="text-sm text-muted-foreground">Loading…</p>
+    <div class="space-y-3" aria-label="Loading settings">
+      <div class="h-40 animate-pulse rounded-lg bg-muted" />
+      <div class="h-40 animate-pulse rounded-lg bg-muted" />
+    </div>
   {:else}
     <Card cls="p-4">
       <form on:submit={saveTelegram} class="space-y-3">

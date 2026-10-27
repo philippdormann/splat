@@ -5,6 +5,7 @@
   import Card from "$lib/components/card.svelte";
   import Badge from "$lib/components/badge.svelte";
   import Button from "$lib/components/button.svelte";
+  import RelativeTime from "$lib/components/RelativeTime.svelte";
 
   Chart.register(...registerables);
 
@@ -71,7 +72,16 @@
   {#if error}
     <p class="text-sm text-destructive">{error}</p>
   {:else if !data}
-    <p class="text-sm text-muted-foreground">Loading…</p>
+    <div class="space-y-3" aria-label="Loading dashboard">
+      <div class="h-7 w-48 animate-pulse rounded bg-muted" />
+      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div class="h-20 animate-pulse rounded-lg bg-muted" />
+        <div class="h-20 animate-pulse rounded-lg bg-muted" />
+        <div class="h-20 animate-pulse rounded-lg bg-muted" />
+        <div class="h-20 animate-pulse rounded-lg bg-muted" />
+      </div>
+      <div class="h-64 animate-pulse rounded-lg bg-muted" />
+    </div>
   {:else if !data.hasProjects}
     <Card cls="p-6">
       <p class="font-medium">No projects yet</p>
@@ -102,7 +112,7 @@
               <span class="truncate text-sm font-medium">{i.title}</span>
               <span class="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
                 <Badge>{i.projectName}</Badge>
-                <span>{i.eventCount} events · {i.lastSeenRelative}</span>
+                <span>{i.eventCount} events · <RelativeTime iso={i.lastSeen} /></span>
               </span>
             </button>
           {/each}

@@ -8,6 +8,7 @@
   import TileSkeleton from "$lib/components/TileSkeleton.svelte";
   import StatTile from "$lib/components/StatTile.svelte";
   import LevelBadge from "$lib/components/LevelBadge.svelte";
+  import RelativeTime from "$lib/components/RelativeTime.svelte";
 
   Chart.register(...registerables);
 
@@ -225,7 +226,7 @@
                     <LevelBadge level={i.level} />
                     <span class="truncate text-sm font-medium hover:underline">{i.title}</span>
                   </span>
-                  <span class="shrink-0 text-xs text-muted-foreground">{i.eventCount.toLocaleString()} events · {i.lastSeenRelative}</span>
+                  <span class="shrink-0 text-xs text-muted-foreground">{i.eventCount.toLocaleString()} events · <RelativeTime iso={i.lastSeen} /></span>
                 </button>
               {/each}
             </div>

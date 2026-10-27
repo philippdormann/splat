@@ -138,7 +138,11 @@
 {#if error}
   <p class="text-sm text-destructive">{error}</p>
 {:else if !data}
-  <p class="text-sm text-muted-foreground">Loading…</p>
+  <div class="mx-auto w-full max-w-6xl space-y-4" aria-label="Loading project">
+    <div class="h-8 w-1/3 animate-pulse rounded bg-muted" />
+    <div class="h-24 animate-pulse rounded-lg bg-muted" />
+    <div class="h-64 animate-pulse rounded-lg bg-muted" />
+  </div>
 {:else}
   <div class="mx-auto w-full max-w-6xl space-y-4">
     <button class="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground" on:click={() => navigate("/projects")}>

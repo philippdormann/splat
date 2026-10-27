@@ -4,6 +4,7 @@
   import Card from "$lib/components/card.svelte";
   import LevelBadge from "$lib/components/LevelBadge.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
+  import RelativeTime from "$lib/components/RelativeTime.svelte";
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
@@ -131,7 +132,11 @@
 
   <Card cls="divide-y divide-border">
     {#if !data}
-      <p class="p-4 text-sm text-muted-foreground">Loading…</p>
+      <div class="space-y-2 p-3" aria-label="Loading issues">
+        <div class="h-12 animate-pulse rounded bg-muted" />
+        <div class="h-12 animate-pulse rounded bg-muted" />
+        <div class="h-12 animate-pulse rounded bg-muted" />
+      </div>
     {:else if data.issues.length === 0}
       <p class="p-4 text-sm text-muted-foreground">No issues match.</p>
     {:else}
@@ -146,7 +151,7 @@
                 <StatusBadge status={i.status} />
                 <span>{i.projectName}</span>
                 {#if i.environment}<span>{i.environment}</span>{/if}
-                <span>{i.eventCount} events · {i.lastSeenRelative}</span>
+                <span>{i.eventCount} events · <RelativeTime iso={i.lastSeen} /></span>
               </span>
             </span>
             {#if i.sparkline?.length}

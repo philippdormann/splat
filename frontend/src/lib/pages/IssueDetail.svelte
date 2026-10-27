@@ -6,6 +6,7 @@
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import Button from "$lib/components/button.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import DateTime from "$lib/components/DateTime.svelte";
 
   export let id: string;
   export let navigate: (path: string) => void;
@@ -84,7 +85,12 @@
 {#if error}
   <p class="text-sm text-destructive">{error}</p>
 {:else if !data}
-  <p class="text-sm text-muted-foreground">Loading…</p>
+  <div class="space-y-4" aria-label="Loading issue">
+    <div class="h-6 w-2/3 animate-pulse rounded bg-muted" />
+    <div class="h-4 w-1/3 animate-pulse rounded bg-muted" />
+    <div class="h-48 animate-pulse rounded-lg bg-muted" />
+    <div class="h-32 animate-pulse rounded-lg bg-muted" />
+  </div>
 {:else}
   <div class="space-y-4">
     <div class="flex flex-wrap items-start justify-between gap-3">
@@ -212,7 +218,7 @@
         {/if}
         <div class="max-h-64 space-y-1 overflow-y-auto">
           {#each data.events as e}
-            <button class="block w-full truncate text-left font-mono text-xs hover:underline {e.eventId === data.currentEventId ? 'text-foreground' : 'text-muted-foreground'}" on:click={() => showEvent(e.eventId)}>{e.timestamp} — {e.eventId}</button>
+            <button class="block w-full truncate text-left font-mono text-xs hover:underline {e.eventId === data.currentEventId ? 'text-foreground' : 'text-muted-foreground'}" on:click={() => showEvent(e.eventId)}><DateTime iso={e.timestamp} /> — {e.eventId}</button>
           {/each}
         </div>
       </Card>

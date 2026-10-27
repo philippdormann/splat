@@ -4,6 +4,7 @@
   import { api, type ReleaseHealth } from "$lib/api";
   import Card from "$lib/components/card.svelte";
   import Button from "$lib/components/button.svelte";
+  import DateTime from "$lib/components/DateTime.svelte";
   import PlatformIcon from "$lib/components/PlatformIcon.svelte";
 
   export let id: string;
@@ -47,7 +48,11 @@
   {#if error}
     <p class="text-sm text-destructive">{error}</p>
   {:else if releases === null}
-    <p class="text-sm text-muted-foreground">Loading…</p>
+    <div class="space-y-2" aria-label="Loading releases">
+      <div class="h-12 animate-pulse rounded-lg bg-muted" />
+      <div class="h-12 animate-pulse rounded-lg bg-muted" />
+      <div class="h-12 animate-pulse rounded-lg bg-muted" />
+    </div>
   {:else if releases.length === 0}
     <Card cls="p-6"><p class="text-sm text-muted-foreground">No releases seen yet. Events and sessions record the release they came from.</p></Card>
   {:else}
@@ -79,7 +84,7 @@
                   <span class={tier(r.crashFreeUsers)}>{r.crashFreeUsers.toFixed(1)}% users</span>
                 {:else}—{/if}
               </td>
-              <td class="p-3 text-right text-xs text-muted-foreground">{r.lastSeen ? new Date(r.lastSeen).toLocaleString() : "—"}</td>
+              <td class="p-3 text-right text-xs text-muted-foreground">{#if r.lastSeen}<DateTime iso={r.lastSeen} />{:else}—{/if}</td>
             </tr>
           {/each}
         </tbody>
