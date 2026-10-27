@@ -18,7 +18,7 @@ services:
       SPLAT_ADMIN_PASSWORD: ${SPLAT_ADMIN_PASSWORD}
       SPLAT_SESSION_SECRET: ${SPLAT_SESSION_SECRET}
       SPLAT_DB_DRIVER: postgres
-      SPLAT_DATABASE_URL: postgres://${POSTGRES_USER:-splat}:${POSTGRES_PASSWORD:-splat}@postgres:5432/${POSTGRES_DB:-splat}?sslmode=disable
+      SPLAT_DATABASE_URL: postgres://${POSTGRES_USER:-splat}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-splat}?sslmode=disable
     depends_on:
       postgres:
         condition: service_healthy
@@ -33,7 +33,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-splat}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-splat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-splat}
     volumes:
       # PG18+ stores data in versioned subdirectories, so the mount goes

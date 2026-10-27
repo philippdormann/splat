@@ -57,8 +57,26 @@ func (s *Store) EnsureAdmin(username, password string) error {
 	if username == "" || password == "" {
 		return errors.New("no users exist and SPLAT_ADMIN_USERNAME/SPLAT_ADMIN_PASSWORD are not set")
 	}
+	if isBootstrapWeakPassword(password) {
+		return errors.New("refusing to bootstrap admin with weak password: use a strong, unique password (16+ chars, not a placeholder like change-me)")
+	}
 	_, err := s.CreateUser(username, password, RoleAdmin)
 	return err
+}
+
+// isBootstrapWeakPassword rejects placeholders and short secrets for the
+// first-boot admin. Regular user passwords keep the 8-char minimum in
+// CreateUser; the initial admin is internet-exposed by definition.
+func isBootstrapWeakPassword(password string) bool {
+	if len([]byte(password)) < 16 {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(password)) {
+	case "change-me", "changeme", "change_me", "password", "password123",
+		"admin", "administrator", "splat", "letmein", "qwerty", "123456", "12345678":
+		return true
+	}
+	return false
 }
 
 func (s *Store) Authenticate(username, password string) (int64, error) {

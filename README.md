@@ -120,7 +120,7 @@ docker run -d --name splat -p 8080:8080 \
   -v splat-data:/data \
   -e SPLAT_SESSION_SECRET=$(openssl rand -hex 32) \
   -e SPLAT_ADMIN_USERNAME=admin \
-  -e SPLAT_ADMIN_PASSWORD='change-me' \
+  -e SPLAT_ADMIN_PASSWORD=$(openssl rand -base64 24) \
   -e SPLAT_PUBLIC_URL=http://localhost:8080 \
   ghcr.io/philippdormann/splat:latest
 ```
@@ -144,7 +144,7 @@ make build   # bun install + bun run build (frontend/) + go build, UI embedded
 
 SPLAT_SESSION_SECRET=$(openssl rand -hex 32) \
 SPLAT_ADMIN_USERNAME=admin \
-SPLAT_ADMIN_PASSWORD='change-me' \
+SPLAT_ADMIN_PASSWORD=$(openssl rand -base64 24) \
 SPLAT_PUBLIC_URL=http://localhost:8080 \
 ./bin/splat
 ```
