@@ -371,6 +371,17 @@ func (s *Server) apiIssueDetail(w http.ResponseWriter, r *http.Request) {
 			return nil
 		}(),
 		"rawEvent": rawEventJSON(event, issue),
+		"notes": func() []map[string]any {
+			notes, err := s.Issues.Notes(issue.ID)
+			if err != nil {
+				return []map[string]any{}
+			}
+			out := make([]map[string]any, 0, len(notes))
+			for _, n := range notes {
+				out = append(out, issueNoteJSON(n))
+			}
+			return out
+		}(),
 		"traceId":  traceID,
 		"traceURL": tracing.BuildURL(traceTmpl, traceID),
 	})
@@ -490,6 +501,90 @@ func (s *Server) apiIssueSetStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.Issues.SetStatus(id, status); err != nil {
 		s.Logger.Error("set issue status", "error", err)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func issueNoteJSON(n issues.Note) map[string]any {
+	return map[string]any{
+		"id": n.ID, "issueId": n.IssueID, "body": n.Body,
+		"createdAt": n.CreatedAt.UTC().Format(time.RFC3339),
+	}
+}
+
+// issueForNotes resolves the issue and enforces project scoping (404, not
+// 403, so scoped keys can't probe other projects).
+func (s *Server) issueForNotes(w http.ResponseWriter, r *http.Request) (*issues.Issue, bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return nil, false
+	}
+	issue, err := s.Issues.Get(id)
+	if err != nil || !s.authenticate(r).inProject(issue.ProjectID) {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return nil, false
+	}
+	return issue, true
+}
+
+func (s *Server) apiIssueNotesList(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.issueForNotes(w, r)
+	if !ok {
+		return
+	}
+	notes, err := s.Issues.Notes(issue.ID)
+	if err != nil {
+		s.Logger.Error("list notes", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	out := make([]map[string]any, 0, len(notes))
+	for _, n := range notes {
+		out = append(out, issueNoteJSON(n))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) apiIssueNotesCreate(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.issueForNotes(w, r)
+	if !ok {
+		return
+	}
+	var input struct {
+		Body string `json:"body"`
+	}
+	if !decodeJSON(r, &input) {
+		writeAPIError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	n, err := s.Issues.AddNote(issue.ID, input.Body)
+	if err != nil {
+		if errors.Is(err, issues.ErrEmptyNote) || errors.Is(err, issues.ErrNoteTooLarge) {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		s.Logger.Error("add note", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusCreated, issueNoteJSON(n))
+}
+
+func (s *Server) apiIssueNotesDelete(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.issueForNotes(w, r)
+	if !ok {
+		return
+	}
+	noteID, err := strconv.ParseInt(r.PathValue("noteId"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if err := s.Issues.DeleteNote(issue.ID, noteID); err != nil {
+		s.Logger.Error("delete note", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

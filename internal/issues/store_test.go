@@ -3,6 +3,7 @@ package issues
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -309,5 +310,51 @@ func TestPlainResolveStillReopensOnAnyRelease(t *testing.T) {
 	}
 	if r2.Issue.Status != StatusUnresolved || !r2.Reopened {
 		t.Fatalf("plain resolve must reopen on any event, got %+v", r2)
+	}
+}
+
+func TestIssueNotesCRUD(t *testing.T) {
+	db, projectID := newTestDB(t)
+	store := NewStore(db)
+	ctx := context.Background()
+
+	r1, _ := store.Upsert(ctx, projectID, "fp-notes", "t", "T", "v", "c", "error", "production", "", time.Now())
+
+	if _, err := store.AddNote(r1.Issue.ID, "   "); err == nil {
+		t.Fatal("want error on empty note")
+	}
+	if _, err := store.AddNote(r1.Issue.ID, strings.Repeat("x", MaxNoteBytes+1)); err == nil {
+		t.Fatal("want error on oversized note")
+	}
+	n1, err := store.AddNote(r1.Issue.ID, "fixed in staging, watching")
+	if err != nil {
+		t.Fatalf("add note: %v", err)
+	}
+	if n1.ID == 0 || n1.Body != "fixed in staging, watching" {
+		t.Fatalf("note mismatch: %+v", n1)
+	}
+	if _, err := store.AddNote(999999, "orphan"); err == nil {
+		t.Fatal("want FK error on unknown issue")
+	}
+
+	notes, err := store.Notes(r1.Issue.ID)
+	if err != nil || len(notes) != 1 {
+		t.Fatalf("notes = %v, %v", notes, err)
+	}
+	if err := store.DeleteNote(r1.Issue.ID, n1.ID); err != nil {
+		t.Fatalf("delete note: %v", err)
+	}
+	notes, _ = store.Notes(r1.Issue.ID)
+	if len(notes) != 0 {
+		t.Fatalf("want empty notes after delete, got %v", notes)
+	}
+	// Deleting another issue's note id must not touch this issue's notes.
+	n2, _ := store.AddNote(r1.Issue.ID, "keep me")
+	if err := store.DeleteNote(r1.Issue.ID+999, n2.ID); err != nil {
+		t.Fatalf("scoped delete: %v", err)
+	}
+	notes, _ = store.Notes(r1.Issue.ID)
+	if len(notes) != 1 {
+		t.Fatalf("cross-issue delete must not remove notes, got %v", notes)
 	}
 }

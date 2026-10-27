@@ -134,6 +134,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/issues/bulk", s.requireScope(s.apiIssuesBulk))
 	s.mux.HandleFunc("GET /api/v1/issues/{id}", s.requireScope(s.apiIssueDetail))
 	s.mux.HandleFunc("POST /api/v1/issues/{id}/status", s.requireScope(s.apiIssueSetStatus))
+	s.mux.HandleFunc("GET /api/v1/issues/{id}/notes", s.requireScope(s.apiIssueNotesList))
+	s.mux.HandleFunc("POST /api/v1/issues/{id}/notes", s.requireScope(s.apiIssueNotesCreate))
+	s.mux.HandleFunc("DELETE /api/v1/issues/{id}/notes/{noteId}", s.requireScope(s.apiIssueNotesDelete))
 
 	s.mux.HandleFunc("GET /api/v1/projects", s.requireScope(s.apiProjectsList))
 	s.mux.HandleFunc("POST /api/v1/projects", s.requireInstance(s.apiProjectCreate))

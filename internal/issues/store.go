@@ -479,3 +479,72 @@ func (s *Store) BulkSetStatus(ids []int64, status Status) error {
 	}
 	return tx.Commit()
 }
+
+// MaxNoteBytes caps a note at 10 KiB of text - generous for an operator
+// memo, small enough that notes can't bloat the database.
+const MaxNoteBytes = 10 << 10
+
+type Note struct {
+	ID        int64
+	IssueID   int64
+	Body      string
+	CreatedAt time.Time
+}
+
+var ErrEmptyNote = errors.New("note body is required")
+var ErrNoteTooLarge = errors.New("note exceeds 10 KiB")
+
+func (s *Store) Notes(issueID int64) ([]Note, error) {
+	rows, err := s.db.Query(`SELECT id, issue_id, body, created_at FROM issue_notes WHERE issue_id = ? ORDER BY id`, issueID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Note
+	for rows.Next() {
+		var n Note
+		var created string
+		if err := rows.Scan(&n.ID, &n.IssueID, &n.Body, &created); err != nil {
+			return nil, err
+		}
+		n.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) AddNote(issueID int64, body string) (Note, error) {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return Note{}, ErrEmptyNote
+	}
+	if len(body) > MaxNoteBytes {
+		return Note{}, ErrNoteTooLarge
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if s.db.IsPostgres() {
+		var n Note
+		var created string
+		err := s.db.QueryRow(`INSERT INTO issue_notes (issue_id, body, created_at) VALUES (?, ?, ?) RETURNING id, issue_id, body, created_at`,
+			issueID, body, now).Scan(&n.ID, &n.IssueID, &n.Body, &created)
+		if err != nil {
+			return Note{}, err
+		}
+		n.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
+		return n, nil
+	}
+	res, err := s.db.Exec(`INSERT INTO issue_notes (issue_id, body, created_at) VALUES (?, ?, ?)`, issueID, body, now)
+	if err != nil {
+		return Note{}, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return Note{}, err
+	}
+	return Note{ID: id, IssueID: issueID, Body: body, CreatedAt: time.Now().UTC()}, nil
+}
+
+func (s *Store) DeleteNote(issueID, noteID int64) error {
+	_, err := s.db.Exec(`DELETE FROM issue_notes WHERE id = ? AND issue_id = ?`, noteID, issueID)
+	return err
+}

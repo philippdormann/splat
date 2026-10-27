@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { api, type IssueDetail } from "$lib/api";
   import Card from "$lib/components/card.svelte";
+  import Input from "$lib/components/input.svelte";
   import LevelBadge from "$lib/components/LevelBadge.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import Button from "$lib/components/button.svelte";
@@ -18,6 +19,9 @@
   let actionBusy = false;
   let selectedEvent: string | null = null;
   let showRaw = false;
+  let noteBody = "";
+  let noteBusy = false;
+  let confirmDeleteNote: number | null = null;
 
   async function load() {
     try {
@@ -37,6 +41,33 @@
   function copyRaw() {
     if (!data?.rawEvent) return;
     navigator.clipboard.writeText(JSON.stringify(data.rawEvent, null, 2));
+  }
+
+  async function addNote(e: Event) {
+    e.preventDefault();
+    if (!noteBody.trim() || !data) return;
+    noteBusy = true;
+    try {
+      await api.addIssueNote(id, noteBody.trim());
+      noteBody = "";
+      await load();
+    } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to add note.";
+    } finally {
+      noteBusy = false;
+    }
+  }
+
+  async function deleteNote() {
+    if (confirmDeleteNote === null || !data) return;
+    try {
+      await api.deleteIssueNote(id, confirmDeleteNote);
+      data = { ...data, notes: data.notes.filter((n) => n.id !== confirmDeleteNote) };
+    } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to delete note.";
+    } finally {
+      confirmDeleteNote = null;
+    }
   }
 
   async function confirmAction() {
@@ -235,6 +266,38 @@
         {/if}
       </Card>
     {/if}
+
+    <Card cls="p-4">
+      <p class="mb-2 text-sm font-medium">Notes ({data.notes.length})</p>
+      {#if data.notes.length}
+        <div class="mb-3 space-y-2">
+          {#each data.notes as n}
+            <div class="rounded-md bg-muted p-2">
+              <p class="whitespace-pre-wrap text-sm">{n.body}</p>
+              <div class="mt-1 flex items-center justify-between gap-2">
+                <span class="font-mono text-xs text-muted-foreground"><DateTime iso={n.createdAt} /></span>
+                <Button size="sm" variant="ghost" on:click={() => (confirmDeleteNote = n.id)}>Delete</Button>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {:else}
+        <p class="mb-3 text-xs text-muted-foreground">No notes yet — jot down context for your future self.</p>
+      {/if}
+      <form on:submit={addNote} class="flex gap-2">
+        <Input bind:value={noteBody} placeholder="Add a note…" disabled={noteBusy} class="flex-1" />
+        <Button type="submit" size="sm" disabled={noteBusy || !noteBody.trim()}>Add</Button>
+      </form>
+    </Card>
+
+    <ConfirmDialog
+      open={confirmDeleteNote !== null}
+      title="Delete note?"
+      description="The note will be permanently removed."
+      confirmLabel="Delete"
+      onConfirm={deleteNote}
+      onCancel={() => (confirmDeleteNote = null)}
+    />
 
     <Button variant="ghost" size="sm" on:click={() => navigate("/issues")}>← Back to issues</Button>
   </div>

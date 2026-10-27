@@ -179,6 +179,7 @@
           "prevEventId": { "type": ["string", "null"] },
           "nextEventId": { "type": ["string", "null"] },
           "rawEvent": { "type": ["object", "null"], "description": "Reconstructed Sentry-shaped event document." },
+          "notes": { "type": "array", "items": { "$ref": "#/components/schemas/IssueNote" } },
           "traceId": { "type": "string" },
           "traceURL": { "type": "string" }
         }
@@ -278,6 +279,15 @@
           "release": { "type": "string" },
           "bundleUrl": { "type": "string" },
           "sizeBytes": { "type": "integer" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "IssueNote": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "issueId": { "type": "integer" },
+          "body": { "type": "string" },
           "createdAt": { "type": "string", "format": "date-time" }
         }
       },
@@ -525,6 +535,54 @@
           }
         },
         "responses": { "200": { "description": "Updated." } }
+      }
+    },
+    "/api/v1/issues/{id}/notes": {
+      "get": {
+        "summary": "List issue notes",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": {
+            "description": "Notes, oldest first.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/IssueNote" } }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add issue note (10 KiB max)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["body"],
+                "properties": { "body": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IssueNote" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/issues/{id}/notes/{noteId}": {
+      "delete": {
+        "summary": "Delete issue note (scoped to the issue)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "noteId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "Deleted." } }
       }
     },
     "/api/v1/projects": {

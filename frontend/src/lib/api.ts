@@ -52,6 +52,16 @@ export const api = {
     req<IssueDetail>(
       `/api/v1/issues/${id}${eventId ? `?event=${encodeURIComponent(eventId)}` : ""}`,
     ),
+  issueNotes: (id: number | string) => req<IssueNote[]>(`/api/v1/issues/${id}/notes`),
+  addIssueNote: (id: number | string, body: string) =>
+    req<IssueNote>(`/api/v1/issues/${id}/notes`, {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    }),
+  deleteIssueNote: (id: number | string, noteId: number) =>
+    req<{ ok: boolean }>(`/api/v1/issues/${id}/notes/${noteId}`, {
+      method: "DELETE",
+    }),
   setIssueStatus: (id: number | string, status: string, mutedUntil?: string, resolveInRelease?: boolean) =>
     req<{ ok: boolean }>(`/api/v1/issues/${id}/status`, {
       method: "POST",
@@ -306,6 +316,13 @@ export interface KeyValue {
   value: string;
 }
 
+export interface IssueNote {
+  id: number;
+  issueId: number;
+  body: string;
+  createdAt: string;
+}
+
 export interface IssueDetail {
   issue: {
     id: number;
@@ -362,6 +379,7 @@ export interface IssueDetail {
   prevEventId: string | null;
   nextEventId: string | null;
   rawEvent: Record<string, unknown> | null;
+  notes: IssueNote[];
   traceId: string;
   traceURL: string;
 }
