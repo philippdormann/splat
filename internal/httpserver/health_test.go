@@ -121,5 +121,8 @@ func TestSecurityHeadersIncludeNoindex(t *testing.T) {
 		if got := rec.Header().Get("X-Frame-Options"); got != "DENY" {
 			t.Fatalf("%s: X-Frame-Options = %q", path, got)
 		}
+		if csp := rec.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "default-src 'self'") || !strings.Contains(csp, "frame-ancestors 'none'") {
+			t.Fatalf("%s: Content-Security-Policy = %q", path, csp)
+		}
 	}
 }

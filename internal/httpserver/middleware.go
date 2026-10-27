@@ -25,16 +25,21 @@ func recoverMiddleware(logger *slog.Logger, next http.Handler) http.Handler {
 }
 
 // securityHeadersMiddleware sets headers that cost nothing and only ever
-// restrict behavior. A strict Content-Security-Policy is deliberately not
-// set here: the dashboard templates use inline onclick handlers and a
-// couple of inline <style> blocks, so a CSP tight enough to matter would
-// need those removed first rather than being bolted on as an afterthought.
+// restrict behavior. The Content-Security-Policy below is possible because
+// the dashboard is a Vite SPA with no inline scripts/styles and no
+// third-party fetches - everything comes from 'self'. If the frontend ever
+// gains a CDN dependency, this policy must grow with it (the build will
+// keep working, browsers will just refuse to load the new origin).
 func securityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "same-origin")
+		h.Set("Content-Security-Policy",
+			"default-src 'self'; script-src 'self'; style-src 'self'; "+
+				"img-src 'self' data:; font-src 'self' data:; connect-src 'self'; "+
+				"frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
 		// An error tracker is authenticated internal tooling, never public
 		// content: keep it out of search indexes even if accidentally
 		// exposed. Belt and suspenders with /robots.txt below.
