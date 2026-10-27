@@ -16,7 +16,7 @@ func testDB(t *testing.T) (*database.DB, *auth.Store, *Store, int64) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	a := auth.NewStore(db)
+	a := auth.NewStore(db, "test-session-secret")
 	if _, err := a.CreateUser("admin", "password123", auth.RoleAdmin); err != nil {
 		t.Fatal(err)
 	}

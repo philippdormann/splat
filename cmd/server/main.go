@@ -114,7 +114,7 @@ func main() {
 	}
 	defer db.Close()
 
-	authStore := auth.NewStore(db)
+	authStore := auth.NewStore(db, cfg.SessionSecret)
 	if err := authStore.EnsureAdmin(cfg.AdminUsername, cfg.AdminPassword); err != nil {
 		logger.Error("bootstrap admin", "error", err)
 		os.Exit(1)

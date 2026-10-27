@@ -38,7 +38,7 @@ func fullTestServer(t *testing.T) (*Server, *auth.Store, *teams.Store, *projects
 		t.Fatalf("open db: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
-	authStore := auth.NewStore(db)
+	authStore := auth.NewStore(db, "test-session-secret-for-2fa-tests")
 	teamsStore := teams.NewStore(db)
 	projectsStore := projects.NewStore(db)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))

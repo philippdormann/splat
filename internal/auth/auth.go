@@ -32,9 +32,16 @@ func validRole(r string) bool { return r == RoleAdmin || r == RoleMember }
 const sessionCookieName = "splat_session"
 const sessionDuration = 30 * 24 * time.Hour
 
-type Store struct{ db *database.DB }
+type Store struct {
+	db *database.DB
+	// sessionSecret signs login challenges and encrypts TOTP secrets
+	// at rest (see totp.go). Empty fails 2FA operations closed.
+	sessionSecret string
+}
 
-func NewStore(db *database.DB) *Store { return &Store{db: db} }
+func NewStore(db *database.DB, sessionSecret string) *Store {
+	return &Store{db: db, sessionSecret: sessionSecret}
+}
 
 // EnsureAdmin creates the admin user from env-provided credentials if no
 // users exist yet. Safe to call on every startup.
@@ -114,10 +121,11 @@ func (s *Store) DeleteSession(token string) error {
 // --- user management (admin callers only; enforced in httpserver) ---
 
 type User struct {
-	ID        int64
-	Username  string
-	Role      string
-	CreatedAt string
+	ID          int64
+	Username    string
+	Role        string
+	CreatedAt   string
+	TOTPEnabled bool
 }
 
 // RoleOf returns the instance role for a user id ("admin"/"member").
@@ -142,7 +150,9 @@ func (s *Store) UsernameOf(userID int64) string {
 }
 
 func (s *Store) ListUsers() ([]User, error) {
-	rows, err := s.db.Query(`SELECT id, username, role, created_at FROM users ORDER BY id`)
+	rows, err := s.db.Query(`SELECT id, username, role, created_at,
+		EXISTS(SELECT 1 FROM user_totp WHERE user_id = users.id AND enabled) AS totp_enabled
+		FROM users ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -150,8 +160,16 @@ func (s *Store) ListUsers() ([]User, error) {
 	out := []User{}
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt); err != nil {
-			return nil, err
+		if s.db.IsPostgres() {
+			if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt, &u.TOTPEnabled); err != nil {
+				return nil, err
+			}
+		} else {
+			var enabled int
+			if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt, &enabled); err != nil {
+				return nil, err
+			}
+			u.TOTPEnabled = enabled != 0
 		}
 		out = append(out, u)
 	}
