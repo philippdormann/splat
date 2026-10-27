@@ -246,7 +246,9 @@ func (h *Handler) readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool
 			return nil, false
 		}
 		defer gz.Close()
-		reader = gz
+		// Cap decompressed bytes: MaxBytesReader only limits the
+		// compressed stream, so bound the bomb here.
+		reader = io.LimitReader(gz, maxBodyBytes+1)
 	}
 	body, err := io.ReadAll(reader)
 	if err != nil {
@@ -256,6 +258,10 @@ func (h *Handler) readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool
 		} else {
 			h.reject(w, "malformed_body", http.StatusBadRequest, `{"error":"could not read body"}`)
 		}
+		return nil, false
+	}
+	if len(body) > maxBodyBytes {
+		h.reject(w, "payload_too_large", http.StatusRequestEntityTooLarge, `{"error":"payload too large"}`)
 		return nil, false
 	}
 	return body, true
