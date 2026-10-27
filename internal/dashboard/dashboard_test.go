@@ -76,3 +76,64 @@ func TestIssuesByStatusReflectsCurrentStatusNotEventHistory(t *testing.T) {
 		t.Fatalf("expected 1 unresolved issue, got %d (%+v)", got, points)
 	}
 }
+
+func TestEventsBySeverityBucketsLevels(t *testing.T) {
+	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	p, err := projects.NewStore(db).Create("Test", "test", "production", "", 0)
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	issueStore := issues.NewStore(db)
+	ctx := context.Background()
+	now := time.Now()
+
+	r1, err := issueStore.Upsert(ctx, p.ID, "fp-err", "E", "TypeE", "", "", "error", "production", "", now.Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	r2, err := issueStore.Upsert(ctx, p.ID, "fp-warn", "W", "TypeW", "", "", "warning", "production", "", now.Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	for i, e := range []struct {
+		id      string
+		issueID int64
+		ts      time.Time
+	}{
+		{"sev-e1", r1.Issue.ID, now.Add(-time.Hour)},
+		{"sev-w1", r2.Issue.ID, now.Add(-time.Hour)},
+		{"sev-w2", r2.Issue.ID, now.Add(-30 * time.Minute)},
+	} {
+		_, err := db.Exec(`INSERT INTO events (event_id, issue_id, project_id, timestamp) VALUES (?, ?, ?, ?)`,
+			e.id, e.issueID, p.ID, e.ts.UTC().Format(time.RFC3339Nano))
+		if err != nil {
+			t.Fatalf("insert event %d: %v", i, err)
+		}
+	}
+
+	pts, err := NewStore(db).EventsBySeverity(p.ID, now.Add(-24*time.Hour))
+	if err != nil {
+		t.Fatalf("severity: %v", err)
+	}
+	got := map[string]int64{}
+	for _, sp := range pts {
+		got[sp.Level] += sp.Value
+	}
+	if got["error"] != 1 || got["warning"] != 2 {
+		t.Fatalf("severity counts = %v", got)
+	}
+
+	n, err := NewStore(db).NewIssues(p.ID, now.Add(-24*time.Hour))
+	if err != nil || n != 2 {
+		t.Fatalf("new issues = %d, %v", n, err)
+	}
+	e, err := NewStore(db).ProjectEvents(p.ID, now.Add(-24*time.Hour))
+	if err != nil || e != 3 {
+		t.Fatalf("events = %d, %v", e, err)
+	}
+}

@@ -92,6 +92,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/projects/{id}/rotate", s.requireInstance(s.apiProjectRotate))
 	s.mux.HandleFunc("DELETE /api/v1/projects/{id}", s.requireInstance(s.apiProjectDelete))
 	s.mux.HandleFunc("GET /api/v1/platforms", s.requireScope(s.apiPlatforms))
+	s.mux.HandleFunc("GET /api/v1/projects/{id}/overview", s.requireScope(s.apiProjectOverview))
 
 	s.mux.HandleFunc("GET /api/v1/settings", s.requireInstance(s.apiSettings))
 	s.mux.HandleFunc("PUT /api/v1/settings/telegram", s.requireInstance(s.apiSettingsSaveTelegram))

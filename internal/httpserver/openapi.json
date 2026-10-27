@@ -278,6 +278,40 @@
           "createdAt": { "type": "string", "format": "date-time" }
         }
       },
+      "ProjectOverview": {
+        "type": "object",
+        "properties": {
+          "period": { "type": "string" },
+          "events": { "type": "integer" },
+          "newIssues": { "type": "integer" },
+          "openIssues": { "type": "integer" },
+          "volumeBySeverity": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "bucket": { "type": "string" },
+                "counts": { "type": "object", "additionalProperties": { "type": "integer" } }
+              }
+            }
+          },
+          "topIssues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer" },
+                "title": { "type": "string" },
+                "level": { "type": "string" },
+                "status": { "type": "string" },
+                "eventCount": { "type": "integer" },
+                "lastSeen": { "type": "string", "format": "date-time" },
+                "lastSeenRelative": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
       "GenericWebhook": {
         "type": "object",
         "properties": {
@@ -553,6 +587,21 @@
       "get": {
         "summary": "Setup snippet platforms",
         "responses": { "200": { "description": "Platform id/label pairs." } }
+      }
+    },
+    "/api/v1/projects/{id}/overview": {
+      "get": {
+        "summary": "Project overview bento (counters, severity volume, top issues)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "period", "in": "query", "schema": { "type": "string", "enum": ["24h", "7d", "30d"], "default": "24h" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Overview data.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectOverview" } } }
+          }
+        }
       }
     },
     "/api/v1/projects/{id}/sourcemaps": {

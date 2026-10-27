@@ -4,8 +4,11 @@
   import Card from "$lib/components/card.svelte";
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
+  import Badge from "$lib/components/badge.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
-  import { Copy, RefreshCw, Trash2, Upload, Check } from "lucide-svelte";
+  import PlatformIcon from "$lib/components/PlatformIcon.svelte";
+  import ProjectOverview from "$lib/pages/ProjectOverview.svelte";
+  import { ArrowLeft, Copy, RefreshCw, Trash2, Upload, Check } from "lucide-svelte";
 
   export let id: string;
   export let navigate: (path: string) => void;
@@ -123,9 +126,22 @@
 {:else if !data}
   <p class="text-sm text-muted-foreground">Loading…</p>
 {:else}
-  <div class="mx-auto max-w-3xl space-y-4">
-    <div class="flex items-center justify-between">
-      <h2 class="text-2xl font-bold">{data.project.name}</h2>
+  <div class="mx-auto w-full max-w-6xl space-y-4">
+    <button class="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground" on:click={() => navigate("/projects")}>
+      <ArrowLeft class="h-4 w-4" /> Back to projects
+    </button>
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="flex min-w-0 items-center gap-3">
+        <PlatformIcon platform={data.project.platform} size={32} />
+        <div class="min-w-0">
+          <h2 class="truncate text-xl font-extrabold tracking-tight md:text-2xl">{data.project.name}</h2>
+          <div class="mt-1 flex flex-wrap items-center gap-2">
+            <Badge>{data.platformLabel}</Badge>
+            <span class="font-mono text-xs text-muted-foreground">{data.project.slug} · {data.project.defaultEnvironment}</span>
+            {#if !data.project.enabled}<Badge variant="secondary">disabled</Badge>{/if}
+          </div>
+        </div>
+      </div>
       <Button size="sm" variant="destructive" on:click={() => (confirmDeleteProject = true)}><Trash2 class="h-4 w-4" /> Delete</Button>
     </div>
     {#if notice}<p class="text-sm text-muted-foreground">{notice}</p>{/if}
@@ -161,6 +177,8 @@
       </div>
       <p class="text-xs text-muted-foreground">{data.stats.events7d} events / 7d · {data.stats.unresolved} unresolved</p>
     </Card>
+
+    <ProjectOverview projectId={id} {navigate} />
 
     <Card cls="p-4">
       <p class="mb-2 text-sm font-medium">Setup — {data.platformLabel}</p>

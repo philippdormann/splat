@@ -35,6 +35,7 @@ func TestOpenAPICoversRoutes(t *testing.T) {
 		{"delete", "/api/v1/projects/{id}"},
 		{"post", "/api/v1/projects/{id}/rotate"},
 		{"get", "/api/v1/platforms"},
+		{"get", "/api/v1/projects/{id}/overview"},
 		{"get", "/api/v1/projects/{id}/sourcemaps"},
 		{"post", "/api/v1/projects/{id}/sourcemaps"},
 		{"delete", "/api/v1/projects/{id}/sourcemaps/{mapId}"},

@@ -540,9 +540,9 @@ type AlertEvent struct {
 	// Status is the issue's status after this event was grouped. Muted and
 	// ignored issues never notify - not on new occurrences, not on
 	// thresholds: silenced means silenced.
-	Status        string
-	Timestamp     time.Time
-	IssueURL      string
+	Status    string
+	Timestamp time.Time
+	IssueURL  string
 }
 
 // Evaluate checks configured rules against what just happened to an issue

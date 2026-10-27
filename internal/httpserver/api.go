@@ -717,6 +717,80 @@ func (s *Server) apiPlatforms(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, platformsJSON())
 }
 
+// apiProjectOverview serves the per-project bento dashboard: counters,
+// severity-stacked volume and top issues for a 24h/7d/30d window.
+// Session health, crash-free rates and latency are deliberately absent:
+// errgotrack is an error tracker and does not collect sessions or
+// transactions - the UI renders honest empty states for those tiles.
+func (s *Server) apiProjectOverview(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if _, err := s.Projects.Get(id); err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if !s.authenticate(r).inProject(id) {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	period := r.URL.Query().Get("period")
+	since := time.Now().Add(-24 * time.Hour)
+	switch period {
+	case "7d":
+		since = time.Now().Add(-7 * 24 * time.Hour)
+	case "30d":
+		since = time.Now().Add(-30 * 24 * time.Hour)
+	default:
+		period = "24h"
+	}
+
+	events, err := s.Dashboard.ProjectEvents(id, since)
+	if err != nil {
+		s.Logger.Error("project overview events", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	newIssues, _ := s.Dashboard.NewIssues(id, since)
+	stats, _ := s.Dashboard.ProjectStats(id)
+
+	sev, _ := s.Dashboard.EventsBySeverity(id, since)
+	buckets := map[string]map[string]int64{}
+	var order []string
+	for _, p := range sev {
+		if _, ok := buckets[p.Bucket]; !ok {
+			buckets[p.Bucket] = map[string]int64{}
+			order = append(order, p.Bucket)
+		}
+		buckets[p.Bucket][p.Level] = p.Value
+	}
+	volume := make([]map[string]any, 0, len(order))
+	for _, b := range order {
+		volume = append(volume, map[string]any{"bucket": b, "counts": buckets[b]})
+	}
+
+	top, _, err := s.Issues.List(issues.ListFilter{ProjectID: id, Status: issues.StatusUnresolved, OrderBy: "event_count", Limit: 5})
+	if err != nil {
+		s.Logger.Error("project overview top issues", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	topJSON := make([]map[string]any, 0, len(top))
+	for _, iss := range top {
+		topJSON = append(topJSON, map[string]any{
+			"id": iss.ID, "title": iss.Title, "level": iss.Level, "status": string(iss.Status),
+			"eventCount": iss.EventCount, "lastSeen": iss.LastSeen, "lastSeenRelative": relativeTime(iss.LastSeen),
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"period": period, "events": events, "newIssues": newIssues, "openIssues": stats.Unresolved,
+		"volumeBySeverity": volume, "topIssues": topJSON,
+	})
+}
+
 // platformsJSON exposes platforms without the Snippet func value (funcs
 // do not JSON-marshal), which the frontend does not need in list form.
 func platformsJSON() []map[string]string {

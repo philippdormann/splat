@@ -229,6 +229,68 @@ type ProjectStats struct {
 	Unresolved int64
 }
 
+type SeverityPoint struct {
+	Bucket string
+	Level  string
+	Value  int64
+}
+
+// EventsBySeverity buckets one project's events per level over the window,
+// backing the overview's stacked volume chart. Level lives on issues, not
+// events, hence the join.
+func (s *Store) EventsBySeverity(projectID int64, since time.Time) ([]SeverityPoint, error) {
+	var rows *sql.Rows
+	var err error
+	if s.db.IsPostgres() {
+		format := pgBucketFormat(since)
+		rows, err = s.db.Query(`
+			SELECT to_char(e.timestamp::timestamptz, ?) AS bucket, COALESCE(NULLIF(i.level, ''), 'error'), COUNT(*)
+			FROM events e JOIN issues i ON i.id = e.issue_id
+			WHERE e.project_id = ? AND e.timestamp >= ?
+			GROUP BY bucket, 2 ORDER BY bucket`, format, projectID, fmtTime(since))
+	} else {
+		format := bucketFormat(since)
+		rows, err = s.db.Query(`
+			SELECT strftime(?, e.timestamp) AS bucket, COALESCE(NULLIF(i.level, ''), 'error'), COUNT(*)
+			FROM events e JOIN issues i ON i.id = e.issue_id
+			WHERE e.project_id = ? AND e.timestamp >= ?
+			GROUP BY bucket, 2 ORDER BY bucket`, format, projectID, fmtTime(since))
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SeverityPoint
+	for rows.Next() {
+		var p SeverityPoint
+		if err := rows.Scan(&p.Bucket, &p.Level, &p.Value); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// NewIssues counts a project's issues first seen inside the window.
+func (s *Store) NewIssues(projectID int64, since time.Time) (int64, error) {
+	var n int64
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM issues WHERE project_id = ? AND first_seen >= ?`,
+		projectID, fmtTime(since)).Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// ProjectEvents counts a project's events inside the window.
+func (s *Store) ProjectEvents(projectID int64, since time.Time) (int64, error) {
+	var n int64
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM events WHERE project_id = ? AND timestamp >= ?`,
+		projectID, fmtTime(since)).Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 func (s *Store) ProjectStats(projectID int64) (ProjectStats, error) {
 	var ps ProjectStats
 	since := time.Now().AddDate(0, 0, -7)

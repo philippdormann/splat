@@ -97,6 +97,9 @@ export const api = {
 
   platforms: () => req<Platform[]>("/api/v1/platforms"),
 
+  projectOverview: (id: number | string, period: string) =>
+    req<ProjectOverview>(`/api/v1/projects/${id}/overview?period=${encodeURIComponent(period)}`),
+
   sourceMaps: (projectId: number | string) =>
     req<SourceMapMeta[]>(`/api/v1/projects/${projectId}/sourcemaps`),
   uploadSourceMap: (projectId: number | string, input: { release: string; bundleUrl: string; content: string }) =>
@@ -381,6 +384,23 @@ export interface ProjectDetail {
 export interface Platform {
   id: string;
   label: string;
+}
+
+export interface ProjectOverview {
+  period: string;
+  events: number;
+  newIssues: number;
+  openIssues: number;
+  volumeBySeverity: { bucket: string; counts: Record<string, number> }[];
+  topIssues: {
+    id: number;
+    title: string;
+    level: string;
+    status: string;
+    eventCount: number;
+    lastSeen: string;
+    lastSeenRelative: string;
+  }[];
 }
 
 export interface SourceMapMeta {
