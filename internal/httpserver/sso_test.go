@@ -113,11 +113,11 @@ func ssoLogin(t *testing.T, s *Server, f *fakeOIDC) (cookie string, location str
 		t.Fatalf("redirect = %s", loc.String())
 	}
 	state := loc.Query().Get("state")
-	parts := strings.Split(state, ".")
-	if len(parts) != 6 {
+	nonce, ok := s.SSO.NonceForState(state)
+	if !ok {
 		t.Fatalf("state = %q", state)
 	}
-	f.claims["nonce"] = parts[2]
+	f.claims["nonce"] = nonce
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/sso/callback?code=authcode&state="+url.QueryEscape(state), nil)
 	cb := httptest.NewRecorder()
 	s.Handler().ServeHTTP(cb, req)

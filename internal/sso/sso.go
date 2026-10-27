@@ -76,12 +76,24 @@ type Provider struct {
 	disco   *discoveryDoc
 	keys    map[string]*rsa.PublicKey
 	keysExp time.Time
+
+	// Pending login flows: opaque state id -> nonce + PKCE verifier.
+	// The verifier never leaves the server (it is not embedded in state,
+	// so the IdP, browser history and logs only see an opaque id).
+	flowsMu sync.Mutex
+	flows   map[string]flowEntry
+}
+
+type flowEntry struct {
+	nonce    string
+	verifier string
+	exp      int64
 }
 
 // NewProvider builds a provider; sessionSecret signs flow state (empty
 // disables state issuance - flows fail closed).
 func NewProvider(cfg Config, sessionSecret string) *Provider {
-	p := &Provider{cfg: cfg}
+	p := &Provider{cfg: cfg, flows: map[string]flowEntry{}}
 	if sessionSecret != "" {
 		sum := sha256.Sum256([]byte("splat-sso-state|" + sessionSecret))
 		p.macKey = sum[:]
@@ -221,8 +233,8 @@ func (p *Provider) signingKeys(ctx context.Context) (map[string]*rsa.PublicKey, 
 
 // --- login flow state (stateless, HMAC-bound) ---
 
-// NewFlow mints a nonce + PKCE verifier and the signed state that
-// carries them to the callback.
+// NewFlow mints a nonce + PKCE verifier kept server-side and the
+// signed opaque state that references them at the callback.
 func (p *Provider) NewFlow() (state, nonce, verifier string, err error) {
 	if !p.hmacOK {
 		return "", "", "", errors.New("sso is unavailable: server secret is not configured")
@@ -235,28 +247,38 @@ func (p *Provider) NewFlow() (state, nonce, verifier string, err error) {
 	if err != nil {
 		return "", "", "", err
 	}
-	rb, err := randB64(16)
+	id, err := randB64(16)
 	if err != nil {
 		return "", "", "", err
 	}
 	exp := time.Now().Add(10 * time.Minute).Unix()
-	body := "sso." + strconv.FormatInt(exp, 10) + "." + nonce + "." + verifier + "." + rb
+	p.flowsMu.Lock()
+	// Opportunistic sweep so abandoned logins cannot grow the map.
+	for k, f := range p.flows {
+		if time.Now().Unix() > f.exp {
+			delete(p.flows, k)
+		}
+	}
+	p.flows[id] = flowEntry{nonce: nonce, verifier: verifier, exp: exp}
+	p.flowsMu.Unlock()
+	body := "sso." + strconv.FormatInt(exp, 10) + "." + id
 	mac := hmac.New(sha256.New, p.macKey)
 	mac.Write([]byte(body))
 	return body + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nonce, verifier, nil
 }
 
 // VerifyFlow checks the returned state and recovers nonce + verifier.
+// Flows are single-use: a state that verifies is consumed.
 func (p *Provider) VerifyFlow(state string) (nonce, verifier string, ok bool) {
 	if !p.hmacOK {
 		return "", "", false
 	}
 	parts := strings.Split(state, ".")
-	if len(parts) != 6 || parts[0] != "sso" {
+	if len(parts) != 4 || parts[0] != "sso" {
 		return "", "", false
 	}
-	body := strings.Join(parts[:5], ".")
-	sig, err := base64.RawURLEncoding.DecodeString(parts[5])
+	body := strings.Join(parts[:3], ".")
+	sig, err := base64.RawURLEncoding.DecodeString(parts[3])
 	if err != nil {
 		return "", "", false
 	}
@@ -269,10 +291,23 @@ func (p *Provider) VerifyFlow(state string) (nonce, verifier string, ok bool) {
 	if err != nil || time.Now().Unix() > exp {
 		return "", "", false
 	}
-	if parts[2] == "" || parts[3] == "" {
+	id := parts[2]
+	if id == "" {
 		return "", "", false
 	}
-	return parts[2], parts[3], true
+	p.flowsMu.Lock()
+	f, found := p.flows[id]
+	if found {
+		delete(p.flows, id)
+	}
+	p.flowsMu.Unlock()
+	if !found || time.Now().Unix() > f.exp {
+		return "", "", false
+	}
+	if f.nonce == "" || f.verifier == "" {
+		return "", "", false
+	}
+	return f.nonce, f.verifier, true
 }
 
 func randB64(n int) (string, error) {
@@ -334,7 +369,7 @@ func (p *Provider) Exchange(ctx context.Context, code, verifier string) (idToken
 		return "", "", err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.SetBasicAuth(url.QueryEscape(p.cfg.ClientID), url.QueryEscape(p.cfg.ClientSecret))
+	req.SetBasicAuth(p.cfg.ClientID, p.cfg.ClientSecret)
 	resp, err := p.cfg.client().Do(req)
 	if err != nil {
 		return "", "", fmt.Errorf("oidc exchange: %w", err)
@@ -355,6 +390,32 @@ func (p *Provider) Exchange(ctx context.Context, code, verifier string) (idToken
 		return "", "", errors.New("oidc exchange: no id_token")
 	}
 	return tok.IDToken, tok.AccessToken, nil
+}
+
+// NonceForState returns the stored nonce for a state without consuming
+// the flow. Test helper only.
+func (p *Provider) NonceForState(state string) (string, bool) {
+	parts := strings.Split(state, ".")
+	if len(parts) != 4 || parts[0] != "sso" {
+		return "", false
+	}
+	body := strings.Join(parts[:3], ".")
+	sig, err := base64.RawURLEncoding.DecodeString(parts[3])
+	if err != nil {
+		return "", false
+	}
+	mac := hmac.New(sha256.New, p.macKey)
+	mac.Write([]byte(body))
+	if subtle.ConstantTimeCompare(sig, mac.Sum(nil)) != 1 {
+		return "", false
+	}
+	p.flowsMu.Lock()
+	defer p.flowsMu.Unlock()
+	f, ok := p.flows[parts[2]]
+	if !ok {
+		return "", false
+	}
+	return f.nonce, true
 }
 
 // VerifyIDToken checks signature, issuer, audience, expiry and nonce.
