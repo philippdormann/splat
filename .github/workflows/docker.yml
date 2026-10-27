@@ -1,19 +1,14 @@
 name: Docker image
 
-# Runs the test suite, then builds the Docker image on every push. The
-# image is only *pushed* to ghcr.io/philippdormann/splat on main/tags -
-# PR builds still build (catching a broken Dockerfile early) but don't
-# publish anything.
+# Tag-only releases: runs on version tags (e.g. 1.2.3), runs the test
+# suite, then builds the multi-arch image and pushes it to
+# ghcr.io/philippdormann/splat. Nothing runs on main pushes or PRs.
 #
 # Tagging:
-#   main branch -> :latest + :sha-<short>
-#   tag 1.2.3   -> :1.2.3 + :1.2 + :1 + :latest + :sha-<short> (never with "v" prefix)
+#   tag 1.2.3 -> :1.2.3 + :1.2 + :1 + :latest + :sha-<short>
 on:
   push:
-    branches: [main]
     tags: ["[0-9]*.[0-9]*.[0-9]*"]
-  pull_request:
-    branches: [main]
 
 permissions:
   contents: read
@@ -31,20 +26,18 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
-      - run: |
-          if [ -d frontend ]; then
-            cd frontend && bun install --frozen-lockfile && bun run check && bun run build
-          fi
+          bun-version: 1.4.4
+      - run: cd frontend && bun install --frozen-lockfile && bun run check && bun run build
       - run: go test -race ./...
       - run: go vet ./...
-      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
-      - run: |
-          if [ -d frontend ]; then
-            cd frontend && bun audit
-          fi
+      - uses: golang/govulncheck-action@v1
+        with:
+          go-version-file: go.mod
+          repo-checkout: false
+      - run: cd frontend && bun audit
 
   trivy-fs:
     # Dependency/license gate on the repo itself: fails the run on any
@@ -61,41 +54,20 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"
 
-  trivy-image:
-    # Same gate for the shipped image (base images included). Builds
-    # amd64-only for speed; the multi-arch publish job stays unchanged.
+  build-and-push:
+    # No QEMU: the Dockerfile builds the frontend and cross-compiles Go on
+    # $BUILDPLATFORM, so both arches build natively on one runner.
+    needs: [test, trivy-fs]
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
-      - name: Build local image for scanning
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          load: true
-          tags: splat:trivy-scan
-          build-args: |
-            VERSION=ci-scan
-      - name: Scan image for HIGH/CRITICAL vulnerabilities
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: splat:trivy-scan
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-
-  build-and-push:
-    needs: [test, trivy-fs, trivy-image]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -114,15 +86,38 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
 
-      - name: Build (and push on main/tags)
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  trivy-image:
+    # Scans the pushed release image (no separate local build: the
+    # build-and-push job already built it). Fails the run on any
+    # HIGH/CRITICAL CVE, including base-image CVEs.
+    needs: [build-and-push]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Scan image for HIGH/CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+          severity: HIGH,CRITICAL
+          exit-code: "1"

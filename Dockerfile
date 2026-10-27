@@ -1,17 +1,23 @@
 # syntax=docker/dockerfile:1
 
 # --- frontend: Svelte 5 + shadcn-svelte UI built with bun ---
+# Built once on the build host ($BUILDPLATFORM) and reused for every target
+# arch, so the arm64 image never pays QEMU emulation for vite/bun.
 # (vite outDir is ../web/dist, so the build lands in /app/web/dist)
-FROM ghcr.io/philippdormann/bun:1.4.2 AS frontend
+FROM --platform=$BUILDPLATFORM ghcr.io/philippdormann/bun:1.4.4 AS frontend
 WORKDIR /app
 COPY frontend/package.json frontend/bun.lock frontend/bunfig.toml ./frontend/
-RUN cd frontend && bun install --frozen-lockfile
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    cd frontend && bun install --frozen-lockfile
 COPY frontend/ ./frontend/
 RUN cd frontend && bun run build
 
 # --- backend: Go binary with the Svelte build embedded ---
-FROM golang:1.27.3-alpine3.24 AS build
+# Cross-compiled on the build host (GOARCH=$TARGETARCH), so the multi-arch
+# build needs no QEMU emulation at all.
+FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine3.24 AS build
 ARG VERSION=dev
+ARG TARGETARCH
 # ca-certificates is copied into the scratch final image below: without it
 # every HTTPS call (Telegram/Slack/Discord/Teams/Sheets webhooks, SMTP with
 # STARTTLS, forge APIs) would fail with x509 errors.
@@ -21,7 +27,9 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=frontend /app/web/dist ./web/dist
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/splat ./cmd/server
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/splat ./cmd/server
 # Scratch has no shell to mkdir/chown at runtime, so the data directory is
 # created here (as root, in a stage that has a shell) and copied over with
 # the numeric ownership the final image's USER needs to write to it.
