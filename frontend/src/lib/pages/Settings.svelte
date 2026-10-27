@@ -37,6 +37,10 @@
   let teams: Team[] = [];
   let newUser = { username: "", password: "", role: "member" };
   let newTeam = { name: "", slug: "" };
+  let showNewUser = false;
+  let showNewTeam = false;
+  let showNewKey = false;
+  let meUsername = "";
   let resetPw: { id: number; username: string; password: string } | null = null;
   let teamAddUser: Record<number, number | null> = {};
   let teamAddProject: Record<number, number | null> = {};
@@ -197,6 +201,7 @@
       try {
         users = await api.users();
         teams = await api.teams();
+        meUsername = (await api.me()).username ?? "";
       } catch (e) {
         toast.error(`Could not load users/teams: ${e instanceof Error ? e.message : e}`);
       }
@@ -298,6 +303,7 @@
     });
     freshSecret = k.secret ?? "";
     keys = await api.apiKeys();
+    showNewKey = false;
     newKey = { name: "", projectId: null, scopes: ["read"], expiresAt: "" };
     toast.success("API key created — copy the secret now, it will never be shown again.");
   }
@@ -357,6 +363,7 @@
     try {
       await api.createUser(newUser);
       newUser = { username: "", password: "", role: "member" };
+      showNewUser = false;
       await reloadUsersTeams();
       toast.success("User created.");
     } catch (err) {
@@ -404,6 +411,7 @@
     try {
       await api.createTeam(newTeam);
       newTeam = { name: "", slug: "" };
+      showNewTeam = false;
       await reloadUsersTeams();
       toast.success("Team created.");
     } catch (err) {
@@ -760,27 +768,35 @@
             {/each}
           </div>
         {/if}
-        <form on:submit={createKey} class="space-y-3 rounded-md border border-border p-3">
-          <div class="grid grid-cols-2 gap-3">
-            <div class="space-y-1"><label class="text-xs">Name</label><Input bind:value={newKey.name} placeholder="CI deploy key" /></div>
-            <div class="space-y-1"><label class="text-xs">Project</label>
-              <select class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={newKey.projectId}>
-                <option value={null}>All projects</option>
-                {#each projects as p}<option value={p.id}>{p.name}</option>{/each}
-              </select>
-            </div>
-            <div class="space-y-1"><label class="text-xs">Expires (optional, YYYY-MM-DD)</label><Input bind:value={newKey.expiresAt} placeholder="" /></div>
-          </div>
-          <div class="space-y-1">
-            <p class="text-xs">Scopes</p>
-            <div class="flex flex-wrap gap-3 text-sm">
-              {#each allScopes as s}
-                <label class="flex items-center gap-1.5"><input type="checkbox" checked={newKey.scopes.includes(s)} on:change={() => toggleScope(s)} /> {s}</label>
-              {/each}
-            </div>
-          </div>
-          <Button type="submit" size="sm">Create key</Button>
-        </form>
+        <Button size="sm" variant="outline" on:click={() => (showNewKey = true)}>New key</Button>
+        {#if showNewKey}
+          <Dialog open={true} title="New API key" onClose={() => (showNewKey = false)}>
+            <form on:submit={createKey} class="space-y-3">
+              <div class="grid grid-cols-2 gap-3">
+                <div class="space-y-1"><label class="text-xs">Name</label><Input bind:value={newKey.name} placeholder="CI deploy key" /></div>
+                <div class="space-y-1"><label class="text-xs">Project</label>
+                  <select class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={newKey.projectId}>
+                    <option value={null}>All projects</option>
+                    {#each projects as p}<option value={p.id}>{p.name}</option>{/each}
+                  </select>
+                </div>
+                <div class="space-y-1"><label class="text-xs">Expires (optional, YYYY-MM-DD)</label><Input bind:value={newKey.expiresAt} placeholder="" /></div>
+              </div>
+              <div class="space-y-1">
+                <p class="text-xs">Scopes</p>
+                <div class="flex flex-wrap gap-3 text-sm">
+                  {#each allScopes as s}
+                    <label class="flex items-center gap-1.5"><input type="checkbox" checked={newKey.scopes.includes(s)} on:change={() => toggleScope(s)} /> {s}</label>
+                  {/each}
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <Button type="submit" size="sm">Create key</Button>
+                <Button size="sm" variant="outline" on:click={() => (showNewKey = false)}>Cancel</Button>
+              </div>
+            </form>
+          </Dialog>
+        {/if}
       </div>
     </Card>
         {:else if tab === "users"}
@@ -793,18 +809,32 @@
         {#if users.length}
           <div class="divide-y divide-border rounded-md border border-border">
             {#each users as u}
+              {@const isSelf = u.username === meUsername}
               <div class="flex flex-wrap items-center justify-between gap-2 p-2 text-xs">
                 <span>
                   <span class="font-medium">{u.username}</span>
+                  {#if isSelf}<span class="text-muted-foreground"> (you)</span>{/if}
                   <span class="text-muted-foreground"> · {u.role}</span>
                 </span>
                 <span class="flex items-center gap-2">
-                  <select class="h-8 rounded-md border border-input bg-background px-2 text-xs" value={u.role} on:change={(e) => changeRole(u.id, (e.target as HTMLSelectElement).value)}>
+                  <select
+                    class="h-8 rounded-md border border-input bg-background px-2 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+                    value={u.role}
+                    disabled={isSelf}
+                    title={isSelf ? "You cannot change your own role" : "Change role"}
+                    on:change={(e) => changeRole(u.id, (e.target as HTMLSelectElement).value)}
+                  >
                     <option value="member">member</option>
                     <option value="admin">admin</option>
                   </select>
                   <Button size="sm" variant="outline" on:click={() => (resetPw = { id: u.id, username: u.username, password: "" })}>Reset password</Button>
-                  <Button size="sm" variant="outline" on:click={() => deleteUser(u.id, u.username)}>Delete</Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={isSelf}
+                    title={isSelf ? "You cannot delete your own account" : "Delete user"}
+                    on:click={() => deleteUser(u.id, u.username)}
+                  >Delete</Button>
                 </span>
               </div>
             {/each}
@@ -812,19 +842,27 @@
         {:else}
           <p class="text-xs text-muted-foreground">No users yet.</p>
         {/if}
-        <form on:submit={createUser} class="space-y-3 rounded-md border border-border p-3">
-          <div class="grid grid-cols-2 gap-3">
-            <div class="space-y-1"><label class="text-xs">Username</label><Input bind:value={newUser.username} placeholder="jane" autocomplete="off" /></div>
-            <div class="space-y-1"><label class="text-xs">Password (min 8 chars)</label><Input type="password" bind:value={newUser.password} placeholder="••••••••" autocomplete="new-password" /></div>
-            <div class="space-y-1"><label class="text-xs">Role</label>
-              <select class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={newUser.role}>
-                <option value="member">member</option>
-                <option value="admin">admin</option>
-              </select>
-            </div>
-          </div>
-          <Button type="submit" size="sm">Create user</Button>
-        </form>
+        <Button size="sm" variant="outline" on:click={() => (showNewUser = true)}>New user</Button>
+        {#if showNewUser}
+          <Dialog open={true} title="New user" onClose={() => (showNewUser = false)}>
+            <form on:submit={createUser} class="space-y-3">
+              <div class="grid grid-cols-2 gap-3">
+                <div class="space-y-1"><label class="text-xs">Username</label><Input bind:value={newUser.username} placeholder="jane" autocomplete="off" /></div>
+                <div class="space-y-1"><label class="text-xs">Password (min 8 chars)</label><Input type="password" bind:value={newUser.password} placeholder="••••••••" autocomplete="new-password" /></div>
+                <div class="space-y-1"><label class="text-xs">Role</label>
+                  <select class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={newUser.role}>
+                    <option value="member">member</option>
+                    <option value="admin">admin</option>
+                  </select>
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <Button type="submit" size="sm">Create user</Button>
+                <Button size="sm" variant="outline" on:click={() => (showNewUser = false)}>Cancel</Button>
+              </div>
+            </form>
+          </Dialog>
+        {/if}
       </div>
     </Card>
     <Card cls="p-4">
@@ -887,13 +925,21 @@
         {:else}
           <p class="text-xs text-muted-foreground">No teams yet.</p>
         {/if}
-        <form on:submit={createTeam} class="space-y-3 rounded-md border border-border p-3">
-          <div class="grid grid-cols-2 gap-3">
-            <div class="space-y-1"><label class="text-xs">Name</label><Input bind:value={newTeam.name} placeholder="Backend" autocomplete="off" /></div>
-            <div class="space-y-1"><label class="text-xs">Slug (optional)</label><Input bind:value={newTeam.slug} placeholder="backend" autocomplete="off" /></div>
-          </div>
-          <Button type="submit" size="sm">Create team</Button>
-        </form>
+        <Button size="sm" variant="outline" on:click={() => (showNewTeam = true)}>New team</Button>
+        {#if showNewTeam}
+          <Dialog open={true} title="New team" onClose={() => (showNewTeam = false)}>
+            <form on:submit={createTeam} class="space-y-3">
+              <div class="grid grid-cols-2 gap-3">
+                <div class="space-y-1"><label class="text-xs">Name</label><Input bind:value={newTeam.name} placeholder="Backend" autocomplete="off" /></div>
+                <div class="space-y-1"><label class="text-xs">Slug (optional)</label><Input bind:value={newTeam.slug} placeholder="backend" autocomplete="off" /></div>
+              </div>
+              <div class="flex gap-2">
+                <Button type="submit" size="sm">Create team</Button>
+                <Button size="sm" variant="outline" on:click={() => (showNewTeam = false)}>Cancel</Button>
+              </div>
+            </form>
+          </Dialog>
+        {/if}
       </div>
     </Card>
     {#if resetPw}
