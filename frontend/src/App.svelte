@@ -5,12 +5,16 @@
     LayoutDashboard,
     TriangleAlert,
     Folder,
+    FolderPlus,
     Settings,
     LogOut,
     Menu,
+    ChevronDown,
+    Plus,
   } from "lucide-svelte";
   import { api } from "$lib/api";
   import { Toaster } from "svelte-sonner";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import Login from "$lib/pages/Login.svelte";
   import Dashboard from "$lib/pages/Dashboard.svelte";
   import Issues from "$lib/pages/Issues.svelte";
@@ -26,6 +30,15 @@
   let path = window.location.pathname;
   let sidebarOpen = false;
   let paletteOpen = false;
+  let navProjects: { id: number; name: string }[] = [];
+
+  async function loadNavProjects() {
+    try {
+      navProjects = await api.projects();
+    } catch {
+      navProjects = [];
+    }
+  }
 
   // Full auto theme: follow the OS color scheme, live. No manual toggle,
   // no stored preference.
@@ -45,6 +58,7 @@
     try {
       const me = await api.me();
       authed = me.authenticated;
+      if (authed) loadNavProjects();
     } catch {
       authed = false;
     }
@@ -89,8 +103,10 @@
 
   function navClass(active: boolean) {
     return (
-      "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium " +
-      (active ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-muted")
+      "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors " +
+      (active
+        ? "bg-primary text-primary-foreground"
+        : "text-muted-foreground hover:bg-muted hover:text-foreground")
     );
   }
 </script>
@@ -100,19 +116,46 @@
 {#if authed === null}
   <p class="p-6 text-sm text-muted-foreground">Loading…</p>
 {:else if !authed}
-  <Login onLoggedIn={() => { authed = true; navigate("/"); }} />
+  <Login onLoggedIn={() => { authed = true; loadNavProjects(); navigate("/"); }} />
 {:else}
   <CommandPalette bind:open={paletteOpen} {navigate} {logout} />
   <div class="flex min-h-screen">
     {#if sidebarOpen}
       <button aria-label="Close menu" class="fixed inset-0 z-10 bg-black/50 md:hidden" on:click={() => (sidebarOpen = false)} />
     {/if}
-    <aside class={`fixed inset-y-0 left-0 z-20 w-60 border-r border-border bg-card p-4 transition-transform md:static md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+    <aside class={`fixed inset-y-0 left-0 z-20 w-60 border-r border-border bg-muted/50 p-4 transition-transform md:static md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
       <div class="mb-4 flex items-center gap-2 font-semibold"><Bug class="h-5 w-5" /> Errgotrack</div>
       <nav class="space-y-1">
         <a href="/" class={navClass(path === "/")} on:click|preventDefault={() => navigate("/")}><LayoutDashboard class="h-4 w-4" /> Dashboard</a>
         <a href="/issues" class={navClass(path.startsWith("/issues"))} on:click|preventDefault={() => navigate("/issues")}><TriangleAlert class="h-4 w-4" /> Issues</a>
-        <a href="/projects" class={navClass(path.startsWith("/projects"))} on:click|preventDefault={() => navigate("/projects")}><Folder class="h-4 w-4" /> Projects</a>
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger
+            class={path.startsWith("/projects") ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}
+            onclick={loadNavProjects}
+          >
+            <Folder class="h-4 w-4" />
+            <span class="flex-1 text-left">Projects</span>
+            <ChevronDown class="h-3.5 w-3.5 opacity-60" />
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content side="right" align="start" class="w-56">
+            <DropdownMenu.Label>Projects</DropdownMenu.Label>
+            <DropdownMenu.Item onSelect={() => navigate("/projects")}>
+              <Folder class="h-4 w-4" /><span>All projects</span>
+            </DropdownMenu.Item>
+            {#if navProjects.length}
+              <DropdownMenu.Separator />
+              {#each navProjects as p (p.id)}
+                <DropdownMenu.Item onSelect={() => navigate(`/projects/${p.id}`)}>
+                  <span class="truncate">{p.name}</span>
+                </DropdownMenu.Item>
+              {/each}
+            {/if}
+            <DropdownMenu.Separator />
+            <DropdownMenu.Item onSelect={() => navigate("/projects/new")}>
+              <Plus class="h-4 w-4" /><span>New project</span>
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
         <a href="/settings" class={navClass(path === "/settings")} on:click|preventDefault={() => navigate("/settings")}><Settings class="h-4 w-4" /> Settings</a>
       </nav>
       <div class="mt-8">
@@ -127,7 +170,6 @@
           <span>Search or command…</span>
           <kbd class="rounded bg-muted px-1 font-mono">⌘K</kbd>
         </button>
-        <span class="text-xs text-muted-foreground">Errgotrack</span>
       </header>
       <main class="mx-auto w-full max-w-6xl flex-1 p-4 md:p-6">
         {#if path === "/"}
