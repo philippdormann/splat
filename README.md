@@ -274,8 +274,8 @@ scan every row.
 
 **Postgres (optional):** set `ERRGOTRACK_DB_DRIVER=postgres` +
 `ERRGOTRACK_DATABASE_URL` (see [`.env.example`](.env.example) and
-[`compose.yaml`](compose.yaml), which ships a `postgres` service alongside
-the app). Schema and migrations are ported 1:1
+[`compose.postgres.yaml`](compose.postgres.yaml), which runs a `postgres`
+service alongside the app). Schema and migrations are ported 1:1
 (`internal/database/migrations/postgres/`); timestamps stay RFC3339 TEXT on
 both backends so every store query works unchanged. Backend differences are
 isolated to small call sites: `?` placeholders are rebound to `$n`
@@ -359,7 +359,9 @@ all API values as text, never as raw HTML).
 
 ```bash
 cp .env.example .env   # set ERRGOTRACK_SESSION_SECRET, ERRGOTRACK_ADMIN_USERNAME/PASSWORD
-docker compose up -d
+docker compose -f compose.sqlite.yaml up -d --build
+# ...or with Postgres instead of SQLite:
+docker compose -f compose.postgres.yaml up -d --build
 ```
 
 Runs as a non-root user on a `distroless/static` base image, SQLite data on

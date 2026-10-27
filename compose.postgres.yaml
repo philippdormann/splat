@@ -1,3 +1,8 @@
+# Errgotrack with the optional Postgres backend: app + database, still one
+# compose file. SQLite stays the default - only use this if you outgrow it.
+#
+#   cp .env.example .env   # set secrets, admin credentials + POSTGRES_PASSWORD
+#   docker compose -f compose.postgres.yaml up -d --build
 services:
   errgotrack:
     build: .
@@ -12,24 +17,17 @@ services:
       ERRGOTRACK_ADMIN_USERNAME: ${ERRGOTRACK_ADMIN_USERNAME}
       ERRGOTRACK_ADMIN_PASSWORD: ${ERRGOTRACK_ADMIN_PASSWORD}
       ERRGOTRACK_SESSION_SECRET: ${ERRGOTRACK_SESSION_SECRET}
-      # Database: sqlite is the default (ERRGOTRACK_DB_DRIVER=sqlite,
-      # ERRGOTRACK_DB_PATH=/data/errgotrack.db). To use Postgres instead, set:
-      # ERRGOTRACK_DB_DRIVER: ${ERRGOTRACK_DB_DRIVER:-sqlite}
-      # ERRGOTRACK_DATABASE_URL: ${ERRGOTRACK_DATABASE_URL:-}
+      ERRGOTRACK_DB_DRIVER: postgres
+      ERRGOTRACK_DATABASE_URL: postgres://${POSTGRES_USER:-errgotrack}:${POSTGRES_PASSWORD:-errgotrack}@postgres:5432/${POSTGRES_DB:-errgotrack}?sslmode=disable
     depends_on:
       postgres:
         condition: service_healthy
-        restart: true
     healthcheck:
       test: ["CMD", "/app/errgotrack", "-healthcheck"]
       interval: 30s
       timeout: 3s
       retries: 3
 
-  # Optional Postgres backend. The app still defaults to SQLite; only used
-  # when ERRGOTRACK_DB_DRIVER=postgres + ERRGOTRACK_DATABASE_URL is set.
-  # Kept as a commented-out profile? No - runs but unused by default, so
-  # switching backends is just env vars, no compose edit.
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
