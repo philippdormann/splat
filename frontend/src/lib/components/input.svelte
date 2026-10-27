@@ -4,6 +4,7 @@
   export let type = "text";
   export let placeholder = "";
   export let name = "";
+  export let id = "";
   export let required = false;
   export let disabled = false;
 </script>
@@ -12,6 +13,7 @@
   {type}
   {placeholder}
   {name}
+  {id}
   {required}
   {disabled}
   bind:value
