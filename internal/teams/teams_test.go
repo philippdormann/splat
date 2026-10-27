@@ -93,7 +93,7 @@ func TestAuthRolesAndGuards(t *testing.T) {
 	if err := a.SetRole(member.ID, "superuser"); err == nil {
 		t.Fatal("invalid role must fail")
 	}
-	// Cannot demote the last admin.
+	// No admin can be demoted, even when other admins exist.
 	admins, _ := a.ListUsers()
 	var adminID int64
 	for _, u := range admins {
@@ -102,7 +102,14 @@ func TestAuthRolesAndGuards(t *testing.T) {
 		}
 	}
 	if err := a.SetRole(adminID, auth.RoleMember); err == nil {
-		t.Fatal("demoting the last admin must fail")
+		t.Fatal("demoting an admin must fail")
+	}
+	// Promoting a member still works.
+	if err := a.SetRole(member.ID, auth.RoleAdmin); err != nil {
+		t.Fatalf("promoting a member must work: %v", err)
+	}
+	if err := a.SetRole(member.ID, auth.RoleAdmin); err != nil {
+		t.Fatalf("re-setting the same role must work: %v", err)
 	}
 	// Cannot delete the only remaining users down to zero.
 	if err := a.DeleteUser(member.ID); err != nil {

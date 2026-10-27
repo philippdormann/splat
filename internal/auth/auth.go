@@ -218,14 +218,17 @@ func (s *Store) SetRole(id int64, role string) error {
 	if !validRole(role) {
 		return errors.New("role must be admin or member")
 	}
-	// Never demote the last admin: the instance would become unmanageable.
+	// Admins are never demoted: with no per-project roles, demotion only
+	// ever removes instance administration, which is destructive and
+	// irreversible for the affected account. Remove and recreate the user
+	// instead. (This also implies the last admin can never be demoted.)
 	if role != RoleAdmin {
-		var admins int
-		if err := s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE role = 'admin' AND id != ?`, id).Scan(&admins); err != nil {
+		var current string
+		if err := s.db.QueryRow(`SELECT role FROM users WHERE id = ?`, id).Scan(&current); err != nil {
 			return err
 		}
-		if admins == 0 {
-			return errors.New("cannot demote the last admin")
+		if current == RoleAdmin {
+			return errors.New("admins cannot be demoted")
 		}
 	}
 	_, err := s.db.Exec(`UPDATE users SET role = ? WHERE id = ?`, role, id)
