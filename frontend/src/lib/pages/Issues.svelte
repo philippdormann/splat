@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { ChevronRight, TriangleAlert } from "lucide-svelte";
+  import { Check, ChevronRight, EyeOff, TriangleAlert } from "lucide-svelte";
   import { api, type IssuesData } from "$lib/api";
   import { loadPersisted, savePersisted, isString } from "$lib/persisted";
   import { queryParam, replaceQuery } from "$lib/urlquery";
@@ -48,6 +48,8 @@
   let bulkBusy = false;
   let bulkMuteFor = "forever";
   let bulkMuteCount = 50;
+  let pendingQuick: { id: number; status: string; title: string } | null = null;
+  let quickBusy = false;
 
   function params() {
     const p = new URLSearchParams();
@@ -158,6 +160,29 @@
     selected = s;
   }
 
+  const quickCopy: Record<string, { title: string; label: string }> = {
+    resolved: { title: "Resolve issue?", label: "Resolve" },
+    ignored: { title: "Ignore issue?", label: "Ignore" },
+  };
+
+  async function confirmQuick() {
+    if (!pendingQuick) return;
+    quickBusy = true;
+    try {
+      await api.setIssueStatus(pendingQuick.id, pendingQuick.status);
+      toast.success(`${quickCopy[pendingQuick.status].label}d “${pendingQuick.title}”.`);
+      const s = new Set(selected);
+      s.delete(pendingQuick.id);
+      selected = s;
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update issue.");
+    } finally {
+      quickBusy = false;
+      pendingQuick = null;
+    }
+  }
+
   function toggleAll(checked: boolean) {
     if (!data) return;
     if (checked) {
@@ -213,6 +238,16 @@
       </span>
     {/if}
   </ConfirmDialog>
+
+  <ConfirmDialog
+    open={pendingQuick !== null}
+    title={pendingQuick ? quickCopy[pendingQuick.status].title : ""}
+    description={pendingQuick ? `“${pendingQuick.title}”` : ""}
+    confirmLabel={pendingQuick ? quickCopy[pendingQuick.status].label : ""}
+    busy={quickBusy}
+    onConfirm={confirmQuick}
+    onCancel={() => { if (!quickBusy) pendingQuick = null; }}
+  />
 
   <Card.Root class="gap-0">
     <Card.Content class="flex flex-wrap gap-2 pt-6">
@@ -286,7 +321,7 @@
         </Table.Header>
         <Table.Body>
           {#each data.issues as i}
-            <Table.Row>
+            <Table.Row class="group">
               <Table.Cell>
                 <input
                   type="checkbox"
@@ -297,18 +332,34 @@
                 />
               </Table.Cell>
               <Table.Cell>
-                <button class="flex min-w-0 items-center gap-2 text-left" on:click={() => openIssue(i.id)}>
-                  <LevelBadge level={i.level} />
-                  <span class="min-w-0">
-                    <span class="block truncate font-medium hover:underline">{i.title}</span>
-                    <span class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-                      <StatusBadge status={i.status} />
-                      <span>{i.projectName}</span>
-                      {#if i.environment}<span>{i.environment}</span>{/if}
-                      <span>open <RelativeTime iso={i.firstSeen} /></span>
+                <span class="flex min-w-0 items-center gap-2">
+                  <button class="flex min-w-0 flex-1 items-center gap-2 text-left" on:click={() => openIssue(i.id)}>
+                    <LevelBadge level={i.level} />
+                    <span class="min-w-0">
+                      <span class="block truncate font-medium hover:underline">{i.title}</span>
+                      <span class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                        <StatusBadge status={i.status} />
+                        <span>{i.projectName}</span>
+                        {#if i.environment}<span>{i.environment}</span>{/if}
+                        <span>open <RelativeTime iso={i.firstSeen} /></span>
+                      </span>
                     </span>
+                  </button>
+                  <span class="hidden shrink-0 items-center gap-1 group-hover:flex focus-within:flex">
+                    <button
+                      class="rounded-md p-1.5 text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-950"
+                      title="Resolve {i.title}"
+                      aria-label="Resolve {i.title}"
+                      on:click={() => (pendingQuick = { id: i.id, status: "resolved", title: i.title })}
+                    ><Check class="size-4" /></button>
+                    <button
+                      class="text-muted-foreground rounded-md p-1.5 hover:bg-muted hover:text-foreground"
+                      title="Ignore {i.title}"
+                      aria-label="Ignore {i.title}"
+                      on:click={() => (pendingQuick = { id: i.id, status: "ignored", title: i.title })}
+                    ><EyeOff class="size-4" /></button>
                   </span>
-                </button>
+                </span>
               </Table.Cell>
               <Table.Cell class="hidden lg:table-cell">
                 {#if i.sparkline?.length}

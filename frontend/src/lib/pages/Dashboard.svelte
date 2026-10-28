@@ -7,7 +7,9 @@
     Activity,
     ArrowRight,
     CalendarDays,
+    Check,
     ChevronRight,
+    EyeOff,
     FolderPlus,
     Inbox,
     Minus,
@@ -29,10 +31,12 @@
   import * as Chart from "$lib/components/ui/chart/index.js";
   import Badge from "$lib/components/badge.svelte";
   import Button from "$lib/components/button.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import LevelBadge from "$lib/components/LevelBadge.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import MeterBar from "$lib/components/MeterBar.svelte";
   import RelativeTime from "$lib/components/RelativeTime.svelte";
+  import { toast } from "svelte-sonner";
 
   const ranges = [
     { value: "1h", label: "1H" },
@@ -53,6 +57,28 @@
   $: replaceQuery({ range });
   let data: DashboardData | null = null;
   let error = "";
+  let pendingQuick: { id: number; status: string; title: string } | null = null;
+  let quickBusy = false;
+
+  const quickCopy: Record<string, { title: string; label: string }> = {
+    resolved: { title: "Resolve issue?", label: "Resolve" },
+    ignored: { title: "Ignore issue?", label: "Ignore" },
+  };
+
+  async function confirmQuick() {
+    if (!pendingQuick) return;
+    quickBusy = true;
+    try {
+      await api.setIssueStatus(pendingQuick.id, pendingQuick.status);
+      toast.success(`${quickCopy[pendingQuick.status].label}d “${pendingQuick.title}”.`);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update issue.");
+    } finally {
+      quickBusy = false;
+      pendingQuick = null;
+    }
+  }
 
   const eventsConfig = { events: { label: "Events", color: "#7c3aed" } } satisfies Chart.ChartConfig;
   const projectConfig = { value: { label: "Events", color: "var(--chart-1)" } } satisfies Chart.ChartConfig;
@@ -379,11 +405,25 @@
             </Table.Header>
             <Table.Body>
               {#each data.recentIssues as i}
-                <Table.Row class="cursor-pointer" onclick={() => navigate(`/issues/${i.id}`)}>
+                <Table.Row class="group cursor-pointer" onclick={() => navigate(`/issues/${i.id}`)}>
                   <Table.Cell>
                     <span class="flex min-w-0 items-center gap-2">
                       <LevelBadge level={i.level} />
                       <span class="truncate font-medium">{i.title}</span>
+                      <span class="hidden shrink-0 items-center gap-1 group-hover:flex focus-within:flex">
+                        <button
+                          class="rounded-md p-1.5 text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-950"
+                          title="Resolve {i.title}"
+                          aria-label="Resolve {i.title}"
+                          onclick={(e) => { e.stopPropagation(); pendingQuick = { id: i.id, status: "resolved", title: i.title }; }}
+                        ><Check class="size-4" /></button>
+                        <button
+                          class="text-muted-foreground rounded-md p-1.5 hover:bg-muted hover:text-foreground"
+                          title="Ignore {i.title}"
+                          aria-label="Ignore {i.title}"
+                          onclick={(e) => { e.stopPropagation(); pendingQuick = { id: i.id, status: "ignored", title: i.title }; }}
+                        ><EyeOff class="size-4" /></button>
+                      </span>
                     </span>
                   </Table.Cell>
                   <Table.Cell class="hidden md:table-cell">
@@ -405,6 +445,16 @@
           </Table.Root>
         </Card.Content>
       </Card.Root>
+
+      <ConfirmDialog
+        open={pendingQuick !== null}
+        title={pendingQuick ? quickCopy[pendingQuick.status].title : ""}
+        description={pendingQuick ? `“${pendingQuick.title}”` : ""}
+        confirmLabel={pendingQuick ? quickCopy[pendingQuick.status].label : ""}
+        busy={quickBusy}
+        onConfirm={confirmQuick}
+        onCancel={() => { if (!quickBusy) pendingQuick = null; }}
+      />
     {:else}
       <Empty.Root>
         <Empty.Header>
