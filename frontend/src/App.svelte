@@ -33,7 +33,12 @@
 
   let authed: boolean | null = null;
   let isAdmin = false;
-  let path = window.location.pathname;
+  // Trailing slashes produce phantom routes ("/issues/" ≠ "/issues"),
+  // so normalize once at every entry point.
+  function cleanPath(p: string): string {
+    return p.length > 1 && p.endsWith("/") ? p.slice(0, -1) : p;
+  }
+  let path = cleanPath(window.location.pathname);
   let search = window.location.search;
   let sidebarOpen = false;
   let paletteOpen = false;
@@ -60,7 +65,7 @@
     const onChange = (e: MediaQueryListEvent) => applyTheme(e);
     mq.addEventListener("change", onChange);
     window.addEventListener("popstate", () => {
-      path = window.location.pathname;
+      path = cleanPath(window.location.pathname);
       search = window.location.search;
     });
     try {
@@ -74,10 +79,13 @@
   });
 
   export function navigate(to: string) {
-    window.history.pushState({}, "", to);
     const qi = to.indexOf("?");
-    path = qi < 0 ? to : to.slice(0, qi);
-    search = qi < 0 ? "" : to.slice(qi);
+    const rawPath = qi < 0 ? to : to.slice(0, qi);
+    const searchPart = qi < 0 ? "" : to.slice(qi);
+    const clean = cleanPath(rawPath);
+    window.history.pushState({}, "", clean + searchPart);
+    path = clean;
+    search = searchPart;
     sidebarOpen = false;
     window.scrollTo(0, 0);
   }
