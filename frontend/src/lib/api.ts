@@ -491,6 +491,7 @@ export interface IssuesData {
     environment: string;
     eventCount: number;
     userCount: number;
+    firstSeen: string;
     lastSeen: string;
     lastSeenRelative: string;
     sparkline: number[];

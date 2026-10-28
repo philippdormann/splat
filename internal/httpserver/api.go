@@ -311,7 +311,7 @@ func (s *Server) apiIssuesList(w http.ResponseWriter, r *http.Request) {
 			"status":      string(iss.Status),
 			"projectName": names[iss.ProjectID], "environment": iss.Environment,
 			"eventCount": iss.EventCount, "userCount": iss.UserCount,
-			"lastSeen": iss.LastSeen, "lastSeenRelative": relativeTime(iss.LastSeen),
+			"firstSeen": iss.FirstSeen, "lastSeen": iss.LastSeen, "lastSeenRelative": relativeTime(iss.LastSeen),
 			"sparkline": sparklines[iss.ID],
 		})
 	}

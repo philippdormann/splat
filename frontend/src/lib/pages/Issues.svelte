@@ -305,6 +305,7 @@
                       <StatusBadge status={i.status} />
                       <span>{i.projectName}</span>
                       {#if i.environment}<span>{i.environment}</span>{/if}
+                      <span>open <RelativeTime iso={i.firstSeen} /></span>
                     </span>
                   </span>
                 </button>
