@@ -834,13 +834,19 @@ func framesJSON(frames []frameView, resolve func(file string, line, col int) (so
 
 // --- projects ---
 
+func derefInt(p *int64) int64 {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
 func (s *Server) apiProjectsList(w http.ResponseWriter, r *http.Request) {
 	list, err := s.Projects.List()
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
-	}
-	// A project-bound key sees only its own project, not the fleet.
+	}	// A project-bound key sees only its own project, not the fleet.
 	if a := s.authenticate(r); !a.admin && a.key != nil && a.key.ProjectID.Valid {
 		filtered := list[:0]
 		for _, p := range list {
@@ -866,17 +872,106 @@ func (s *Server) apiProjectsList(w http.ResponseWriter, r *http.Request) {
 		}
 		list = filtered
 	}
-	out := make([]map[string]any, 0, len(list))
-	for _, p := range list {
-		stats, _ := s.Dashboard.ProjectStats(p.ID)
-		out = append(out, map[string]any{
+	// Query + pagination + batched stats (Rustrak-style list_stats).
+	// ?query= filters name/slug (case-insensitive), ?page=&per_page=
+	// paginate (cap 100), ?stats_period=24h enables the stats block.
+	q := r.URL.Query()
+	query := strings.ToLower(strings.TrimSpace(q.Get("query")))
+	if query != "" {
+		filtered := list[:0]
+		for _, p := range list {
+			if strings.Contains(strings.ToLower(p.Name), query) || strings.Contains(strings.ToLower(p.Slug), query) {
+				filtered = append(filtered, p)
+			}
+		}
+		list = filtered
+	}
+	page := 1
+	if n, err := strconv.Atoi(q.Get("page")); err == nil && n > 0 {
+		page = n
+	}
+	perPage := 25
+	if n, err := strconv.Atoi(q.Get("per_page")); err == nil && n > 0 {
+		perPage = n
+	}
+	if perPage > 100 {
+		perPage = 100
+	}
+	total := len(list)
+	totalPages := (total + perPage - 1) / perPage
+	if totalPages == 0 {
+		totalPages = 1
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+	start := (page - 1) * perPage
+	end := start + perPage
+	if start > total {
+		start = total
+	}
+	if end > total {
+		end = total
+	}
+	window := list[start:end]
+
+	// Stats: batched over the page only. stats_period=24h (default) or
+	// Nd/Nh; absent stats_period the rows carry no stats block.
+	statsOn := q.Get("stats_period") != ""
+	periodHours := 24
+	if sp := q.Get("stats_period"); sp != "" && sp != "24h" {
+		if strings.HasSuffix(sp, "h") {
+			if n, err := strconv.Atoi(strings.TrimSuffix(sp, "h")); err == nil && n > 0 {
+				periodHours = n
+			}
+		} else if strings.HasSuffix(sp, "d") {
+			if n, err := strconv.Atoi(strings.TrimSuffix(sp, "d")); err == nil && n > 0 {
+				periodHours = n * 24
+			}
+		}
+	}
+	var batch map[int64]dashboard.ProjectListStats
+	if statsOn && len(window) > 0 {
+		ids := make([]int64, 0, len(window))
+		for _, p := range window {
+			ids = append(ids, p.ID)
+		}
+		batch, _ = s.Dashboard.ProjectListStats(ids, periodHours)
+	}
+	out := make([]map[string]any, 0, len(window))
+	for _, p := range window {
+		plat := platforms.Get(p.Platform)
+		row := map[string]any{
 			"id": p.ID, "name": p.Name, "slug": p.Slug,
 			"defaultEnvironment": p.DefaultEnvironment, "enabled": p.Enabled,
-			"retentionDays": p.RetentionDays, "platformLabel": platforms.Get(p.Platform).Label,
-			"events7d": stats.Events7d, "unresolved": stats.Unresolved,
-		})
+			"retentionDays": p.RetentionDays, "platform": p.Platform,
+			"platformLabel": plat.Label, "createdAt": p.CreatedAt,
+		}
+		if statsOn && batch != nil {
+			if st, ok := batch[p.ID]; ok {
+				row["stats"] = map[string]any{
+					"trend": st.Trend, "events": map[string]any{"current": st.Events.Current, "previous": derefInt(st.Events.Previous)},
+					"new_issues": map[string]any{"current": st.NewIssues.Current, "previous": derefInt(st.NewIssues.Previous)},
+					"open_issues": st.OpenIssues, "fatal_issues": st.FatalIssues, "total_events": st.TotalEvents,
+				}
+			}
+		} else {
+			legacy, _ := s.Dashboard.ProjectStats(p.ID)
+			row["events7d"] = legacy.Events7d
+			row["unresolved"] = legacy.Unresolved
+		}
+		out = append(out, row)
 	}
-	writeJSON(w, http.StatusOK, out)
+	// Paginated envelope when the caller asked for paging/stats; legacy
+	// callers (no query params) keep the bare array.
+	if q.Get("page") == "" && q.Get("per_page") == "" && q.Get("query") == "" && q.Get("stats_period") == "" {
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": out, "total_count": total, "total_pages": totalPages,
+		"page": page, "per_page": perPage,
+	})
 }
 
 func (s *Server) apiProjectCreate(w http.ResponseWriter, r *http.Request) {
