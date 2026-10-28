@@ -703,6 +703,12 @@
               ]
             },
             "description": "Empty means every enabled channel."
+          },
+          "integrations": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
           }
         }
       },
@@ -986,6 +992,32 @@
           "secret": {
             "type": "string",
             "description": "Only present at creation/rotation. Shown once."
+          }
+        }
+      },
+      "Integration": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "credentials": {
+            "type": "object"
+          },
+          "failureCount": {
+            "type": "integer"
+          },
+          "lastFailure": {
+            "type": "string"
           }
         }
       }
@@ -2091,285 +2123,6 @@
         }
       }
     },
-    "/api/v1/settings/telegram": {
-      "put": {
-        "summary": "Save Telegram config",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "botToken": {
-                    "type": "string",
-                    "description": "Blank keeps the stored secret."
-                  },
-                  "chatId": {
-                    "type": "string"
-                  },
-                  "enabled": {
-                    "type": "boolean"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Updated settings.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Settings"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/settings/telegram/test": {
-      "post": {
-        "summary": "Send Telegram test",
-        "responses": {
-          "200": {
-            "description": "{ok, message}."
-          }
-        }
-      }
-    },
-    "/api/v1/settings/webhooks/{channel}": {
-      "put": {
-        "summary": "Save channel webhook (slack, discord, teams, sheets)",
-        "parameters": [
-          {
-            "name": "channel",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "url": {
-                    "type": "string",
-                    "description": "Blank keeps the stored URL."
-                  },
-                  "enabled": {
-                    "type": "boolean"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Updated settings.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Settings"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/settings/webhooks/{channel}/test": {
-      "post": {
-        "summary": "Send channel test",
-        "parameters": [
-          {
-            "name": "channel",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "{ok, message}."
-          }
-        }
-      }
-    },
-    "/api/v1/settings/generic-webhooks": {
-      "get": {
-        "summary": "List generic webhooks (secrets never returned)",
-        "responses": {
-          "200": {
-            "description": "Generic webhooks.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/GenericWebhook"
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "summary": "Create generic webhook",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "url"
-                ],
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "url": {
-                    "type": "string"
-                  },
-                  "secret": {
-                    "type": "string",
-                    "description": "HMAC-SHA256 signing secret; blank means unsigned."
-                  },
-                  "headers": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string"
-                    }
-                  },
-                  "enabled": {
-                    "type": "boolean"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Created.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GenericWebhook"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/settings/generic-webhooks/{id}": {
-      "put": {
-        "summary": "Update generic webhook (blank secret keeps the stored one)",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "url": {
-                    "type": "string"
-                  },
-                  "secret": {
-                    "type": "string"
-                  },
-                  "headers": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string"
-                    }
-                  },
-                  "enabled": {
-                    "type": "boolean"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Updated.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GenericWebhook"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "summary": "Delete generic webhook",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Deleted."
-          }
-        }
-      }
-    },
-    "/api/v1/settings/generic-webhooks/{id}/test": {
-      "post": {
-        "summary": "Send generic webhook test",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "{ok, message}."
-          }
-        }
-      }
-    },
     "/api/v1/settings/tracing": {
       "put": {
         "summary": "Save trace URL template",
@@ -2398,70 +2151,6 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "/api/v1/settings/smtp": {
-      "put": {
-        "summary": "Save SMTP config",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "host": {
-                    "type": "string"
-                  },
-                  "port": {
-                    "type": "integer"
-                  },
-                  "username": {
-                    "type": "string"
-                  },
-                  "password": {
-                    "type": "string",
-                    "description": "Blank or masked keeps the stored secret."
-                  },
-                  "from": {
-                    "type": "string"
-                  },
-                  "to": {
-                    "type": "string"
-                  },
-                  "useTLS": {
-                    "type": "boolean"
-                  },
-                  "enabled": {
-                    "type": "boolean"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Updated settings.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Settings"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/settings/smtp/test": {
-      "post": {
-        "summary": "Send SMTP test",
-        "responses": {
-          "200": {
-            "description": "{ok, message}."
           }
         }
       }
@@ -3438,6 +3127,52 @@
           },
           "400": {
             "description": "No provider configured."
+          }
+        }
+      }
+    },
+    "/api/v1/integrations": {
+      "get": {
+        "summary": "List integrations",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create integration",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/{id}": {
+      "put": {
+        "summary": "Update integration",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete integration",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/{id}/test": {
+      "post": {
+        "summary": "Test integration",
+        "responses": {
+          "200": {
+            "description": "OK"
           }
         }
       }

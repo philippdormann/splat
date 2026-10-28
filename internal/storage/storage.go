@@ -20,6 +20,8 @@ var reportedTables = []string{
 	"sessions",
 	"notification_queue",
 	"notification_rules",
+	"integrations",
+	"notification_rule_integrations",
 	"source_maps",
 	"api_keys",
 }
