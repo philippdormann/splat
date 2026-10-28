@@ -113,6 +113,10 @@
     navigate("/login");
   }
 
+  $: if (authed && path === "/login") {
+    navigate("/");
+  }
+
   function navClass(active: boolean) {
     return (
       "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors " +
@@ -219,7 +223,7 @@
         {:else if path === "/security"}
           <SecurityPage />
         {:else if path === "/login"}
-          <Dashboard {navigate} />
+          <p class="p-6 text-sm text-muted-foreground">Redirecting…</p>
         {:else}
           <p class="text-sm">Not found. <a href="/" class="underline" on:click|preventDefault={() => navigate("/")}>Home</a></p>
         {/if}
