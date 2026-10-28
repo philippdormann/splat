@@ -375,6 +375,11 @@
     toast.success("Copied to clipboard.");
   }
 
+  function viewIssues() {
+    savePersisted("splat.issues.project", String(id));
+    navigate("/issues");
+  }
+
   onMount(load);
 </script>
 
@@ -408,6 +413,7 @@
         </div>
       </div>
       <Button size="sm" variant="outline" on:click={() => navigate(`/projects/${id}/releases`)}><Rocket class="h-4 w-4" /> Releases</Button>
+      <Button size="sm" variant="outline" on:click={viewIssues}><TriangleAlert class="h-4 w-4" /> Issues</Button>
       <Button size="sm" variant="outline" disabled={testBusy} on:click={sendTestEvent}><FlaskConical class="h-4 w-4" /> {testBusy ? "Sending…" : "Send test event"}</Button>
       <Button size="sm" variant="destructive" on:click={() => (confirmDeleteProject = true)}><Trash2 class="h-4 w-4" /> Delete</Button>
     </div>
