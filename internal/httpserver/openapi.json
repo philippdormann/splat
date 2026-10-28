@@ -2452,6 +2452,17 @@
         }
       }
     },
+    "/favicon.png": {
+      "get": {
+        "summary": "App icon",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "PNG favicon."
+          }
+        }
+      }
+    },
     "/favicon.svg": {
       "get": {
         "summary": "App icon",

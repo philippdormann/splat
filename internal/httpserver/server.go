@@ -114,6 +114,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /readyz", s.readyz)
 	s.mux.HandleFunc("GET /robots.txt", s.robots)
 	s.mux.HandleFunc("GET /api/v1/meta", s.apiMeta)
+	s.mux.HandleFunc("GET /favicon.png", s.serveFavicon)
 	s.mux.HandleFunc("GET /favicon.svg", s.serveFavicon)
 
 	if s.Metrics != nil {
@@ -346,6 +347,13 @@ func (s *Server) robots(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) serveFavicon(w http.ResponseWriter, r *http.Request) {
+	if icon, err := fs.ReadFile(web.Sub(), "favicon.png"); err == nil {
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(icon)
+		return
+	}
 	icon, err := fs.ReadFile(web.Sub(), "favicon.svg")
 	if err != nil {
 		http.NotFound(w, r)

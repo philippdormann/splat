@@ -131,7 +131,7 @@
     </div>
     <Card.Root>
       <Card.Header><Skeleton class="h-5 w-40" /></Card.Header>
-      <Card.Content><Skeleton class="h-56 w-full" /></Card.Content>
+      <Card.Content><Skeleton class="h-44 w-full" /></Card.Content>
     </Card.Root>
   {:else if !data.hasProjects}
     <Empty.Root>
@@ -227,7 +227,7 @@
             <Card.Description>Volume for {rangeLabel.toLowerCase()}</Card.Description>
           </Card.Header>
           <Card.Content>
-            <Chart.Container config={eventsConfig} class="min-h-[260px]">
+            <Chart.Container config={eventsConfig} class="min-h-[200px] aspect-[2/1]">
               <AreaChart
                 data={data.charts.eventsOverTime}
                 x="label"

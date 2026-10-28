@@ -1,3 +1,5 @@
+<img src="splat-long.png" alt="Splat logo" width="320" />
+
 # Splat
 
 > Forked from [raiden70/errgotrack](https://github.com/raiden70/errgotrack) and renamed as it diverged.
@@ -10,6 +12,28 @@ app's official Sentry SDK at it and it just works - built to run
 comfortably on a small VPS instead of needing a cluster.
 
 ![Splat dashboard](docs/screenshot-dashboard.png)
+
+## Screenshots
+
+**Dashboard** — events over time, breakdown, top exceptions across all projects.
+
+![Splat dashboard](docs/screenshot-dashboard.png)
+
+**Issues** — search, filter, bulk triage with per-issue trends.
+
+![Splat issues](docs/screenshot-issues.png)
+
+**Issue detail** — stack trace with source context, tags, contexts, breadcrumbs, and event history.
+
+![Splat issue detail](docs/screenshot-issue.png)
+
+**Project overview** — DSN, error volume by severity, crash-free sessions and release health.
+
+![Splat project overview](docs/screenshot-project.png)
+
+**New project** — pick a platform, get a DSN with setup snippets.
+
+![Splat new project](docs/screenshot-new-project.png)
 
 ## Why
 
