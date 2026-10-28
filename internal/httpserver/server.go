@@ -55,6 +55,7 @@ type Server struct {
 	Audit         *audit.Store
 	Quotas        *quotas.Store
 	Invites       *invites.Store
+	Cleanup       *storage.CleanupJob
 	SSO           *sso.Provider // nil disables single sign-on
 	Logs          *logs.Store
 	Traces        *traces.Store
@@ -218,6 +219,17 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/storage", s.requireInstance(s.apiStorageUsage))
 	s.mux.HandleFunc("POST /api/v1/storage/sweep", s.requireInstance(s.apiStorageSweep))
 	s.mux.HandleFunc("POST /api/v1/storage/vacuum", s.requireInstance(s.apiStorageVacuum))
+	s.mux.HandleFunc("GET /api/v1/storage/summary", s.requireInstance(s.apiStorageSummary))
+	s.mux.HandleFunc("GET /api/v1/storage/projects", s.requireInstance(s.apiStorageProjects))
+	s.mux.HandleFunc("GET /api/v1/storage/age", s.requireInstance(s.apiStorageAge))
+	s.mux.HandleFunc("GET /api/v1/storage/retention", s.requireInstance(s.apiStorageRetentionGet))
+	s.mux.HandleFunc("PUT /api/v1/storage/retention", s.requireInstance(s.apiStorageRetentionSave))
+	s.mux.HandleFunc("POST /api/v1/storage/retention/preview", s.requireInstance(s.apiStorageRetentionPreview))
+	s.mux.HandleFunc("POST /api/v1/storage/retention/run", s.requireInstance(s.apiStorageRetentionRun))
+	s.mux.HandleFunc("GET /api/v1/storage/cleanup/status", s.requireInstance(s.apiStorageCleanupStatus))
+	s.mux.HandleFunc("GET /api/v1/storage/compaction", s.requireInstance(s.apiStorageCompaction))
+	s.mux.HandleFunc("POST /api/v1/storage/compaction", s.requireInstance(s.apiStorageCompact))
+	s.mux.HandleFunc("POST /api/v1/storage/source-maps/gc", s.requireInstance(s.apiStorageGCSourceMaps))
 
 	s.mux.HandleFunc("GET /api/v1/projects/{id}/sourcemaps", s.requireScope(s.apiSourceMapsList))
 	s.mux.HandleFunc("POST /api/v1/projects/{id}/sourcemaps", s.requireScope(s.apiSourceMapsUpload))

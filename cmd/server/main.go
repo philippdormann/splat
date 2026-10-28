@@ -172,6 +172,7 @@ func main() {
 		Tracing:       tracing.NewStore(db),
 		Retention:     sweeper,
 		Storage:       storage.NewStore(db, dbPath),
+		Cleanup:       storage.NewCleanupJob(),
 		SourceMaps:    sourcemaps.NewStore(db),
 		Sessions:      sessions.NewStore(db),
 		APIKeys:       apikeys.NewStore(db),
