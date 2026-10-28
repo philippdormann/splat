@@ -46,6 +46,8 @@
   let timer: ReturnType<typeof setTimeout>;
   let pendingBulk: string | null = null;
   let bulkBusy = false;
+  let bulkMuteFor = "forever";
+  let bulkMuteCount = 50;
 
   function params() {
     const p = new URLSearchParams();
@@ -110,7 +112,22 @@
     const count = selected.size;
     const label = pendingBulk ? bulkCopy[pendingBulk].label : "Updated";
     try {
-      await api.bulkIssueStatus([...selected], pendingBulk);
+      let opts: { mutedUntil?: string; mutedCount?: number } | undefined;
+      if (pendingBulk === "muted") {
+        if (bulkMuteFor === "count") {
+          const n = Math.floor(Number(bulkMuteCount));
+          if (!Number.isFinite(n) || n < 1) {
+            toast.error("Enter at least 1 appearance.");
+            bulkBusy = false;
+            return;
+          }
+          opts = { mutedCount: n };
+        } else if (bulkMuteFor !== "forever") {
+          const hours = { "24h": 24, "7d": 24 * 7, "30d": 24 * 30 }[bulkMuteFor] ?? 0;
+          if (hours > 0) opts = { mutedUntil: new Date(Date.now() + hours * 3600 * 1000).toISOString() };
+        }
+      }
+      await api.bulkIssueStatus([...selected], pendingBulk, opts);
       selected = new Set();
       pendingBulk = null;
       toast.success(`${label}d ${count} issue${count === 1 ? "" : "s"}.`);
@@ -180,7 +197,22 @@
     busy={bulkBusy}
     onConfirm={confirmBulk}
     onCancel={() => { if (!bulkBusy) pendingBulk = null; }}
-  />
+  >
+    {#if pendingBulk === "muted"}
+      <span class="mt-3 flex flex-wrap items-center gap-2">
+        <select class="h-8 rounded-md border border-input bg-background px-2 text-xs" bind:value={bulkMuteFor} aria-label="Mute duration">
+          <option value="forever">Mute forever</option>
+          <option value="24h">Mute 24 hours</option>
+          <option value="7d">Mute 7 days</option>
+          <option value="30d">Mute 30 days</option>
+          <option value="count">Mute next N appearances</option>
+        </select>
+        {#if bulkMuteFor === "count"}
+          <input type="number" min="1" step="1" bind:value={bulkMuteCount} aria-label="Appearances to mute" class="h-8 w-24 rounded-md border border-input bg-background px-2 text-xs" />
+        {/if}
+      </span>
+    {/if}
+  </ConfirmDialog>
 
   <Card.Root class="gap-0">
     <Card.Content class="flex flex-wrap gap-2 pt-6">
