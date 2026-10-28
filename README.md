@@ -253,24 +253,20 @@ Charts use shadcn-svelte chart components over layerchart, lucide-svelte icons. 
 
 ## Notifications
 
-Six channels, any combination:
+Seven provider types, unlimited named integrations:
 
-- **Telegram** - bot token + chat id.
-- **Slack**, **Discord**, **Microsoft Teams** - a single incoming-webhook
-  URL each, simpler than Telegram's bot setup.
-- **Google Sheets** - paste the URL of a Google Apps Script Web App you
-  deploy yourself (snippet provided on the Settings page); it appends one
-  row per alert. No Google credentials are ever stored on the server.
-- **Email** - plain-text alerts over SMTP (STARTTLS, optional auth) to the
-  on-call address in Settings.
+- **Telegram** - bot token + default chat id per integration; rule links can override `chat_id`.
+- **Slack**, **Discord**, **Microsoft Teams**, **Google Sheets** - webhook URL per integration; rule links can override `url`.
+- **Email (SMTP)** - server credentials per integration; rule links define `to` recipients.
+- **Generic webhook** - URL + secret + headers per integration; HMAC `X-Splat-Signature`.
 
-Configure under Settings and use "Send test" to confirm delivery. Alert
+Configure integrations under Settings → Notifications (or per-project under Project → Alerts) and use "Send test" to confirm delivery. Alert
 **rules** decide which events notify and where: each rule matches a project
 (blank = all), environment, and trigger (new issue, reopened issue,
-event-count threshold), with its own cooldown; a rule with no channels uses
-every enabled channel, while picking channels routes e.g. production to
-email and staging to chat. Rules are managed in Settings and via
-`/api/v1/rules`.
+event-count threshold), with its own cooldown, and links one or more
+integrations with optional routing overrides. Rules are managed globally in
+Settings and per-project under Project → Alerts, and via `/api/v1/rules`
+(`?project_id=` filters).
 
 Delivery goes through a durable SQLite queue, one row per channel per
 alert, drained by a background worker with exponential backoff. This means:
