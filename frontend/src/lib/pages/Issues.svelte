@@ -181,6 +181,10 @@
         <option value="ignored">Ignored</option>
         <option value="muted">Muted</option>
       </select>
+      <select class="h-9 rounded-md border border-input bg-background px-2 text-sm" bind:value={environment} on:change={() => { page = 1; load(); }} aria-label="Environment filter">
+        <option value="">All environments</option>
+        {#if data}{#each data.environments as e}<option value={e}>{e}</option>{/each}{/if}
+      </select>
       <select class="h-9 rounded-md border border-input bg-background px-2 text-sm" bind:value={sort} on:change={() => { page = 1; load(); }} aria-label="Sort order">
         <option value="">Sort: last seen</option>
         <option value="event_count">Sort: event count</option>
