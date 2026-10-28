@@ -7,6 +7,8 @@ import (
 
 var errNoRepo = errors.New("no repository linked")
 
+func errNoSecret() error { return errors.New("cannot migrate secrets: server secret is not configured") }
+
 // ErrNoRepo reports whether err means the project has no linked repo.
 func ErrNoRepo(err error) bool { return errors.Is(err, errNoRepo) }
 

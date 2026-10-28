@@ -10,11 +10,17 @@ import (
 
 	"github.com/philippdormann/splat/internal/database"
 	"github.com/philippdormann/splat/internal/forge"
+	"github.com/philippdormann/splat/internal/secretbox"
 )
 
-type Store struct{ db *database.DB }
+type Store struct {
+	db     *database.DB
+	secret string // SPLAT_SESSION_SECRET; seals forge tokens at rest
+}
 
-func NewStore(db *database.DB) *Store { return &Store{db: db} }
+func NewStore(db *database.DB, sessionSecret string) *Store {
+	return &Store{db: db, secret: sessionSecret}
+}
 
 type Repo struct {
 	ProjectID int64
@@ -46,11 +52,11 @@ func (s *Store) Get(projectID int64) (*Repo, error) {
 // Token returns the stored secret for API calls. Empty Token in input
 // keeps the existing secret (lets the UI send "leave blank to keep").
 func (s *Store) Token(projectID int64) (string, error) {
-	var token string
-	if err := s.db.QueryRow(`SELECT token FROM project_repos WHERE project_id = ?`, projectID).Scan(&token); err != nil {
+	var stored string
+	if err := s.db.QueryRow(`SELECT token FROM project_repos WHERE project_id = ?`, projectID).Scan(&stored); err != nil {
 		return "", err
 	}
-	return token, nil
+	return secretbox.Decrypt(s.secret, stored)
 }
 
 // Save upserts the linked repo. Validation (provider, owner/repo, token
@@ -69,6 +75,10 @@ func (s *Store) Save(projectID int64, provider, baseURL, owner, repo, token stri
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
+	sealed, err := secretbox.Encrypt(s.secret, token)
+	if err != nil {
+		return nil, err
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	if s.db.IsPostgres() {
 		_, err := s.db.Exec(`INSERT INTO project_repos
@@ -78,7 +88,7 @@ func (s *Store) Save(projectID int64, provider, baseURL, owner, repo, token stri
 				provider = EXCLUDED.provider, base_url = EXCLUDED.base_url,
 				owner = EXCLUDED.owner, repo = EXCLUDED.repo,
 				token = EXCLUDED.token, updated_at = EXCLUDED.updated_at`,
-			projectID, provider, strings.TrimSpace(baseURL), owner, repo, token, now)
+			projectID, provider, strings.TrimSpace(baseURL), owner, repo, sealed, now)
 		if err != nil {
 			return nil, err
 		}
@@ -90,7 +100,7 @@ func (s *Store) Save(projectID int64, provider, baseURL, owner, repo, token stri
 				provider = excluded.provider, base_url = excluded.base_url,
 				owner = excluded.owner, repo = excluded.repo,
 				token = excluded.token, updated_at = excluded.updated_at`,
-			projectID, provider, strings.TrimSpace(baseURL), owner, repo, token, now)
+			projectID, provider, strings.TrimSpace(baseURL), owner, repo, sealed, now)
 		if err != nil {
 			return nil, err
 		}
@@ -122,16 +132,63 @@ func (s *Store) Delete(projectID int64) error {
 
 // Config hydrates a forge.Config for API calls (token included).
 func (s *Store) Config(projectID int64) (forge.Config, error) {
-	var provider, baseURL, owner, repo, token string
+	var provider, baseURL, owner, repo, stored string
 	if err := s.db.QueryRow(`SELECT provider, base_url, owner, repo, token
 		FROM project_repos WHERE project_id = ?`, projectID).
-		Scan(&provider, &baseURL, &owner, &repo, &token); err != nil {
+		Scan(&provider, &baseURL, &owner, &repo, &stored); err != nil {
 		if isNoRows(err) {
 			return forge.Config{}, errNoRepo
 		}
 		return forge.Config{}, err
 	}
+	token, err := secretbox.Decrypt(s.secret, stored)
+	if err != nil {
+		return forge.Config{}, err
+	}
 	return forge.Config{Provider: provider, BaseURL: baseURL, Owner: owner, Repo: repo, Token: token}, nil
+}
+
+// MigratePlaintextSecrets re-encrypts legacy plaintext forge tokens.
+// Safe to run on every startup; returns rows sealed.
+func (s *Store) MigratePlaintextSecrets() (int, error) {
+	if s.secret == "" {
+		return 0, errNoSecret()
+	}
+	rows, err := s.db.Query(`SELECT project_id, token FROM project_repos`)
+	if err != nil {
+		return 0, err
+	}
+	type pending struct {
+		projectID int64
+		token     string
+	}
+	var work []pending
+	for rows.Next() {
+		var p pending
+		if err := rows.Scan(&p.projectID, &p.token); err != nil {
+			continue
+		}
+		work = append(work, p)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	sealed := 0
+	for _, p := range work {
+		if p.token == "" || secretbox.IsEncrypted(p.token) {
+			continue
+		}
+		enc, err := secretbox.Encrypt(s.secret, p.token)
+		if err != nil {
+			return sealed, err
+		}
+		if _, err := s.db.Exec(`UPDATE project_repos SET token = ? WHERE project_id = ?`, enc, p.projectID); err != nil {
+			return sealed, err
+		}
+		sealed++
+	}
+	return sealed, nil
 }
 
 type Link struct {
