@@ -7,11 +7,13 @@
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
   import { toast } from "svelte-sonner";
+  import { loadPersisted, savePersisted, isStringIn } from "$lib/persisted";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import Dialog from "$lib/components/Dialog.svelte";
   import { Bell, KeyRound, Database, SlidersHorizontal, ScrollText, Users, TriangleAlert, ShieldCheck, History, UserPlus, Copy, X, Mail, Trash2, Settings2, Pencil, Search, Loader2 } from "lucide-svelte";
 
-  let tab = "general";
+  let tab = loadPersisted<string>("splat.settings.tab", "general", isStringIn(["general", "notifications", "rules", "keys", "users", "audit", "storage"]));
+  $: savePersisted("splat.settings.tab", tab);
   const tabs = [
     { id: "general", label: "General", icon: SlidersHorizontal },
     { id: "notifications", label: "Notifications", icon: Bell },
@@ -231,6 +233,7 @@
         meId = (users.find((u) => u.username === meUsername)?.id ?? 0);
         await reloadInvites();
         await loadStorageFigures();
+        if (tab === "audit") loadAudit();
       } catch (e) {
         toast.error(`Could not load users/teams: ${e instanceof Error ? e.message : e}`);
       }

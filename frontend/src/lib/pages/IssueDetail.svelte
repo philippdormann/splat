@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api, type IssueDetail, type IssueLink } from "$lib/api";
+  import { loadPersisted, savePersisted, isString } from "$lib/persisted";
   import * as CardUI from "$lib/components/ui/card/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
   import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
@@ -18,7 +19,8 @@
 
   let data: IssueDetail | null = null;
   let error = "";
-  let muteFor = "forever";
+  let muteFor = loadPersisted<string>("splat.issue.muteFor", "forever", isString);
+  $: savePersisted("splat.issue.muteFor", muteFor);
   let pendingAction: "resolved" | "resolved-next" | "ignored" | "muted" | "unresolved" | null = null;
   let actionBusy = false;
   let selectedEvent: string | null = null;
