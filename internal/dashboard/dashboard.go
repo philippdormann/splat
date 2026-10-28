@@ -219,6 +219,7 @@ type RecentIssue struct {
 	ID               int64
 	Title            string
 	Level            string
+	Status           string
 	ProjectName      string
 	Environment      string
 	EventCount       int64
@@ -229,7 +230,7 @@ type RecentIssue struct {
 func (s *Store) RecentIssues(limit int, projectIDs ...int64) ([]RecentIssue, error) {
 	scope, scopeArgs := inClause("i.project_id", projectIDs)
 	rows, err := s.db.Query(`
-		SELECT i.id, i.title, i.level, p.name, i.environment, i.event_count, i.last_seen
+		SELECT i.id, i.title, i.level, i.status, p.name, i.environment, i.event_count, i.last_seen
 		FROM issues i JOIN projects p ON p.id = i.project_id
 		WHERE 1=1`+scope+`
 		ORDER BY i.last_seen DESC LIMIT ?`, append(scopeArgs, limit)...)
@@ -241,7 +242,7 @@ func (s *Store) RecentIssues(limit int, projectIDs ...int64) ([]RecentIssue, err
 	for rows.Next() {
 		var ri RecentIssue
 		var lastSeen string
-		if err := rows.Scan(&ri.ID, &ri.Title, &ri.Level, &ri.ProjectName, &ri.Environment, &ri.EventCount, &lastSeen); err != nil {
+		if err := rows.Scan(&ri.ID, &ri.Title, &ri.Level, &ri.Status, &ri.ProjectName, &ri.Environment, &ri.EventCount, &lastSeen); err != nil {
 			return nil, err
 		}
 		ri.LastSeen, _ = time.Parse(time.RFC3339Nano, lastSeen)

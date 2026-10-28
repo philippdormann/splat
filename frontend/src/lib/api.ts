@@ -469,6 +469,7 @@ export interface DashboardData {
     id: number;
     title: string;
     level: string;
+    status: string;
     projectName: string;
     environment: string;
     eventCount: number;

@@ -29,6 +29,7 @@
   import Badge from "$lib/components/badge.svelte";
   import Button from "$lib/components/button.svelte";
   import LevelBadge from "$lib/components/LevelBadge.svelte";
+  import StatusBadge from "$lib/components/StatusBadge.svelte";
   import MeterBar from "$lib/components/MeterBar.svelte";
   import RelativeTime from "$lib/components/RelativeTime.svelte";
 
@@ -364,6 +365,7 @@
               <Table.Row class="hover:bg-transparent">
                 <Table.Head>Issue</Table.Head>
                 <Table.Head class="hidden md:table-cell">Project</Table.Head>
+                <Table.Head>Status</Table.Head>
                 <Table.Head class="text-right">Events</Table.Head>
                 <Table.Head class="text-right">Last seen</Table.Head>
                 <Table.Head class="w-8"></Table.Head>
@@ -380,6 +382,9 @@
                   </Table.Cell>
                   <Table.Cell class="hidden md:table-cell">
                     <Badge>{i.projectName}</Badge>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <StatusBadge status={i.status} />
                   </Table.Cell>
                   <Table.Cell class="text-right tabular-nums">{i.eventCount.toLocaleString()}</Table.Cell>
                   <Table.Cell class="text-muted-foreground text-right whitespace-nowrap">

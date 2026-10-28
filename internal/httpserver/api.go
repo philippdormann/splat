@@ -230,7 +230,7 @@ func (s *Server) apiDashboard(w http.ResponseWriter, r *http.Request) {
 		for _, ri := range recents {
 			recent = append(recent, map[string]any{
 				"id": ri.ID, "title": ri.Title, "level": ri.Level,
-				"projectName": ri.ProjectName, "environment": ri.Environment,
+				"status": ri.Status, "projectName": ri.ProjectName, "environment": ri.Environment,
 				"eventCount": ri.EventCount, "lastSeen": ri.LastSeen,
 				"lastSeenRelative": relativeTime(ri.LastSeen),
 			})
