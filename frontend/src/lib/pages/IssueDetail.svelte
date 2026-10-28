@@ -178,7 +178,20 @@
     data && data.traceId
       ? `/projects/${data.project.id}/traces/${encodeURIComponent(data.traceId)}`
       : "";
-  $: projectPath = data ? `/projects/${data.project.id}` : "";</script>
+  $: projectPath = data ? `/projects/${data.project.id}` : "";
+
+  function backToIssues() {
+    try {
+      const last = sessionStorage.getItem("splat.issues.last");
+      if (last && last.startsWith("/issues")) {
+        navigate(last);
+        return;
+      }
+    } catch {
+      // Storage unavailable — fall through to the plain list.
+    }
+    navigate("/issues");
+  }</script>
 
 {#if error}
   <Alert.Root variant="destructive">
@@ -451,6 +464,6 @@
       onCancel={() => (confirmUnlink = null)}
     />
 
-    <Button variant="ghost" size="sm" on:click={() => navigate("/issues")}>← Back to issues</Button>
+    <Button variant="ghost" size="sm" on:click={backToIssues}>← Back to issues</Button>
   </div>
 {/if}
