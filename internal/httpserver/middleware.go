@@ -30,7 +30,7 @@ func recoverMiddleware(logger *slog.Logger, next http.Handler) http.Handler {
 // third-party fetches - everything comes from 'self'. If the frontend ever
 // gains a CDN dependency, this policy must grow with it (the build will
 // keep working, browsers will just refuse to load the new origin).
-func securityHeadersMiddleware(next http.Handler) http.Handler {
+func securityHeadersMiddleware(secure bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("X-Frame-Options", "DENY")
@@ -44,6 +44,9 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 		// content: keep it out of search indexes even if accidentally
 		// exposed. Belt and suspenders with /robots.txt below.
 		h.Set("X-Robots-Tag", "noindex, nofollow")
+		if secure {
+			h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+		}
 		next.ServeHTTP(w, r)
 	})
 }

@@ -84,7 +84,7 @@ func New(s *Server) (*Server, error) {
 func (s *Server) Handler() http.Handler {
 	// Logging sits inside security headers so its `next` is the mux
 	// itself, letting request metrics resolve route patterns.
-	return recoverMiddleware(s.Logger, securityHeadersMiddleware(loggingMiddleware(s.Logger, s.Metrics, s.mux)))
+	return recoverMiddleware(s.Logger, securityHeadersMiddleware(s.CookieSecure, loggingMiddleware(s.Logger, s.Metrics, s.mux)))
 }
 
 func (s *Server) routes() {
@@ -187,11 +187,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /api/v1/issues/{id}/notes/{noteId}", s.requireScope(s.apiIssueNotesDelete))
 
 	s.mux.HandleFunc("GET /api/v1/projects", s.requireScope(s.apiProjectsList))
-	s.mux.HandleFunc("POST /api/v1/projects", s.requireInstance(s.apiProjectCreate))
+	s.mux.HandleFunc("POST /api/v1/projects", s.requireAdmin(s.apiProjectCreate))
 	s.mux.HandleFunc("GET /api/v1/projects/{id}", s.requireScope(s.apiProjectDetail))
 	s.mux.HandleFunc("PATCH /api/v1/projects/{id}", s.requireScope(s.apiProjectUpdate))
-	s.mux.HandleFunc("POST /api/v1/projects/{id}/rotate", s.requireInstance(s.apiProjectRotate))
-	s.mux.HandleFunc("DELETE /api/v1/projects/{id}", s.requireInstance(s.apiProjectDelete))
+	s.mux.HandleFunc("POST /api/v1/projects/{id}/rotate", s.requireAdmin(s.apiProjectRotate))
+	s.mux.HandleFunc("DELETE /api/v1/projects/{id}", s.requireAdmin(s.apiProjectDelete))
 	s.mux.HandleFunc("GET /api/v1/platforms", s.requireScope(s.apiPlatforms))
 	s.mux.HandleFunc("GET /api/v1/projects/{id}/overview", s.requireScope(s.apiProjectOverview))
 	s.mux.HandleFunc("GET /api/v1/projects/{id}/releases", s.requireScope(s.apiProjectReleases))

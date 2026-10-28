@@ -43,7 +43,7 @@ func TestRateLimitMiddlewareReturns429WhenExhausted(t *testing.T) {
 }
 
 func TestSecurityHeadersMiddlewareSetsHeaders(t *testing.T) {
-	handler := securityHeadersMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := securityHeadersMiddleware(false, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	rec := httptest.NewRecorder()

@@ -163,8 +163,8 @@ func TestRBACMemberScoping(t *testing.T) {
 	if rec := get(t, s, "/api/v1/users", memberCookie); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("member users = %d, want 401", rec.Code)
 	}
-	if rec := postJSON(t, s, http.MethodPost, "/api/v1/projects", memberCookie, `{"name":"x","slug":"x"}`); rec.Code != http.StatusForbidden {
-		t.Fatalf("member project create = %d, want 403", rec.Code)
+	if rec := postJSON(t, s, http.MethodPost, "/api/v1/projects", memberCookie, `{"name":"x","slug":"x"}`); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("member project create = %d, want 401", rec.Code)
 	}
 
 	// Admin grants the member p1 directly: list shows one, detail works.
