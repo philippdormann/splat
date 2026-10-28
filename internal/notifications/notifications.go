@@ -732,6 +732,13 @@ func (s *Store) saveRuleLinks(ruleID int64, links []RuleIntegration) error {
 	return nil
 }
 
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 func (s *Store) CreateRule(r Rule) (Rule, error) {
 	if r.CooldownSeconds < 0 {
 		r.CooldownSeconds = 0
@@ -739,18 +746,19 @@ func (s *Store) CreateRule(r Rule) (Rule, error) {
 	if err := s.validateRuleLinks(r.Integrations); err != nil {
 		return Rule{}, err
 	}
+	newIssue, reopened := boolInt(r.NotifyNewIssue), boolInt(r.NotifyReopened)
 	var id int64
 	if s.db.IsPostgres() {
 		err := s.db.QueryRow(`INSERT INTO notification_rules (name, project_id, environment, notify_new_issue, notify_threshold, notify_reopened, cooldown_seconds)
 			VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-			r.Name, nullableProjectID(r.ProjectID), r.Environment, r.NotifyNewIssue, r.NotifyThreshold, r.NotifyReopened, r.CooldownSeconds).Scan(&id)
+			r.Name, nullableProjectID(r.ProjectID), r.Environment, newIssue, r.NotifyThreshold, reopened, r.CooldownSeconds).Scan(&id)
 		if err != nil {
 			return Rule{}, err
 		}
 	} else {
 		res, err := s.db.Exec(`INSERT INTO notification_rules (name, project_id, environment, notify_new_issue, notify_threshold, notify_reopened, cooldown_seconds)
 			VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			r.Name, nullableProjectID(r.ProjectID), r.Environment, r.NotifyNewIssue, r.NotifyThreshold, r.NotifyReopened, r.CooldownSeconds)
+			r.Name, nullableProjectID(r.ProjectID), r.Environment, newIssue, r.NotifyThreshold, reopened, r.CooldownSeconds)
 		if err != nil {
 			return Rule{}, err
 		}
@@ -774,7 +782,7 @@ func (s *Store) UpdateRule(r Rule) (Rule, error) {
 	}
 	_, err := s.db.Exec(`UPDATE notification_rules SET name = ?, project_id = ?, environment = ?, notify_new_issue = ?,
 		notify_threshold = ?, notify_reopened = ?, cooldown_seconds = ? WHERE id = ?`,
-		r.Name, nullableProjectID(r.ProjectID), r.Environment, r.NotifyNewIssue, r.NotifyThreshold, r.NotifyReopened, r.CooldownSeconds, r.ID)
+		r.Name, nullableProjectID(r.ProjectID), r.Environment, boolInt(r.NotifyNewIssue), r.NotifyThreshold, boolInt(r.NotifyReopened), r.CooldownSeconds, r.ID)
 	if err != nil {
 		return Rule{}, err
 	}
