@@ -34,6 +34,7 @@
   let authed: boolean | null = null;
   let isAdmin = false;
   let path = window.location.pathname;
+  let search = window.location.search;
   let sidebarOpen = false;
   let paletteOpen = false;
   let navProjects: { id: number; name: string }[] = [];
@@ -60,6 +61,7 @@
     mq.addEventListener("change", onChange);
     window.addEventListener("popstate", () => {
       path = window.location.pathname;
+      search = window.location.search;
     });
     try {
       const me = await api.me();
@@ -73,7 +75,9 @@
 
   export function navigate(to: string) {
     window.history.pushState({}, "", to);
-    path = to;
+    const qi = to.indexOf("?");
+    path = qi < 0 ? to : to.slice(0, qi);
+    search = qi < 0 ? "" : to.slice(qi);
     sidebarOpen = false;
     window.scrollTo(0, 0);
   }
@@ -187,11 +191,11 @@
         </button>
       </header>
       <main class="mx-auto w-full max-w-6xl flex-1 p-4 md:p-6">
-        {#key path}
+        {#key path + search}
         {#if path === "/"}
           <Dashboard {navigate} />
         {:else if path === "/issues"}
-          <Issues {navigate} />
+          <Issues {navigate} urlSearch={search} />
         {:else if path.startsWith("/issues/")}
           <IssueDetail id={path.slice("/issues/".length)} {navigate} />
         {:else if path === "/projects"}

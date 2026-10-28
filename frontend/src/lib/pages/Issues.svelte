@@ -3,6 +3,7 @@
   import { ChevronRight, TriangleAlert } from "lucide-svelte";
   import { api, type IssuesData } from "$lib/api";
   import { loadPersisted, savePersisted, isString } from "$lib/persisted";
+  import { queryParam, replaceQuery } from "$lib/urlquery";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
   import * as Empty from "$lib/components/ui/empty/index.js";
@@ -17,19 +18,28 @@
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
 
   export let navigate: (path: string) => void;
+  export let urlSearch: string = "";
+
+  // URL query params win over persisted prefs so filtered views are
+  // shareable; everything still falls back to (and updates) persistence.
+  function initial(key: string, persistedKey: string): string {
+    return queryParam(urlSearch, key) ?? loadPersisted<string>(persistedKey, "", isString);
+  }
 
   let data: IssuesData | null = null;
-  let q = loadPersisted<string>("splat.issues.q", "", isString);
-  let project = loadPersisted<string>("splat.issues.project", "", isString);
-  let environment = loadPersisted<string>("splat.issues.environment", "", isString);
-  let status = loadPersisted<string>("splat.issues.status", "", isString);
-  let sort = loadPersisted<string>("splat.issues.sort", "", isString);
+  let q = initial("q", "splat.issues.q");
+  let project = initial("project", "splat.issues.project");
+  let environment = initial("environment", "splat.issues.environment");
+  let status = initial("status", "splat.issues.status");
+  let sort = initial("sort", "splat.issues.sort");
   $: savePersisted("splat.issues.q", q);
   $: savePersisted("splat.issues.project", project);
   $: savePersisted("splat.issues.environment", environment);
   $: savePersisted("splat.issues.status", status);
   $: savePersisted("splat.issues.sort", sort);
   let page = 1;
+  const initialPage = Number(queryParam(urlSearch, "page"));
+  if (Number.isInteger(initialPage) && initialPage > 0) page = initialPage;
   let selected = new Set<number>();
   let error = "";
   let timer: ReturnType<typeof setTimeout>;
@@ -53,6 +63,31 @@
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load issues.";
     }
+    syncURL();
+  }
+
+  // Mirror the current filters into the address bar (replaceState, no
+  // history spam) and remember the list URL so issue detail can go back
+  // to the exact filtered view instead of a blank /issues.
+  function syncURL() {
+    replaceQuery({
+      q: q || null,
+      project: project || null,
+      environment: environment || null,
+      status: status || null,
+      sort: sort || null,
+      page: page > 1 ? String(page) : null,
+    });
+    try {
+      sessionStorage.setItem("splat.issues.last", window.location.pathname + window.location.search);
+    } catch {
+      // Storage unavailable — back button falls back to /issues.
+    }
+  }
+
+  function openIssue(id: number) {
+    syncURL();
+    navigate(`/issues/${id}`);
   }
 
   function search() {
@@ -203,7 +238,7 @@
                 />
               </Table.Cell>
               <Table.Cell>
-                <button class="flex min-w-0 items-center gap-2 text-left" on:click={() => navigate(`/issues/${i.id}`)}>
+                <button class="flex min-w-0 items-center gap-2 text-left" on:click={() => openIssue(i.id)}>
                   <LevelBadge level={i.level} />
                   <span class="min-w-0">
                     <span class="block truncate font-medium hover:underline">{i.title}</span>
@@ -230,7 +265,7 @@
                 <RelativeTime iso={i.lastSeen} />
               </Table.Cell>
               <Table.Cell class="text-right">
-                <button aria-label="Open {i.title}" on:click={() => navigate(`/issues/${i.id}`)}>
+                <button aria-label="Open {i.title}" on:click={() => openIssue(i.id)}>
                   <ChevronRight class="text-muted-foreground ml-auto size-4" />
                 </button>
               </Table.Cell>
