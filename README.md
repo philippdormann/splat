@@ -183,8 +183,13 @@ All configuration is environment variables (see `internal/config/config.go`):
 | `SPLAT_ADMIN_USERNAME` / `SPLAT_ADMIN_PASSWORD` | - | bootstraps the first admin user when no users exist yet; ignored afterwards (manage users in the UI) |
 | `SPLAT_SESSION_SECRET` | - | **required**; any random 32+ byte string |
 | `SPLAT_RETENTION_SWEEP` | `1h` | how often the retention sweeper runs |
+| `SPLAT_SHUTDOWN_TIMEOUT` | `10s` | graceful shutdown grace period |
+| `SPLAT_COOKIE_SECURE` | `true` | set `false` for plaintext local HTTP dev only; `https://` public URL implies `Secure` |
 | `SPLAT_METRICS` | off | `1`/`true` exposes Prometheus metrics at `GET /metrics` |
 | `SPLAT_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
+| `SPLAT_OIDC_ISSUER` / `SPLAT_OIDC_CLIENT_ID` / `SPLAT_OIDC_CLIENT_SECRET` | - | generic OIDC SSO (Keycloak, Authentik, Google, …); empty issuer disables SSO |
+| `SPLAT_OIDC_NAME` | `SSO` | label shown on the sign-in button |
+| `SPLAT_OIDC_SCOPES` | `openid email profile` | scopes requested from the provider |
 
 ## Sentry protocol compatibility
 
@@ -216,8 +221,11 @@ installs (Python, Node, Java), not just hand-crafted payloads - see
 **Explicitly not implemented** (accepted and silently dropped where the
 protocol allows it, so a real SDK never errors, but nothing is stored or
 shown for these):
-- Performance tracing / transactions, profiling, session replay, client
-  reports, metrics. This is an error tracker, not an APM platform - see
+- Profiling, session replay, client reports, metrics, monitor check-ins,
+  feedback, minidumps. Transaction items *are* stored for the local
+  per-trace view and log items *are* stored per project (see Logs and
+  traces above) - but there is no sampling, alerting, or aggregation on
+  them. This is an error tracker, not an APM platform - see
   Trace correlation above for the lightweight alternative. (Session
   envelopes *are* stored, but only for release-health aggregation.)
 - Attachments (binary item payloads are parsed per envelope framing but not
@@ -447,7 +455,11 @@ notification formatting/retry/
 backoff/cooldowns across all channels and their independence from
 each other, retention deletion vs. issue summary preservation, and
 multi-user/team access scoping (grants, team grants, admin-only instance
-routes, 404-not-403 for ungranted projects), log/transaction ingestion and
+routes, 404-not-403 for ungranted projects), invites, TOTP 2FA
+(setup/verify/recovery codes, required-2FA enrollment, admin reset), OIDC
+SSO (PKCE/state/nonce, auto-provisioning, email linking), audit logging,
+ingestion quotas (hourly/daily windows, 429 + breach alerts),
+log/transaction ingestion and
 per-trace assembly, forge issue creation against stub APIs for all four
 providers, and
 JSON-escaping of untrusted event data (a regression test serializes an issue
@@ -531,9 +543,9 @@ your provider's snapshots as usual.
   - transactions and logs are ingested and viewable per project, but there
   is no sampling, alerting, or aggregation on them. See Trace correlation
   above for linking out instead.
-- No per-project roles or SSO - membership is binary (access or not) and
+- No per-project roles - membership is binary (access or not) and
   auth is username + password with bcrypt hashes, plus optional TOTP
-  two-factor authentication.
+  two-factor authentication or generic OIDC SSO.
 
 ## Layout
 
@@ -556,6 +568,11 @@ internal/telegram/ + internal/webhooks/   channel-specific formatting/delivery c
 internal/tracing/      trace_id -> external tracing backend URL correlation
 internal/auth/         users, instance roles, login sessions, CSRF, TOTP 2FA
 internal/teams/        teams, memberships, project grants, access checks
+internal/invites/      invite tokens, acceptance flow
+internal/quotas/       ingestion quotas, hourly/daily windows, breach alerts
+internal/audit/        append-only audit log (auth, users, settings, keys, …)
+internal/sso/          generic OIDC login, PKCE/state/nonce, auto-provisioning
+internal/secretbox/    AES-256-GCM encryption for stored credentials
 internal/logs/         structured SDK log records, level/search/trace queries
 internal/traces/       transactions and spans, per-trace assembly
 internal/forge/        GitHub/GitLab/Gitea/Forgejo issue APIs
@@ -569,6 +586,7 @@ internal/database/     sqlite (default) + postgres backends, embedded migrations
 internal/httpserver/   routes, middleware, JSON API (/api/v1/), SPA serving
 web/dist               built Svelte UI, embedded into the binary (gitignored)
 examples/django/       settings snippet + a view that deliberately throws
+examples/send_test_event.py   stdlib-only envelope poster (no SDK) for manual testing
 tests/                 the real-SDK integration script
 ```
 
