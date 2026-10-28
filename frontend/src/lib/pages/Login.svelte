@@ -114,7 +114,7 @@
 <div class="flex min-h-screen items-center justify-center p-4">
   <Card.Root class="w-full max-w-sm gap-0">
     <Card.Header class="pb-6">
-      <img src={logoUrl} alt="Splat" class="h-10 w-auto" />
+      <img src={logoUrl} alt="Splat" class="h-10 w-auto max-w-full self-start object-contain" />
       <div>
         <Card.Description>
           {#if recoveryCodes}Save your recovery codes
