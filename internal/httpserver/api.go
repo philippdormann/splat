@@ -573,6 +573,7 @@ func (s *Server) apiIssueSetStatus(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Status           string `json:"status"`
 		MutedUntil       string `json:"mutedUntil"`
+		MutedCount       int64  `json:"mutedCount"`
 		ResolveInRelease bool   `json:"resolveInRelease"`
 	}
 	if !decodeJSON(r, &input) {
@@ -607,7 +608,11 @@ func (s *Server) apiIssueSetStatus(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if err := s.Issues.SetMuted(id, until); err != nil {
+		if input.MutedCount < 0 {
+			writeAPIError(w, http.StatusBadRequest, "mutedCount must be >= 0")
+			return
+		}
+		if err := s.Issues.SetMuted(id, until, input.MutedCount); err != nil {
 			s.Logger.Error("set issue muted", "error", err)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -710,8 +715,10 @@ func (s *Server) apiIssuesBulk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		IDs    []int64 `json:"ids"`
-		Status string  `json:"status"`
+		IDs        []int64 `json:"ids"`
+		Status     string  `json:"status"`
+		MutedUntil string  `json:"mutedUntil"`
+		MutedCount int64   `json:"mutedCount"`
 	}
 	if !decodeJSON(r, &input) {
 		writeAPIError(w, http.StatusBadRequest, "invalid JSON")
@@ -721,6 +728,19 @@ func (s *Server) apiIssuesBulk(w http.ResponseWriter, r *http.Request) {
 	if status != issues.StatusResolved && status != issues.StatusIgnored && status != issues.StatusUnresolved && status != issues.StatusMuted {
 		writeAPIError(w, http.StatusBadRequest, "invalid status")
 		return
+	}
+	if input.MutedCount < 0 {
+		writeAPIError(w, http.StatusBadRequest, "mutedCount must be >= 0")
+		return
+	}
+	var mutedUntil time.Time
+	if status == issues.StatusMuted && input.MutedUntil != "" {
+		var err error
+		mutedUntil, err = time.Parse(time.RFC3339, input.MutedUntil)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, "mutedUntil must be RFC3339")
+			return
+		}
 	}
 	if len(input.IDs) == 0 || len(input.IDs) > 100 {
 		writeAPIError(w, http.StatusBadRequest, "ids must contain 1-100 issues")
@@ -736,7 +756,14 @@ func (s *Server) apiIssuesBulk(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := s.Issues.BulkSetStatus(input.IDs, status); err != nil {
+	if status == issues.StatusMuted && (input.MutedCount > 0 || !mutedUntil.IsZero()) {
+		err := s.Issues.BulkSetMuted(input.IDs, mutedUntil, input.MutedCount)
+		if err != nil {
+			s.Logger.Error("bulk set muted", "error", err)
+			writeAPIError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+	} else if err := s.Issues.BulkSetStatus(input.IDs, status); err != nil {
 		s.Logger.Error("bulk set status", "error", err)
 		writeAPIError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -758,6 +785,7 @@ func issueJSON(iss *issues.Issue) map[string]any {
 		"environment": iss.Environment, "release": iss.Release,
 		"reopenedCount": iss.ReopenedCount,
 		"mutedUntil":        mutedUntil,
+		"mutedUntilCount":   iss.MutedCount,
 		"resolvedInRelease": iss.ResolvedInRelease,
 	}
 }

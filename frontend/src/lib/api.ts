@@ -116,15 +116,15 @@ export const api = {
     req<{ ok: boolean }>(`/api/v1/issues/${id}/notes/${noteId}`, {
       method: "DELETE",
     }),
-  setIssueStatus: (id: number | string, status: string, mutedUntil?: string, resolveInRelease?: boolean) =>
+  setIssueStatus: (id: number | string, status: string, mutedUntil?: string, resolveInRelease?: boolean, mutedCount?: number) =>
     req<{ ok: boolean }>(`/api/v1/issues/${id}/status`, {
       method: "POST",
-      body: JSON.stringify({ status, mutedUntil, resolveInRelease }),
+      body: JSON.stringify({ status, mutedUntil, resolveInRelease, mutedCount }),
     }),
-  bulkIssueStatus: (ids: number[], status: string) =>
+  bulkIssueStatus: (ids: number[], status: string, opts?: { mutedUntil?: string; mutedCount?: number }) =>
     req<{ ok: boolean }>("/api/v1/issues/bulk", {
       method: "POST",
-      body: JSON.stringify({ ids, status }),
+      body: JSON.stringify({ ids, status, mutedUntil: opts?.mutedUntil, mutedCount: opts?.mutedCount }),
     }),
 
   projects: ((params?: { page?: number; perPage?: number; query?: string; statsPeriod?: string }) => {
@@ -524,6 +524,7 @@ export interface IssueDetail {
     level: string;
     status: string;
     mutedUntil: string | null;
+    mutedUntilCount: number;
     resolvedInRelease: string;
     reopenedCount: number;
     eventCount: number;

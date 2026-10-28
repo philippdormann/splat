@@ -22,6 +22,7 @@
   let error = "";
   let muteFor = loadPersisted<string>("splat.issue.muteFor", "forever", isString);
   $: savePersisted("splat.issue.muteFor", muteFor);
+  let muteCount = 50;
   let pendingAction: "resolved" | "resolved-next" | "ignored" | "muted" | "unresolved" | null = null;
   let actionBusy = false;
   let selectedEvent: string | null = null;
@@ -153,12 +154,22 @@
     actionBusy = true;
     try {
       if (pendingAction === "muted") {
-        let mutedUntil: string | undefined;
-        if (muteFor !== "forever") {
-          const hours = { "24h": 24, "7d": 24 * 7, "30d": 24 * 30 }[muteFor] ?? 0;
-          if (hours > 0) mutedUntil = new Date(Date.now() + hours * 3600 * 1000).toISOString();
+        if (muteFor === "count") {
+          const n = Math.floor(Number(muteCount));
+          if (!Number.isFinite(n) || n < 1) {
+            toast.error("Enter at least 1 appearance.");
+            actionBusy = false;
+            return;
+          }
+          await api.setIssueStatus(id, "muted", undefined, false, n);
+        } else {
+          let mutedUntil: string | undefined;
+          if (muteFor !== "forever") {
+            const hours = { "24h": 24, "7d": 24 * 7, "30d": 24 * 30 }[muteFor] ?? 0;
+            if (hours > 0) mutedUntil = new Date(Date.now() + hours * 3600 * 1000).toISOString();
+          }
+          await api.setIssueStatus(id, "muted", mutedUntil);
         }
-        await api.setIssueStatus(id, "muted", mutedUntil);
       } else if (pendingAction === "resolved-next") {
         await api.setIssueStatus(id, "resolved", undefined, true);
       } else {
@@ -236,7 +247,7 @@
           <LevelBadge level={data.issue.level} />
           <StatusBadge status={data.issue.status} />
           {#if data.issue.reopenedCount > 0}<span class="text-xs text-muted-foreground" title="Times a new occurrence flipped this issue back to unresolved">reopened {data.issue.reopenedCount}×</span>{/if}
-          {#if data.issue.status === "muted"}<span class="text-xs text-muted-foreground">{formatMutedUntil(data.issue.mutedUntil)}</span>{/if}
+          {#if data.issue.status === "muted"}<span class="text-xs text-muted-foreground">{data.issue.mutedUntilCount > 0 ? `${data.issue.mutedUntilCount} appearance${data.issue.mutedUntilCount === 1 ? "" : "s"} left` : formatMutedUntil(data.issue.mutedUntil)}</span>{/if}
           {#if data.issue.status === "resolved" && data.issue.resolvedInRelease}<span class="text-xs text-muted-foreground" title="Reopens automatically if the bug appears in a different release">pinned to {data.issue.resolvedInRelease}</span>{/if}
           <span class="text-xs text-muted-foreground"><button class="text-primary hover:underline" on:click={() => projectPath && navigate(projectPath)}>{data.project.name}</button> · {data.issue.environment} · {data.issue.eventCount} events</span>
         </div>
@@ -268,13 +279,17 @@
       onCancel={() => { if (!actionBusy) pendingAction = null; }}
     >
       {#if pendingAction === "muted"}
-        <span class="mt-3 block">
+        <span class="mt-3 flex flex-wrap items-center gap-2">
           <select class="h-8 rounded-md border border-input bg-background px-2 text-xs" bind:value={muteFor} aria-label="Mute duration">
             <option value="forever">Mute forever</option>
             <option value="24h">Mute 24 hours</option>
             <option value="7d">Mute 7 days</option>
             <option value="30d">Mute 30 days</option>
+            <option value="count">Mute next N appearances</option>
           </select>
+          {#if muteFor === "count"}
+            <input type="number" min="1" step="1" bind:value={muteCount} aria-label="Appearances to mute" class="h-8 w-24 rounded-md border border-input bg-background px-2 text-xs" />
+          {/if}
         </span>
       {/if}
     </ConfirmDialog>

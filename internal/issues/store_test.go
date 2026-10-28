@@ -218,7 +218,7 @@ func TestUpsertMutedIssueStaysMuted(t *testing.T) {
 	ctx := context.Background()
 
 	r1, _ := store.Upsert(ctx, projectID, "fp-mute", "t", "T", "v", "c", "error", "production", "", time.Now())
-	if err := store.SetMuted(r1.Issue.ID, time.Time{}); err != nil {
+	if err := store.SetMuted(r1.Issue.ID, time.Time{}, 0); err != nil {
 		t.Fatalf("mute: %v", err)
 	}
 
@@ -244,7 +244,7 @@ func TestUpsertExpiredMuteUnmutes(t *testing.T) {
 
 	r1, _ := store.Upsert(ctx, projectID, "fp-mute-exp", "t", "T", "v", "c", "error", "production", "", time.Now())
 	past := time.Now().Add(-time.Hour)
-	if err := store.SetMuted(r1.Issue.ID, past); err != nil {
+	if err := store.SetMuted(r1.Issue.ID, past, 0); err != nil {
 		t.Fatalf("mute: %v", err)
 	}
 
@@ -263,13 +263,50 @@ func TestUpsertExpiredMuteUnmutes(t *testing.T) {
 	}
 }
 
+func TestUpsertCountMuteDecrementsAndLifts(t *testing.T) {
+	db, projectID := newTestDB(t)
+	store := NewStore(db)
+	ctx := context.Background()
+
+	r1, _ := store.Upsert(ctx, projectID, "fp-mute-n", "t", "T", "v", "c", "error", "production", "", time.Now())
+	if err := store.SetMuted(r1.Issue.ID, time.Time{}, 3); err != nil {
+		t.Fatalf("mute: %v", err)
+	}
+
+	// First two appearances stay muted while the countdown ticks down.
+	for want := int64(2); want >= 1; want-- {
+		r, err := store.Upsert(ctx, projectID, "fp-mute-n", "t", "T", "v", "c", "error", "production", "", time.Now())
+		if err != nil {
+			t.Fatalf("upsert: %v", err)
+		}
+		if r.Issue.Status != StatusMuted || r.Reopened {
+			t.Fatalf("countdown should stay muted, got %+v", r.Issue)
+		}
+		if r.Issue.MutedCount != want {
+			t.Fatalf("expected %d remaining, got %d", want, r.Issue.MutedCount)
+		}
+	}
+
+	// The crossing event resurfaces the issue and reports reopened.
+	r, err := store.Upsert(ctx, projectID, "fp-mute-n", "t", "T", "v", "c", "error", "production", "", time.Now())
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if r.Issue.Status != StatusUnresolved || !r.Reopened {
+		t.Fatalf("countdown exhaustion should unmute+reopen, got %+v", r.Issue)
+	}
+	if r.Issue.MutedCount != 0 {
+		t.Fatalf("countdown should be spent, got %d", r.Issue.MutedCount)
+	}
+}
+
 func TestSetStatusClearsMute(t *testing.T) {
 	db, projectID := newTestDB(t)
 	store := NewStore(db)
 	ctx := context.Background()
 
 	r1, _ := store.Upsert(ctx, projectID, "fp-mute-clr", "t", "T", "v", "c", "error", "production", "", time.Now())
-	if err := store.SetMuted(r1.Issue.ID, time.Now().Add(time.Hour)); err != nil {
+	if err := store.SetMuted(r1.Issue.ID, time.Now().Add(time.Hour), 0); err != nil {
 		t.Fatalf("mute: %v", err)
 	}
 	if err := store.SetStatus(r1.Issue.ID, StatusResolved); err != nil {
