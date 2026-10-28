@@ -637,6 +637,16 @@
     }
   }
 
+  function setDefaultDays(key: keyof RetentionSettings["defaults"], raw: string) {
+    if (!retention) return;
+    retention.settings.defaults[key] = raw === "" ? null : Math.max(1, parseInt(raw, 10));
+    previewRetention();
+  }
+
+  function setProjectDays(key: keyof typeof projectRetention, raw: string) {
+    projectRetention[key] = raw === "" ? null : Math.max(1, parseInt(raw, 10));
+  }
+
   async function previewRetention() {
     if (!retention) return;
     try { retentionPreview = await api.previewRetention(retention.settings); }
@@ -1474,14 +1484,16 @@
           <div class="space-y-3">
             {#if retention}
               {#if !editingProject}
-                {#each [{ k: "events_days", label: "Events" }, { k: "transactions_days", label: "Transactions" }, { k: "logs_days", label: "Logs" }] as row}
+                {#each [{ k: "events_days", label: "Events" }, { k: "transactions_days", label: "Transactions" }, { k: "logs_days", label: "Logs" }] as row (row.k)}
+                  {@const key = row.k as keyof typeof retention.settings.defaults}
                   <div class="space-y-1"><label class="text-xs">{row.label} keep (days, empty = forever)</label>
-                  <Input type="number" min="1" placeholder="forever" value={retention.settings.defaults[row.k] ?? ""} on:input={(e) => { const v = (e.target as HTMLInputElement).value; (retention.settings.defaults[row.k] as number | null) = v === "" ? null : Math.max(1, parseInt(v, 10)); previewRetention(); }} /></div>
+                  <Input type="number" min="1" placeholder="forever" value={retention.settings.defaults[key] ?? ""} on:input={(e) => setDefaultDays(key, (e.target as HTMLInputElement).value)} /></div>
                 {/each}
               {:else}
-                {#each [{ k: "events_days", label: "Events" }, { k: "transactions_days", label: "Transactions" }, { k: "logs_days", label: "Logs" }] as row}
+                {#each [{ k: "events_days", label: "Events" }, { k: "transactions_days", label: "Transactions" }, { k: "logs_days", label: "Logs" }] as row (row.k)}
+                  {@const key = row.k as keyof typeof projectRetention}
                   <div class="space-y-1"><label class="text-xs">{row.label} keep (days, empty = forever)</label>
-                  <Input type="number" min="1" placeholder="inherit" value={projectRetention[row.k] ?? ""} on:input={(e) => { const v = (e.target as HTMLInputElement).value; (projectRetention[row.k] as number | null | undefined) = v === "" ? null : Math.max(1, parseInt(v, 10)); }} /></div>
+                  <Input type="number" min="1" placeholder="inherit" value={projectRetention[key] ?? ""} on:input={(e) => setProjectDays(key, (e.target as HTMLInputElement).value)} /></div>
                 {/each}
               {/if}
               {#if retentionPreview}<p class="text-xs text-muted-foreground">Saving would delete now: events {retentionPreview.events ?? 0}, transactions {retentionPreview.transactions ?? 0}, logs {retentionPreview.logs ?? 0} rows.</p>{/if}

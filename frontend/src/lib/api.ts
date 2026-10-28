@@ -127,7 +127,22 @@ export const api = {
       body: JSON.stringify({ ids, status }),
     }),
 
-  projects: () => req<ProjectListItem[]>("/api/v1/projects"),
+  projects: ((params?: { page?: number; perPage?: number; query?: string; statsPeriod?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.page) qs.set("page", String(params.page));
+    if (params?.perPage) qs.set("per_page", String(params.perPage));
+    if (params?.query) qs.set("query", params.query);
+    if (params?.statsPeriod) qs.set("stats_period", params.statsPeriod);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    // No params: legacy bare array for nav/pickers. With params: paginated envelope.
+    if (!params || Object.keys(params).every((k) => (params as Record<string, unknown>)[k] === undefined)) {
+      return req<ProjectListItem[]>(`/api/v1/projects${suffix}`);
+    }
+    return req<ProjectsPage>(`/api/v1/projects${suffix}`);
+  }) as {
+    (): Promise<ProjectListItem[]>;
+    (params: { page?: number; perPage?: number; query?: string; statsPeriod?: string }): Promise<ProjectsPage>;
+  },
   createProject: (input: {
     name: string;
     slug: string;
@@ -560,10 +575,30 @@ export interface IssueDetail {
   traceURL: string;
 }
 
+export interface ProjectListStats {
+  trend: number[];
+  events: { current: number; previous: number };
+  new_issues: { current: number; previous: number };
+  open_issues: number;
+  fatal_issues: number;
+  total_events: number;
+}
+
+export interface ProjectsPage {
+  items: ProjectListItem[];
+  total_count: number;
+  total_pages: number;
+  page: number;
+  per_page: number;
+}
+
 export interface ProjectListItem {
   id: number;
   name: string;
   slug: string;
+  platform?: string;
+  createdAt?: string;
+  stats?: ProjectListStats;
   defaultEnvironment: string;
   enabled: boolean;
   retentionDays: number;

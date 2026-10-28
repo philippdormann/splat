@@ -7,11 +7,13 @@
     class: className = "",
     children,
     onSelect,
+    variant = "default",
     ...rest
   }: {
     class?: string;
     children?: Snippet;
     onSelect?: () => void;
+    variant?: "default" | "destructive";
   } & Record<string, unknown> = $props();
 </script>
 
@@ -20,6 +22,7 @@
     "relative flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors",
     "hover:bg-muted focus:bg-muted data-[highlighted]:bg-muted",
     "[&_svg]:size-4 [&_svg]:shrink-0",
+    variant === "destructive" && "text-destructive hover:bg-destructive/10 focus:bg-destructive/10",
     className,
   )}
   {onSelect}
