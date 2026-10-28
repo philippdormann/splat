@@ -161,6 +161,8 @@ type User struct {
 	TOTPEnabled bool
 	Email       string
 	SSO         bool
+	LastLogin   string
+	IsPrimary   bool
 }
 
 // RoleOf returns the instance role for a user id ("admin"/"member").
@@ -185,31 +187,36 @@ func (s *Store) UsernameOf(userID int64) string {
 }
 
 func (s *Store) ListUsers() ([]User, error) {
-	rows, err := s.db.Query(`SELECT id, username, role, created_at, email, (sso_subject IS NOT NULL),
+	rows, err := s.db.Query(`SELECT id, username, role, created_at, email, last_login, (sso_subject IS NOT NULL),
 		EXISTS(SELECT 1 FROM user_totp WHERE user_id = users.id AND enabled) AS totp_enabled
 		FROM users ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+	// First user is the primary admin: cannot be demoted or deleted.
+	var primaryID int64
+	_ = s.db.QueryRow(`SELECT id FROM users ORDER BY id LIMIT 1`).Scan(&primaryID)
 	out := []User{}
 	for rows.Next() {
 		var u User
-		var email sql.NullString
+		var email, lastLogin sql.NullString
 		if s.db.IsPostgres() {
 			var sso, totp bool
-			if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt, &email, &sso, &totp); err != nil {
+			if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt, &email, &lastLogin, &sso, &totp); err != nil {
 				return nil, err
 			}
 			u.SSO, u.TOTPEnabled = sso, totp
 		} else {
 			var sso, enabled int
-			if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt, &email, &sso, &enabled); err != nil {
+			if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt, &email, &lastLogin, &sso, &enabled); err != nil {
 				return nil, err
 			}
 			u.SSO, u.TOTPEnabled = sso != 0, enabled != 0
 		}
 		u.Email = email.String
+		u.LastLogin = lastLogin.String
+		u.IsPrimary = primaryID != 0 && u.ID == primaryID
 		out = append(out, u)
 	}
 	return out, rows.Err()
@@ -267,7 +274,40 @@ func (s *Store) DeleteUser(id int64) error {
 	if count <= 1 {
 		return errors.New("cannot delete the last user")
 	}
+	// Primary account can never be deleted.
+	var primaryID int64
+	if err := s.db.QueryRow(`SELECT id FROM users ORDER BY id LIMIT 1`).Scan(&primaryID); err == nil && primaryID == id {
+		return errors.New("the primary admin cannot be deleted")
+	}
+	// Never delete the last remaining admin.
+	var role string
+	_ = s.db.QueryRow(`SELECT role FROM users WHERE id = ?`, id).Scan(&role)
+	if role == RoleAdmin {
+		var admins int
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE role = 'admin'`).Scan(&admins); err == nil && admins <= 1 {
+			return errors.New("cannot delete the last admin")
+		}
+	}
 	_, err := s.db.Exec(`DELETE FROM users WHERE id = ?`, id)
+	return err
+}
+
+func (s *Store) AdminCount() int {
+	var n int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE role = 'admin'`).Scan(&n)
+	return n
+}
+
+func (s *Store) PrimaryUserID() int64 {
+	var id int64
+	_ = s.db.QueryRow(`SELECT id FROM users ORDER BY id LIMIT 1`).Scan(&id)
+	return id
+}
+
+// TouchLastLogin stamps the login time for the team roster.
+func (s *Store) TouchLastLogin(id int64) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := s.db.Exec(`UPDATE users SET last_login = ? WHERE id = ?`, now, id)
 	return err
 }
 
@@ -275,17 +315,18 @@ func (s *Store) SetRole(id int64, role string) error {
 	if !validRole(role) {
 		return errors.New("role must be admin or member")
 	}
-	// Admins are never demoted: with no per-project roles, demotion only
-	// ever removes instance administration, which is destructive and
-	// irreversible for the affected account. Remove and recreate the user
-	// instead. (This also implies the last admin can never be demoted.)
-	if role != RoleAdmin {
+	// Primary account must stay admin.
+	if role != RoleAdmin && id == s.PrimaryUserID() {
+		return errors.New("the primary admin's role cannot be changed")
+	}
+	// Never demote the last remaining admin.
+	if role == RoleMember {
 		var current string
 		if err := s.db.QueryRow(`SELECT role FROM users WHERE id = ?`, id).Scan(&current); err != nil {
 			return err
 		}
-		if current == RoleAdmin {
-			return errors.New("admins cannot be demoted")
+		if current == RoleAdmin && s.AdminCount() <= 1 {
+			return errors.New("cannot demote the last admin")
 		}
 	}
 	_, err := s.db.Exec(`UPDATE users SET role = ? WHERE id = ?`, role, id)

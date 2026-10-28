@@ -79,8 +79,7 @@ func Body(a Alert) string {
 // Send delivers one alert email. To is the recipient (alert rules don't
 // carry recipients - the operator puts the on-call address in the SMTP
 // settings or per-rule config instead; see notifications).
-func Send(cfg Config, to string, a Alert) error {
-	if cfg.Host == "" {
+func Send(cfg Config, to string, a Alert) error {	if cfg.Host == "" {
 		return fmt.Errorf("SMTP host not configured")
 	}
 	if to == "" {
@@ -104,6 +103,79 @@ func Send(cfg Config, to string, a Alert) error {
 		"Content-Type: text/plain; charset=utf-8\r\n" +
 		"\r\n" + Body(a)
 
+	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(port))
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	conn, err := dialer.Dial("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("dial SMTP: %w", err)
+	}
+	c, err := smtp.NewClient(conn, cfg.Host)
+	if err != nil {
+		return fmt.Errorf("SMTP handshake: %w", err)
+	}
+	defer c.Close()
+	if cfg.UseTLS {
+		if ok, _ := c.Extension("STARTTLS"); ok {
+			if err := c.StartTLS(&tls.Config{ServerName: cfg.Host}); err != nil {
+				return fmt.Errorf("SMTP STARTTLS: %w", err)
+			}
+		}
+	}
+	if cfg.Username != "" {
+		auth := smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host)
+		if err := c.Auth(auth); err != nil {
+			return fmt.Errorf("SMTP auth: %w", err)
+		}
+	}
+	if err := c.Mail(from); err != nil {
+		return fmt.Errorf("SMTP MAIL: %w", err)
+	}
+	if err := c.Rcpt(to); err != nil {
+		return fmt.Errorf("SMTP RCPT: %w", err)
+	}
+	w, err := c.Data()
+	if err != nil {
+		return fmt.Errorf("SMTP DATA: %w", err)
+	}
+	if _, err := w.Write([]byte(msg)); err != nil {
+		return fmt.Errorf("SMTP write: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("SMTP send: %w", err)
+	}
+	return c.Quit()
+}
+
+// SendRaw delivers a plain-text message with a custom subject (invites,
+// not issue alerts). Reuses the same SMTP dial/TLS/auth path as Send.
+func SendRaw(cfg Config, to, subject, body string) error {
+	if cfg.Host == "" {
+		return fmt.Errorf("SMTP host not configured")
+	}
+	if to == "" {
+		return fmt.Errorf("no recipient address")
+	}
+	from := cfg.From
+	if from == "" {
+		from = cfg.Username
+	}
+	if from == "" {
+		return fmt.Errorf("no sender address (set From or Username)")
+	}
+	msg := "From: " + from + "\r\n" +
+		"To: " + to + "\r\n" +
+		"Subject: " + subject + "\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: text/plain; charset=utf-8\r\n" +
+		"\r\n" + body
+	return sendRaw(cfg, to, from, msg)
+}
+
+func sendRaw(cfg Config, to, from, msg string) error {
+	port := cfg.Port
+	if port <= 0 {
+		port = 587
+	}
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(port))
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	conn, err := dialer.Dial("tcp", addr)

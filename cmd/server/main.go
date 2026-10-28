@@ -20,6 +20,7 @@ import (
 	"github.com/philippdormann/splat/internal/database"
 	"github.com/philippdormann/splat/internal/events"
 	"github.com/philippdormann/splat/internal/httpserver"
+	"github.com/philippdormann/splat/internal/invites"
 	"github.com/philippdormann/splat/internal/issues"
 	"github.com/philippdormann/splat/internal/logs"
 	"github.com/philippdormann/splat/internal/metrics"
@@ -177,6 +178,7 @@ func main() {
 		Teams:         teams.NewStore(db),
 		Audit:         audit.NewStore(db),
 		Quotas:        quotaStore,
+		Invites:       invites.NewStore(db),
 		SSO:           ssoProvider,
 		Logs:          logs.NewStore(db),
 		Traces:        traces.NewStore(db),

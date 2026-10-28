@@ -19,6 +19,7 @@ import (
 	"github.com/philippdormann/splat/internal/database"
 	"github.com/philippdormann/splat/internal/events"
 	"github.com/philippdormann/splat/internal/ingestion"
+	"github.com/philippdormann/splat/internal/invites"
 	"github.com/philippdormann/splat/internal/issues"
 	"github.com/philippdormann/splat/internal/logs"
 	"github.com/philippdormann/splat/internal/metrics"
@@ -53,6 +54,7 @@ type Server struct {
 	Teams         *teams.Store
 	Audit         *audit.Store
 	Quotas        *quotas.Store
+	Invites       *invites.Store
 	SSO           *sso.Provider // nil disables single sign-on
 	Logs          *logs.Store
 	Traces        *traces.Store
@@ -250,6 +252,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/projects/{id}/quota", s.requireScope(s.apiProjectQuotaGet))
 	s.mux.HandleFunc("PUT /api/v1/projects/{id}/quota", s.requireAdmin(s.apiProjectQuotaSave))
 	s.mux.HandleFunc("DELETE /api/v1/projects/{id}/access/members/{userId}", s.requireAdmin(s.apiProjectRemoveMember))
+	s.mux.HandleFunc("GET /api/v1/invitations", s.requireAdmin(s.apiInvitationsList))
+	s.mux.HandleFunc("POST /api/v1/invitations", s.requireAdmin(s.apiInvitationsCreate))
+	s.mux.HandleFunc("DELETE /api/v1/invitations/{token}", s.requireAdmin(s.apiInvitationRevoke))
+	s.mux.HandleFunc("GET /api/v1/invite/{token}", s.apiInvitationGet)
+	s.mux.HandleFunc("POST /api/v1/invite/accept", s.apiInvitationAccept)
 
 	// Repository integration: config read needs project access, config
 	// write/test are admin-only (a forge token posts as its owner).
@@ -278,7 +285,7 @@ func (s *Server) routes() {
 		"GET /issues", "GET /issues/{id}",
 		"GET /projects", "GET /projects/new", "GET /projects/{id}",
 		"GET /projects/{id}/releases", "GET /projects/{id}/releases/{release}", "GET /projects/{id}/traces/{traceId}",
-		"GET /settings", "GET /security",
+		"GET /settings", "GET /security", "GET /invite/{token}",
 	} {
 		s.mux.HandleFunc(route, s.serveSPA)
 	}

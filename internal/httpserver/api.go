@@ -129,6 +129,7 @@ func (s *Server) apiLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	auth.SetSessionCookie(w, token, expires, s.CookieSecure)
 	s.auditAs(userID, s.Auth.UsernameOf(userID), clientIP(r), audit.Login, "user", strconv.FormatInt(userID, 10), `{"via":"password"}`)
+	_ = s.Auth.TouchLastLogin(userID)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
