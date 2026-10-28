@@ -101,7 +101,14 @@ type Client struct {
 }
 
 func NewClient() *Client {
-	return &Client{http: &http.Client{Timeout: 15 * time.Second}}
+	return &Client{http: &http.Client{
+		Timeout: 15 * time.Second,
+		// Refuse to follow redirects: a validated base URL could otherwise
+		// redirect into private/internal space (SSRF).
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}}
 }
 
 // CreatedIssue is what came back from the forge.

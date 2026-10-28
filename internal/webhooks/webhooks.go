@@ -21,7 +21,14 @@ type Client struct {
 }
 
 func NewClient() *Client {
-	return &Client{httpClient: &http.Client{Timeout: 10 * time.Second}}
+	return &Client{httpClient: &http.Client{
+		Timeout: 10 * time.Second,
+		// Refuse to follow redirects: a validated public URL could
+		// otherwise redirect into private/internal space (SSRF).
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}}
 }
 
 type Alert struct {
