@@ -13,6 +13,7 @@
   import { Copy, Check, CalendarClock, EyeOff, BellOff, Bell, Undo2, ExternalLink, TriangleAlert } from "lucide-svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import DateTime from "$lib/components/DateTime.svelte";
+  import { toast } from "svelte-sonner";
 
   export let id: string;
   export let navigate: (path: string) => void;
@@ -71,8 +72,9 @@
       const link = await api.createIssueLink(id, { title: fileTitle.trim(), body: fileBody });
       links = [...links, link];
       showFileIssue = false;
+      toast.success("External issue filed.");
     } catch (err) {
-      error = err instanceof Error ? err.message : "Failed to file issue.";
+      toast.error(err instanceof Error ? err.message : "Failed to file issue.");
     } finally {
       fileBusy = false;
     }
@@ -83,8 +85,9 @@
     try {
       await api.deleteIssueLink(id, confirmUnlink.id);
       links = links.filter((l) => l.id !== confirmUnlink?.id);
+      toast.success("External issue unlinked.");
     } catch (err) {
-      error = err instanceof Error ? err.message : "Failed to unlink issue.";
+      toast.error(err instanceof Error ? err.message : "Failed to unlink issue.");
     } finally {
       confirmUnlink = null;
     }
@@ -112,9 +115,10 @@
     try {
       await api.addIssueNote(id, noteBody.trim());
       noteBody = "";
+      toast.success("Note added.");
       await load();
     } catch (err) {
-      error = err instanceof Error ? err.message : "Failed to add note.";
+      toast.error(err instanceof Error ? err.message : "Failed to add note.");
     } finally {
       noteBusy = false;
     }
@@ -125,8 +129,9 @@
     try {
       await api.deleteIssueNote(id, confirmDeleteNote);
       data = { ...data, notes: data.notes.filter((n) => n.id !== confirmDeleteNote) };
+      toast.success("Note deleted.");
     } catch (err) {
-      error = err instanceof Error ? err.message : "Failed to delete note.";
+      toast.error(err instanceof Error ? err.message : "Failed to delete note.");
     } finally {
       confirmDeleteNote = null;
     }
@@ -134,6 +139,13 @@
 
   async function confirmAction() {
     if (!pendingAction) return;
+    const doneMessages: Record<string, string> = {
+      resolved: "Issue resolved.",
+      "resolved-next": "Resolved in next release.",
+      ignored: "Issue ignored.",
+      muted: "Issue muted.",
+      unresolved: "Issue reopened.",
+    };
     actionBusy = true;
     try {
       if (pendingAction === "muted") {
@@ -148,10 +160,11 @@
       } else {
         await api.setIssueStatus(id, pendingAction);
       }
+      toast.success(doneMessages[pendingAction]);
       pendingAction = null;
       await load();
     } catch (e) {
-      error = e instanceof Error ? e.message : "Failed to update issue.";
+      toast.error(e instanceof Error ? e.message : "Failed to update issue.");
       pendingAction = null;
     } finally {
       actionBusy = false;
