@@ -36,6 +36,7 @@
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import MeterBar from "$lib/components/MeterBar.svelte";
   import RelativeTime from "$lib/components/RelativeTime.svelte";
+  import { stashQueue } from "$lib/queue";
   import { toast } from "svelte-sonner";
 
   const ranges = [
@@ -128,6 +129,11 @@
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load dashboard.";
     }
+  }
+
+  function openIssue(id: number) {
+    if (data) stashQueue(data.recentIssues.map((i) => i.id));
+    navigate(`/issues/${id}`);
   }
 
   onMount(load);
@@ -405,7 +411,7 @@
             </Table.Header>
             <Table.Body>
               {#each data.recentIssues as i}
-                <Table.Row class="group cursor-pointer" onclick={() => navigate(`/issues/${i.id}`)}>
+                <Table.Row class="group cursor-pointer" onclick={() => openIssue(i.id)}>
                   <Table.Cell>
                     <span class="flex min-w-0 items-center gap-2">
                       <LevelBadge level={i.level} />

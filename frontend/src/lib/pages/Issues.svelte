@@ -4,6 +4,7 @@
   import { api, type IssuesData } from "$lib/api";
   import { loadPersisted, savePersisted, isString } from "$lib/persisted";
   import { queryParam, replaceQuery } from "$lib/urlquery";
+  import { stashQueue } from "$lib/queue";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
   import * as Empty from "$lib/components/ui/empty/index.js";
@@ -123,6 +124,7 @@
 
   function openIssue(id: number) {
     syncURL();
+    if (data) stashQueue(data.issues.map((i) => i.id));
     navigate(`/issues/${id}`);
   }
 

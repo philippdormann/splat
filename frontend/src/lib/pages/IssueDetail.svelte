@@ -14,6 +14,7 @@
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import DateTime from "$lib/components/DateTime.svelte";
   import { queryParam, replaceQuery } from "$lib/urlquery";
+  import { dropFromQueue, readQueue } from "$lib/queue";
   import { toast } from "svelte-sonner";
 
   export let id: string;
@@ -213,6 +214,33 @@
       : "";
   $: projectPath = data ? `/projects/${data.project.id}` : "";
 
+  // Triage queue stashed by the originating list (see lib/queue.ts).
+  // Absent for direct landings — Prev/Next then stay hidden.
+  let queue: number[] = readQueue();
+  $: queueIdx = queue.indexOf(Number(id));
+  $: prevQueueId = queueIdx > 0 ? queue[queueIdx - 1] : null;
+  $: nextQueueId = queueIdx >= 0 && queueIdx < queue.length - 1 ? queue[queueIdx + 1] : null;
+
+  async function resolveAndNext() {
+    actionBusy = true;
+    try {
+      await api.setIssueStatus(id, "resolved");
+      toast.success("Issue resolved.");
+      const next = nextQueueId;
+      dropFromQueue(Number(id));
+      queue = readQueue();
+      if (next !== null) navigate(`/issues/${next}`);
+      else {
+        toast.success("Queue clear.");
+        backToIssues();
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to resolve issue.");
+    } finally {
+      actionBusy = false;
+    }
+  }
+
   function backToIssues() {
     try {
       const last = sessionStorage.getItem("splat.issues.last");
@@ -262,6 +290,7 @@
       <div class="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="outline" title="Copy link to this issue" on:click={copyLink}><Copy class="h-3.5 w-3.5" /> Copy link</Button>
         <Button size="sm" variant="outline" class="border-green-600/50 text-green-700 hover:bg-green-50 dark:border-green-500/40 dark:text-green-400 dark:hover:bg-green-950" on:click={() => (pendingAction = "resolved")}><Check class="h-3.5 w-3.5" /> Resolve</Button>
+        {#if nextQueueId !== null}<Button size="sm" variant="outline" class="border-green-600/50 text-green-700 hover:bg-green-50 dark:border-green-500/40 dark:text-green-400 dark:hover:bg-green-950" disabled={actionBusy} title="Resolve and advance to the next issue in the list" on:click={resolveAndNext}><Check class="h-3.5 w-3.5" /> Resolve & next</Button>{/if}
         <Button size="sm" variant="outline" class="border-green-600/50 text-green-700 hover:bg-green-50 dark:border-green-500/40 dark:text-green-400 dark:hover:bg-green-950" title="Resolve, but reopen automatically if the bug appears in a different release" on:click={() => (pendingAction = "resolved-next")}><CalendarClock class="h-3.5 w-3.5" /> Resolve in next release</Button>
         <Button size="sm" variant="outline" class="text-muted-foreground" on:click={() => (pendingAction = "ignored")}><EyeOff class="h-3.5 w-3.5" /> Ignore</Button>
         {#if data.issue.status === "muted"}
@@ -533,6 +562,10 @@
       onCancel={() => (confirmUnlink = null)}
     />
 
-    <Button variant="ghost" size="sm" on:click={backToIssues}>← Back to issues</Button>
+    <div class="flex items-center gap-2">
+      {#if prevQueueId !== null}<Button variant="ghost" size="sm" on:click={() => navigate(`/issues/${prevQueueId}`)}>← Prev</Button>{/if}
+      <Button variant="ghost" size="sm" on:click={backToIssues}>← Back to issues</Button>
+      {#if nextQueueId !== null}<Button variant="ghost" size="sm" on:click={() => navigate(`/issues/${nextQueueId}`)}>Next →</Button>{/if}
+    </div>
   </div>
 {/if}
