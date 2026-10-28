@@ -14,6 +14,7 @@
   import DeleteProjectsDialog from "$lib/components/DeleteProjectsDialog.svelte";
   import TablePagination from "$lib/components/TablePagination.svelte";
   import { toast } from "svelte-sonner";
+  import { loadPersisted, savePersisted, isString } from "$lib/persisted";
   import { FolderOpen, Plus, Trash2, MoreVertical, Search, TriangleAlert, LoaderCircle, ArrowUpDown } from "lucide-svelte";
 
   export let navigate: (path: string) => void;
@@ -24,7 +25,8 @@
   let totalCount = 0;
   let totalPages = 1;
   let page = 1;
-  let query = "";
+  let query = loadPersisted<string>("splat.projects.query", "", isString);
+  $: savePersisted("splat.projects.query", query);
   let queryTimer: ReturnType<typeof setTimeout> | null = null;
   let loading = true;
   let error = "";
