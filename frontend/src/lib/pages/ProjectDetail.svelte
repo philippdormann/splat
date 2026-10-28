@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type ProjectDetail, type SourceMapMeta, type ProjectAccess, type User, type RepoConfig, type ProjectQuota } from "$lib/api";
+  import { api, type ProjectDetail, type SourceMapMeta, type ProjectAccess, type User, type RepoConfig, type ProjectQuota, type AlertRule, type AlertRuleInput, type Integration, type RoutingOverride } from "$lib/api";
   import * as CardUI from "$lib/components/ui/card/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
   import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
@@ -14,7 +14,7 @@
   import ProjectOverview from "$lib/pages/ProjectOverview.svelte";
   import ProjectLogs from "$lib/pages/ProjectLogs.svelte";
   import ProjectTraces from "$lib/pages/ProjectTraces.svelte";
-  import { ArrowLeft, Copy, RefreshCw, Trash2, Upload, Check, Rocket, FlaskConical, LayoutDashboard, Terminal, SlidersHorizontal, Users, ScrollText, Activity, GitBranch, TriangleAlert } from "lucide-svelte";
+  import { ArrowLeft, Copy, RefreshCw, Trash2, Upload, Check, Rocket, FlaskConical, LayoutDashboard, Terminal, SlidersHorizontal, Users, ScrollText, Activity, GitBranch, TriangleAlert, Bell } from "lucide-svelte";
 
   export let id: string;
   export let navigate: (path: string) => void;
@@ -42,6 +42,10 @@
   let repo: RepoConfig | null = null;
   let quota: ProjectQuota | null = null;
   let quotaForm = { hourly: "" as string, daily: "" as string, inheritHourly: true, inheritDaily: true };
+  let alertRules: AlertRule[] = [];
+  let allIntegrations: Integration[] = [];
+  let editingAlertRule: (AlertRuleInput & { id?: number }) | null = null;
+  let confirmDeleteAlertRule: number | null = null;
   let quotaBusy = false;
   let repoForm = { provider: "github", baseUrl: "", owner: "", repo: "", token: "" };
   let repoBusy = false;
@@ -51,6 +55,7 @@
     { id: "overview", label: "Overview", icon: LayoutDashboard },
     { id: "setup", label: "Setup", icon: Terminal },
     { id: "settings", label: "Settings", icon: SlidersHorizontal },
+    { id: "alerts", label: "Alerts", icon: Bell },
     { id: "sourcemaps", label: "Source maps", icon: Upload },
     { id: "logs", label: "Logs", icon: ScrollText },
     { id: "traces", label: "Traces", icon: Activity },
@@ -173,11 +178,75 @@
     }
   }
 
+  async function loadAlerts() {
+    try {
+      const [r, ints] = await Promise.all([api.rules(Number(id)), api.integrations()]);
+      alertRules = r;
+      allIntegrations = ints;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not load alert rules.");
+    }
+  }
+
+  function newAlertRule() {
+    editingAlertRule = { name: "", projectId: Number(id), environment: "", notifyNewIssue: true, notifyThreshold: 0, notifyReopened: true, cooldownSeconds: 300, integrations: [] };
+  }
+
+  function editAlertRule(r: AlertRule) {
+    editingAlertRule = { id: r.id, name: r.name, projectId: Number(id), environment: r.environment, notifyNewIssue: r.notifyNewIssue, notifyThreshold: r.notifyThreshold, notifyReopened: r.notifyReopened, cooldownSeconds: r.cooldownSeconds, integrations: (r.integrations ?? []).map((l) => ({ integrationId: l.integrationId, routingOverride: { ...(l.routingOverride ?? {}) } })) };
+  }
+
+  async function saveAlertRule(e: Event) {
+    e.preventDefault();
+    if (!editingAlertRule) return;
+    try {
+      const { id: rid, ...input } = editingAlertRule;
+      if (rid) await api.updateRule(rid, input);
+      else await api.createRule(input);
+      editingAlertRule = null;
+      await loadAlerts();
+      toast.success("Alert rule saved.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save alert rule.");
+    }
+  }
+
+  async function deleteAlertRule() {
+    if (confirmDeleteAlertRule === null) return;
+    try {
+      await api.deleteRule(confirmDeleteAlertRule);
+      await loadAlerts();
+      toast.success("Alert rule deleted.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Delete failed.");
+    } finally {
+      confirmDeleteAlertRule = null;
+    }
+  }
+
+  function toggleAlertIntegration(integrationId: number) {
+    if (!editingAlertRule) return;
+    const list = editingAlertRule.integrations ?? [];
+    if (list.some((l) => l.integrationId === integrationId)) {
+      editingAlertRule.integrations = list.filter((l) => l.integrationId !== integrationId);
+    } else {
+      editingAlertRule.integrations = [...list, { integrationId, routingOverride: {} }];
+    }
+  }
+
+  function alertOverride(integrationId: number): RoutingOverride {
+    const l = (editingAlertRule?.integrations ?? []).find((x) => x.integrationId === integrationId);
+    if (!l) return {};
+    if (!l.routingOverride) l.routingOverride = {};
+    return l.routingOverride;
+  }
+
   async function load() {
     try {
       data = await api.project(id);
       maps = await api.sourceMaps(id);
       await loadAccess();
+      await loadAlerts();
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load project.";
     }
@@ -469,6 +538,79 @@
       </CardUI.Content>
     </CardUI.Root>
     {/if}
+        {:else if ptab === "alerts"}
+    <CardUI.Root class="gap-0">
+      <CardUI.Header class="flex-row items-start justify-between gap-2">
+        <div>
+          <CardUI.Title>Alerts</CardUI.Title>
+          <CardUI.Description>Rules for this project. Link integrations created under Settings → Notifications; overrides route e.g. to a different chat per project.</CardUI.Description>
+        </div>
+        <Button size="sm" variant="outline" class="shrink-0" on:click={newAlertRule}>New rule</Button>
+      </CardUI.Header>
+      <CardUI.Content>
+      <div class="space-y-3">
+        {#if alertRules.length === 0}
+          <p class="text-xs text-muted-foreground">No rules for this project yet — nothing will alert. New projects get a default silent rule; link an integration to activate it.</p>
+        {:else}
+          <div class="divide-y divide-border rounded-md border border-border">
+            {#each alertRules as r}
+              <div class="flex flex-wrap items-center justify-between gap-2 p-2 text-xs">
+                <span>
+                  <span class="font-medium">{r.name || "(unnamed rule)"}</span>
+                  <span class="text-muted-foreground">{r.environment ? ` · ${r.environment}` : ""} · cooldown {r.cooldownSeconds}s</span>
+                  <span class="block text-muted-foreground">→ {(r.integrations?.length ? r.integrations.map((l) => l.integrationName || `integration ${l.integrationId}`) : ["no destinations"]).join(", ")}</span>
+                </span>
+                <span class="flex gap-2">
+                  <Button size="sm" variant="outline" on:click={() => editAlertRule(r)}>Edit</Button>
+                  <Button size="sm" variant="outline" on:click={() => (confirmDeleteAlertRule = r.id)}>Delete</Button>
+                </span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+        {#if allIntegrations.length === 0}
+          <p class="text-xs text-muted-foreground">No integrations yet — create one under Settings → Notifications first.</p>
+        {/if}
+        {#if editingAlertRule}
+          <Dialog open={true} title={editingAlertRule.id ? "Edit alert rule" : "New alert rule"} onClose={() => (editingAlertRule = null)}>
+            <form on:submit={saveAlertRule} class="space-y-3">
+              <div class="grid grid-cols-2 gap-3">
+                <div class="space-y-1"><label class="text-xs">Name</label><Input bind:value={editingAlertRule.name} placeholder="Production alerts" /></div>
+                <div class="space-y-1"><label class="text-xs">Environment (blank = all)</label><Input bind:value={editingAlertRule.environment} placeholder="production" /></div>
+                <div class="space-y-1"><label class="text-xs">Cooldown (seconds)</label><Input type="number" bind:value={editingAlertRule.cooldownSeconds} /></div>
+                <div class="space-y-1"><label class="text-xs">Alert at event count (0 = off)</label><Input type="number" bind:value={editingAlertRule.notifyThreshold} /></div>
+              </div>
+              <div class="flex gap-4 text-sm">
+                <label class="flex items-center gap-2"><input type="checkbox" bind:checked={editingAlertRule.notifyNewIssue} /> New issues</label>
+                <label class="flex items-center gap-2"><input type="checkbox" bind:checked={editingAlertRule.notifyReopened} /> Reopened</label>
+              </div>
+              <div class="space-y-2">
+                <p class="text-xs">Integrations</p>
+                {#each allIntegrations as i}
+                  <label class="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={(editingAlertRule.integrations ?? []).some((l) => l.integrationId === i.id)} on:change={() => toggleAlertIntegration(i.id)} />
+                    <span class="font-medium">{i.name}</span><span class="text-muted-foreground">· {i.provider}</span>
+                  </label>
+                {/each}
+              </div>
+              <div class="flex gap-2">
+                <Button type="submit" size="sm">Save rule</Button>
+                <Button size="sm" variant="outline" on:click={() => (editingAlertRule = null)}>Cancel</Button>
+              </div>
+            </form>
+          </Dialog>
+        {/if}
+        <ConfirmDialog
+          open={confirmDeleteAlertRule !== null}
+          title="Delete this alert rule?"
+          description="Matching events will stop notifying."
+          confirmLabel="Delete"
+          onConfirm={deleteAlertRule}
+          onCancel={() => (confirmDeleteAlertRule = null)}
+        />
+      </div>
+      </CardUI.Content>
+    </CardUI.Root>
         {:else if ptab === "sourcemaps"}
     <CardUI.Root class="gap-0">
       <CardUI.Header>

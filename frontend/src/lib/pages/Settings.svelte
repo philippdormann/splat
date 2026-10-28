@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput, type APIKey, type GenericWebhook, type User, type Team, type SecurityPolicy, type AuditLogEntry, type QuotaDefaults, type SSOSettings } from "$lib/api";
+  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput, type APIKey, type Integration, type IntegrationInput, type RoutingOverride, type User, type Team, type SecurityPolicy, type AuditLogEntry, type QuotaDefaults, type SSOSettings } from "$lib/api";
   import * as CardUI from "$lib/components/ui/card/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
   import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
@@ -24,15 +24,14 @@
 
   let data: SettingsData | null = null;
   let error = "";
-  let telegram = { botToken: "", chatId: "", enabled: false };
-  let webhooks: Record<string, { url: string; enabled: boolean }> = {};
+  let integrations: Integration[] = [];
+  let editingIntegration: { id?: number; name: string; provider: string; enabled: boolean; creds: Record<string, any> } | null = null;
   let traceURL = "";
   let storage: StorageUsage | null = null;
   let storageBusy = "";
   let rules: AlertRule[] = [];
   let projects: { id: number; name: string }[] = [];
   let editingRule: (AlertRuleInput & { id?: number }) | null = null;
-  let smtp = { host: "", port: 587, username: "", password: "", from: "", to: "", useTLS: true, enabled: false };
   let keys: APIKey[] = [];
   let newKey = { name: "", projectId: null as number | null, scopes: ["read"] as string[], expiresAt: "" };
   let freshSecret = "";
@@ -79,90 +78,68 @@
     return users.find((u) => u.id === id)?.username ?? `User ${id}`;
   }
 
-  const channels = ["slack", "discord", "teams", "sheets"];
-  const allChannels = ["telegram", "slack", "discord", "teams", "sheets", "email", "generic"];
   const allScopes = ["ingest", "read", "write"];
+  const providers = ["telegram", "slack", "discord", "teams", "sheets", "smtp", "generic"];
 
-  let channelDialog: string | null = null;
-
-  function closeChannelDialog() {
-    channelDialog = null;
-  }
-
-  function telegramStatus(): string {
-    if (!data) return "";
-    if (data.telegram.enabled) return data.telegram.chatId ? `Chat ${data.telegram.chatId}` : "Enabled";
-    return data.botTokenMasked ? "Configured, disabled" : "Not configured yet";
-  }
-
-  function webhookStatus(c: string): string {
-    if (!data) return "";
-    const w = data.webhooks[c];
-    if (w?.enabled) return w.urlMasked || "Enabled";
-    return w?.urlMasked ? "Configured, disabled" : "Not configured yet";
-  }
-
-  function smtpStatus(): string {
-    if (!data) return "";
-    if (data.smtp.enabled) return data.smtp.host || "Enabled";
-    return data.smtp.host ? "Configured, disabled" : "Not configured yet";
-  }
-
-  let generic: GenericWebhook[] = [];
-  let editingHook: { id?: number; name: string; url: string; secret: string; headersText: string; enabled: boolean } | null = null;
-
-  function headersToText(h: Record<string, string>): string {
-    return Object.entries(h ?? {}).map(([k, v]) => `${k}: ${v}`).join("\n");
-  }
-
-  function textToHeaders(t: string): Record<string, string> {
-    const out: Record<string, string> = {};
-    for (const line of t.split("\n")) {
-      const i = line.indexOf(":");
-      if (i < 0) continue;
-      const k = line.slice(0, i).trim();
-      const v = line.slice(i + 1).trim();
-      if (k && v) out[k] = v;
+  function credSummary(i: Integration): string {
+    const c = (i.credentials ?? {}) as Record<string, any>;
+    switch (i.provider) {
+      case "telegram": return String(c.default_chat_id ?? "");
+      case "slack": case "discord": case "teams": case "sheets": case "generic": return String(c.url ?? "");
+      case "smtp": return String(c.host ?? "");
+      default: return "";
     }
-    return out;
   }
 
-  function newHook() {
-    editingHook = { name: "", url: "", secret: "", headersText: "", enabled: true };
+  function newIntegration() {
+    editingIntegration = { name: "", provider: "telegram", enabled: true, creds: {} };
   }
 
-  function editHook(h: GenericWebhook) {
-    editingHook = { id: h.id, name: h.name, url: h.url, secret: "", headersText: headersToText(h.headers), enabled: h.enabled };
+  function editIntegration(i: Integration) {
+    editingIntegration = { id: i.id, name: i.name, provider: i.provider, enabled: i.enabled, creds: { ...((i.credentials ?? {}) as Record<string, any>) } };
   }
 
-  async function saveHook(e: Event) {
+  async function saveIntegration(e: Event) {
     e.preventDefault();
-    if (!editingHook) return;
-    const input = { name: editingHook.name, url: editingHook.url, secret: editingHook.secret, headers: textToHeaders(editingHook.headersText), enabled: editingHook.enabled };
-    if (editingHook.id) {
-      await api.updateGenericWebhook(editingHook.id, input);
-      toast.success("Generic webhook updated.");
-    } else {
-      await api.createGenericWebhook(input);
-      toast.success("Generic webhook created.");
+    if (!editingIntegration) return;
+    const input: IntegrationInput = { name: editingIntegration.name, provider: editingIntegration.provider, enabled: editingIntegration.enabled, credentials: editingIntegration.creds };
+    try {
+      if (editingIntegration.id) {
+        await api.updateIntegration(editingIntegration.id, input);
+        toast.success("Integration updated.");
+      } else {
+        await api.createIntegration(input);
+        toast.success("Integration created.");
+      }
+      editingIntegration = null;
+      integrations = await api.integrations();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save integration.");
     }
-    editingHook = null;
-    generic = await api.genericWebhooks();
-    data = await api.settings();
   }
 
-  async function deleteHook(id: number) {
+  async function deleteIntegration(id: number) {
     confirmBox = {
-      title: "Delete this generic webhook?",
-      description: "Alert rules routing to the generic channel will skip the deleted endpoint.",
+      title: "Delete this integration?",
+      description: "Rules linked to it will skip the deleted destination.",
       label: "Delete",
       run: async () => {
-        await api.deleteGenericWebhook(id);
-        generic = await api.genericWebhooks();
-        data = await api.settings();
-        toast.success("Generic webhook deleted.");
+        await api.deleteIntegration(id);
+        integrations = await api.integrations();
+        rules = await api.rules();
+        toast.success("Integration deleted.");
       },
     };
+  }
+
+  async function testIntegration(id: number, override?: RoutingOverride) {
+    try {
+      const r = await api.testIntegration(id, override);
+      if (r.ok) toast.success(r.message);
+      else toast.error(r.message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Test failed.");
+    }
   }
 
   function formatBytes(n: number): string {
@@ -219,15 +196,12 @@
   onMount(async () => {
     try {
       data = await api.settings();
-      telegram = { botToken: "", chatId: data.telegram.chatId, enabled: data.telegram.enabled };
-      for (const c of channels) webhooks[c] = { url: "", enabled: data.webhooks[c]?.enabled ?? false };
       traceURL = data.traceURLTemplate;
-      smtp = { host: data.smtp.host, port: data.smtp.port || 587, username: data.smtp.username, password: "", from: data.smtp.from, to: data.smtp.to, useTLS: data.smtp.useTLS, enabled: data.smtp.enabled };
       await loadStorage();
+      integrations = await api.integrations();
       rules = await api.rules();
       projects = await api.projects();
       keys = await api.apiKeys();
-      generic = data.genericWebhooks ?? [];
       try {
         users = await api.users();
         teams = await api.teams();
@@ -243,20 +217,6 @@
     }
   });
 
-  async function saveTelegram(e: Event) {
-    e.preventDefault();
-    data = await api.saveTelegram(telegram);
-    channelDialog = null;
-    toast.success("Telegram settings saved.");
-  }
-
-  async function saveWebhook(e: Event, channel: string) {
-    e.preventDefault();
-    data = await api.saveWebhook(channel, webhooks[channel]);
-    channelDialog = null;
-    toast.success(`${channel} settings saved.`);
-  }
-
   async function saveTracing(e: Event) {
     e.preventDefault();
     data = await api.saveTracing(traceURL);
@@ -268,33 +228,53 @@
     return projects.find((p) => p.id === pid)?.name ?? `Project ${pid}`;
   }
 
+  function ruleLinkLabel(l: { integrationId: number; integrationName?: string; provider?: string }): string {
+    return l.integrationName ? `${l.integrationName} (${l.provider})` : `integration ${l.integrationId}`;
+  }
+
+  function getOverride(id: number, field: string): string {
+    const o = ruleOverride(id) as unknown as Record<string, unknown>;
+    const v = o[field];
+    return typeof v === "string" ? v : "";
+  }
+
+  function setOverride(id: number, field: string, value: string) {
+    const o = ruleOverride(id) as unknown as Record<string, unknown>;
+    o[field] = value;
+  }
+
   function newRule() {
-    editingRule = { name: "", projectId: null, environment: "", notifyNewIssue: true, notifyThreshold: 0, notifyReopened: true, cooldownSeconds: 300, channels: [] };
+    editingRule = { name: "", projectId: null, environment: "", notifyNewIssue: true, notifyThreshold: 0, notifyReopened: true, cooldownSeconds: 300, integrations: [] };
   }
 
   function editRule(r: AlertRule) {
-    editingRule = { id: r.id, name: r.name, projectId: r.projectId, environment: r.environment, notifyNewIssue: r.notifyNewIssue, notifyThreshold: r.notifyThreshold, notifyReopened: r.notifyReopened, cooldownSeconds: r.cooldownSeconds, channels: [...(r.channels ?? [])] };
+    editingRule = { id: r.id, name: r.name, projectId: r.projectId, environment: r.environment, notifyNewIssue: r.notifyNewIssue, notifyThreshold: r.notifyThreshold, notifyReopened: r.notifyReopened, cooldownSeconds: r.cooldownSeconds, integrations: (r.integrations ?? []).map((l) => ({ integrationId: l.integrationId, routingOverride: { ...(l.routingOverride ?? {}) } })) };
   }
 
   async function saveRule(e: Event) {
     e.preventDefault();
     if (!editingRule) return;
-    const { id, ...input } = editingRule;
-    if (id) {
-      await api.updateRule(id, input);
-      toast.success("Rule updated.");
-    } else {
-      await api.createRule(input);
-      toast.success("Rule created.");
+    normalizeIntegrations();
+    try {
+      const { id, ...input } = editingRule;
+      if (id) {
+        await api.updateRule(id, input);
+        toast.success("Rule updated.");
+      } else {
+        await api.createRule(input);
+        toast.success("Rule created.");
+      }
+      editingRule = null;
+      rules = await api.rules();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save rule.");
     }
-    editingRule = null;
-    rules = await api.rules();
   }
 
   async function deleteRule(id: number) {
     confirmBox = {
       title: "Delete this alert rule?",
-      description: "Matching events will stop notifying on the rule's channels.",
+      description: "Matching events will stop notifying on the rule's integrations.",
       label: "Delete",
       run: async () => {
         await api.deleteRule(id);
@@ -304,17 +284,42 @@
     };
   }
 
-  function toggleRuleChannel(channel: string) {
+  function toggleRuleIntegration(id: number) {
     if (!editingRule) return;
-    const list = editingRule.channels ?? [];
-    editingRule.channels = list.includes(channel) ? list.filter((c) => c !== channel) : [...list, channel];
+    const list = editingRule.integrations ?? [];
+    if (list.some((l) => l.integrationId === id)) {
+      editingRule.integrations = list.filter((l) => l.integrationId !== id);
+    } else {
+      editingRule.integrations = [...list, { integrationId: id, routingOverride: {} }];
+    }
   }
 
-  async function saveSMTP(e: Event) {
-    e.preventDefault();
-    data = await api.saveSMTP(smtp);
-    channelDialog = null;
-    toast.success("SMTP settings saved.");
+  function ruleOverride(id: number): RoutingOverride {
+    const l = (editingRule?.integrations ?? []).find((x) => x.integrationId === id);
+    if (!l) return {};
+    if (!l.routingOverride) l.routingOverride = {};
+    return l.routingOverride;
+  }
+
+  function toString(id: number): string {
+    const v = ruleOverride(id).to;
+    return Array.isArray(v) ? v.join(", ") : (v ?? "");
+  }
+
+  function setToString(id: number, s: string) {
+    const o = ruleOverride(id);
+    o.to = s.split(",").map((x) => x.trim()).filter(Boolean);
+  }
+
+  // Normalize UI string inputs into API shape before save (smtp to may come back as string).
+  function normalizeIntegrations() {
+    if (!editingRule?.integrations) return;
+    for (const l of editingRule.integrations) {
+      const o = l.routingOverride as unknown as Record<string, unknown>;
+      if (typeof o.to === "string") {
+        o.to = (o.to as string).split(",").map((x: string) => x.trim()).filter(Boolean);
+      }
+    }
   }
 
   function toggleScope(scope: string) {
@@ -689,144 +694,83 @@
 
         {:else if tab === "notifications"}
     <CardUI.Root class="gap-0">
-      <CardUI.Header>
-        <CardUI.Title>Notifications</CardUI.Title>
-        <CardUI.Description>Each destination is configured separately. Alert rules decide which events go where.</CardUI.Description>
+      <CardUI.Header class="flex-row items-start justify-between gap-2">
+        <div>
+          <CardUI.Title>Integrations</CardUI.Title>
+          <CardUI.Description>Named destinations. Create e.g. one Telegram integration per project/channel, then link them in alert rules.</CardUI.Description>
+        </div>
+        <Button size="sm" variant="outline" class="shrink-0" on:click={newIntegration}>New integration</Button>
       </CardUI.Header>
       <CardUI.Content>
-      <div class="divide-y divide-border rounded-md border border-border">
-        <div class="flex items-center justify-between gap-2 p-3">
-          <div class="min-w-0">
-            <p class="text-sm font-medium">Telegram {#if data.telegram.enabled}<span class="text-xs text-green-600">(enabled)</span>{/if}</p>
-            <p class="truncate font-mono text-xs text-muted-foreground">{telegramStatus()}</p>
-          </div>
-          <Button size="sm" variant="outline" on:click={() => (channelDialog = "telegram")}>Configure</Button>
-        </div>
-        {#each channels as c}
-          <div class="flex items-center justify-between gap-2 p-3">
-            <div class="min-w-0">
-              <p class="text-sm font-medium capitalize">{c} {#if data.webhooks[c]?.enabled}<span class="text-xs text-green-600">(enabled)</span>{/if}</p>
-              <p class="truncate font-mono text-xs text-muted-foreground">{webhookStatus(c)}</p>
-            </div>
-            <Button size="sm" variant="outline" on:click={() => (channelDialog = c)}>Configure</Button>
-          </div>
-        {/each}
-        <div class="flex items-center justify-between gap-2 p-3">
-          <div class="min-w-0">
-            <p class="text-sm font-medium">Email (SMTP) {#if data.smtp.enabled}<span class="text-xs text-green-600">(enabled)</span>{/if}</p>
-            <p class="truncate font-mono text-xs text-muted-foreground">{smtpStatus()}</p>
-          </div>
-          <Button size="sm" variant="outline" on:click={() => (channelDialog = "smtp")}>Configure</Button>
-        </div>
-        <div class="flex items-center justify-between gap-2 p-3">
-          <div class="min-w-0">
-            <p class="text-sm font-medium">Generic webhooks</p>
-            <p class="truncate font-mono text-xs text-muted-foreground">{generic.length === 0 ? "None yet" : `${generic.length} webhook${generic.length === 1 ? "" : "s"}`}</p>
-          </div>
-          <Button size="sm" variant="outline" on:click={() => (channelDialog = "generic")}>Configure</Button>
-        </div>
-      </CardUI.Content>
-    </CardUI.Root>
-
-    <Dialog open={channelDialog === "telegram"} title="Configure Telegram" onClose={closeChannelDialog}>
-      <form on:submit={saveTelegram} class="space-y-3">
-        <p class="font-mono text-xs text-muted-foreground">Token: {data.botTokenMasked || "(not set)"}</p>
-        <div class="space-y-1"><label class="text-xs">Bot token</label><Input type="password" bind:value={telegram.botToken} placeholder="leave blank to keep" /></div>
-        <div class="space-y-1"><label class="text-xs">Chat ID</label><Input bind:value={telegram.chatId} /></div>
-        <label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={telegram.enabled} /> Enabled</label>
-        <div class="flex gap-2">
-          <Button type="submit" size="sm">Save</Button>
-          <Button size="sm" variant="outline" on:click={async () => { const r = await api.testTelegram(); (r.ok ? toast.success(r.message) : toast.error(r.message)); }}>Send test</Button>
-        </div>
-      </form>
-    </Dialog>
-
-    {#each channels as c}
-      {#if channelDialog === c}
-        <Dialog open={true} title={`Configure ${c}`} onClose={closeChannelDialog}>
-          <form on:submit={(e) => saveWebhook(e, c)} class="space-y-3">
-            <p class="font-mono text-xs text-muted-foreground">URL: {data.webhooks[c]?.urlMasked || "(not set)"}</p>
-            <div class="space-y-1"><label class="text-xs">Webhook URL</label><Input bind:value={webhooks[c].url} placeholder="leave blank to keep" /></div>
-            <label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={webhooks[c].enabled} /> Enabled</label>
-            <div class="flex gap-2">
-              <Button type="submit" size="sm">Save</Button>
-              <Button size="sm" variant="outline" on:click={async () => { const r = await api.testWebhook(c); (r.ok ? toast.success(r.message) : toast.error(r.message)); }}>Send test</Button>
-            </div>
-          </form>
-        </Dialog>
-      {/if}
-    {/each}
-
-    <Dialog open={channelDialog === "smtp"} title="Configure Email (SMTP)" onClose={closeChannelDialog}>
-      <form on:submit={saveSMTP} class="space-y-3">
-        <p class="font-mono text-xs text-muted-foreground">Password: {data.smtp.passwordMasked || "(not set)"}</p>
-        <div class="grid grid-cols-2 gap-3">
-          <div class="space-y-1"><label class="text-xs">Host</label><Input bind:value={smtp.host} placeholder="smtp.example.com" /></div>
-          <div class="space-y-1"><label class="text-xs">Port</label><Input type="number" bind:value={smtp.port} /></div>
-          <div class="space-y-1"><label class="text-xs">Username</label><Input bind:value={smtp.username} /></div>
-          <div class="space-y-1"><label class="text-xs">Password</label><Input type="password" bind:value={smtp.password} placeholder="leave blank to keep" /></div>
-          <div class="space-y-1"><label class="text-xs">From address</label><Input bind:value={smtp.from} placeholder="splat@example.com" /></div>
-          <div class="space-y-1"><label class="text-xs">To address (on-call)</label><Input bind:value={smtp.to} placeholder="oncall@example.com" /></div>
-        </div>
-        <div class="flex gap-4 text-sm">
-          <label class="flex items-center gap-2"><input type="checkbox" bind:checked={smtp.useTLS} /> STARTTLS</label>
-          <label class="flex items-center gap-2"><input type="checkbox" bind:checked={smtp.enabled} /> Enabled</label>
-        </div>
-        <div class="flex gap-2">
-          <Button type="submit" size="sm">Save</Button>
-          <Button size="sm" variant="outline" on:click={async () => { const r = await api.testSMTP(); (r.ok ? toast.success(r.message) : toast.error(r.message)); }}>Send test</Button>
-        </div>
-      </form>
-    </Dialog>
-
-    <Dialog open={channelDialog === "generic"} title="Generic webhooks" onClose={closeChannelDialog}>
       <div class="space-y-3">
-        <p class="text-xs text-muted-foreground">Any HTTPS endpoint receives the JSON alert payload. With a secret set, each delivery carries <span class="font-mono">X-Splat-Signature: sha256=&lt;hmac&gt;</span> over the body. Select the <span class="font-mono">generic</span> channel in alert rules to route here.</p>
-        {#if generic.length === 0 && !editingHook}
-          <p class="text-xs text-muted-foreground">No generic webhooks yet.</p>
+        {#if integrations.length === 0}
+          <p class="text-xs text-muted-foreground">No integrations yet — create one to start alerting.</p>
         {:else}
           <div class="divide-y divide-border rounded-md border border-border">
-            {#each generic as h}
+            {#each integrations as i}
               <div class="flex flex-wrap items-center justify-between gap-2 p-2 text-xs">
                 <span>
-                  <span class="font-medium">{h.name || "(unnamed)"}</span>
-                  {#if h.enabled}<span class="text-green-600"> (enabled)</span>{/if}
-                  <span class="block font-mono text-muted-foreground">{h.url}{h.hasSecret ? " · signed" : ""}</span>
+                  <span class="font-medium">{i.name || "(unnamed)"}</span>
+                  <span class="text-muted-foreground"> · {i.provider}</span>
+                  {#if i.enabled}<span class="text-green-600"> · enabled</span>{:else}<span class="text-muted-foreground"> · disabled</span>{/if}
+                  {#if i.failureCount > 0}<span class="text-destructive"> · {i.failureCount} failures</span>{/if}
+                  <span class="block font-mono text-muted-foreground">{credSummary(i)}</span>
                 </span>
                 <span class="flex gap-2">
-                  <Button size="sm" variant="outline" on:click={() => editHook(h)}>Edit</Button>
-                  <Button size="sm" variant="outline" on:click={async () => { const r = await api.testGenericWebhook(h.id); (r.ok ? toast.success(r.message) : toast.error(r.message)); }}>Send test</Button>
-                  <Button size="sm" variant="outline" on:click={() => deleteHook(h.id)}>Delete</Button>
+                  <Button size="sm" variant="outline" on:click={() => editIntegration(i)}>Edit</Button>
+                  <Button size="sm" variant="outline" on:click={() => testIntegration(i.id)}>Send test</Button>
+                  <Button size="sm" variant="outline" on:click={() => deleteIntegration(i.id)}>Delete</Button>
                 </span>
               </div>
             {/each}
           </div>
         {/if}
-        {#if editingHook}
-          <form on:submit={saveHook} class="space-y-3 rounded-md border border-border p-3">
-            <div class="grid grid-cols-2 gap-3">
-              <div class="space-y-1"><label class="text-xs">Name</label><Input bind:value={editingHook.name} placeholder="Ops endpoint" /></div>
-              <div class="space-y-1"><label class="text-xs">URL</label><Input bind:value={editingHook.url} placeholder="https://ops.example.com/hook" /></div>
-              <div class="space-y-1"><label class="text-xs">Secret (blank = keep/unsigned)</label><Input type="password" bind:value={editingHook.secret} placeholder="leave blank to keep" /></div>
-              <div class="space-y-1"><label class="text-xs">Extra headers (one "Name: value" per line)</label><textarea rows="3" bind:value={editingHook.headersText} placeholder={"Authorization: Bearer …\nX-Team: ops"} class="flex w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" /></div>
-            </div>
-            <label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={editingHook.enabled} /> Enabled</label>
-            <div class="flex gap-2">
-              <Button type="submit" size="sm">Save webhook</Button>
-              <Button size="sm" variant="outline" on:click={() => (editingHook = null)}>Cancel</Button>
-            </div>
-          </form>
-        {:else}
-          <Button size="sm" variant="outline" on:click={newHook}>New webhook</Button>
+        {#if editingIntegration}
+          <Dialog open={true} title={editingIntegration.id ? "Edit integration" : "New integration"} onClose={() => (editingIntegration = null)}>
+            <form on:submit={saveIntegration} class="space-y-3">
+              <div class="grid grid-cols-2 gap-3">
+                <div class="space-y-1"><label class="text-xs">Name</label><Input bind:value={editingIntegration.name} placeholder="Team A Telegram" /></div>
+                <div class="space-y-1"><label class="text-xs">Provider</label>
+                  <select class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={editingIntegration.provider}>
+                    {#each providers as pv}<option value={pv}>{pv}</option>{/each}
+                  </select>
+                </div>
+              </div>
+              {#if editingIntegration.provider === "telegram"}
+                <div class="space-y-1"><label class="text-xs">Bot token (blank keeps stored)</label><Input type="password" bind:value={editingIntegration.creds.bot_token} placeholder="leave blank to keep" /></div>
+                <div class="space-y-1"><label class="text-xs">Default chat ID</label><Input bind:value={editingIntegration.creds.default_chat_id} placeholder="-100123…" /></div>
+              {:else if editingIntegration.provider === "smtp"}
+                <div class="grid grid-cols-2 gap-3">
+                  <div class="space-y-1"><label class="text-xs">Host</label><Input bind:value={editingIntegration.creds.host} placeholder="smtp.example.com" /></div>
+                  <div class="space-y-1"><label class="text-xs">Port</label><Input type="number" bind:value={editingIntegration.creds.port} /></div>
+                  <div class="space-y-1"><label class="text-xs">Username</label><Input bind:value={editingIntegration.creds.username} /></div>
+                  <div class="space-y-1"><label class="text-xs">Password (blank keeps)</label><Input type="password" bind:value={editingIntegration.creds.password} placeholder="leave blank to keep" /></div>
+                  <div class="space-y-1"><label class="text-xs">From address</label><Input bind:value={editingIntegration.creds.from} placeholder="splat@example.com" /></div>
+                </div>
+              {:else if editingIntegration.provider === "generic"}
+                <div class="space-y-1"><label class="text-xs">URL</label><Input bind:value={editingIntegration.creds.url} placeholder="https://ops.example.com/hook" /></div>
+                <div class="space-y-1"><label class="text-xs">Secret (blank keeps/unsigned)</label><Input type="password" bind:value={editingIntegration.creds.secret} placeholder="leave blank to keep" /></div>
+                <p class="text-xs text-muted-foreground">Custom headers can be set per rule via extra_headers.</p>
+              {:else}
+                <div class="space-y-1"><label class="text-xs">Webhook URL</label><Input bind:value={editingIntegration.creds.url} placeholder="https://…" /></div>
+              {/if}
+              <label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={editingIntegration.enabled} /> Enabled</label>
+              <div class="flex gap-2">
+                <Button type="submit" size="sm">Save integration</Button>
+                <Button size="sm" variant="outline" on:click={() => (editingIntegration = null)}>Cancel</Button>
+              </div>
+            </form>
+          </Dialog>
         {/if}
       </div>
-    </Dialog>
+      </CardUI.Content>
+    </CardUI.Root>
         {:else if tab === "rules"}
     <CardUI.Root class="gap-0">
       <CardUI.Header class="flex-row items-start justify-between gap-2">
         <div>
           <CardUI.Title>Alert rules</CardUI.Title>
-          <CardUI.Description>Rules decide which events alert and where. A rule with no channels uses every enabled channel; picking channels routes e.g. production to email and staging to chat.</CardUI.Description>
+          <CardUI.Description>Rules decide which events alert and where. Link one or more integrations per rule; each link can override the destination.</CardUI.Description>
         </div>
         <Button size="sm" variant="outline" class="shrink-0" on:click={newRule}>New rule</Button>
       </CardUI.Header>
@@ -843,7 +787,7 @@
                   <span class="text-muted-foreground"> · {projectName(r.projectId)}{r.environment ? ` · ${r.environment}` : ""} · cooldown {r.cooldownSeconds}s</span>
                   <span class="block text-muted-foreground">
                     {#if r.notifyNewIssue}new{/if}{#if r.notifyReopened}{r.notifyNewIssue ? " · " : ""}reopened{/if}{#if r.notifyThreshold > 0} · ≥{r.notifyThreshold} events{/if}
-                    · → {(r.channels?.length ? r.channels : ["all enabled"]).join(", ")}
+                    · → {(r.integrations?.length ? r.integrations.map(ruleLinkLabel) : ["no destinations"]).join(", ")}
                   </span>
                 </span>
                 <span class="flex gap-2">
@@ -858,7 +802,7 @@
           <Dialog open={true} title={editingRule.id ? "Edit alert rule" : "New alert rule"} onClose={() => (editingRule = null)}>
             <form on:submit={saveRule} class="space-y-3">
               <div class="grid grid-cols-2 gap-3">
-                <div class="space-y-1"><label class="text-xs">Name</label><Input bind:value={editingRule.name} placeholder="Production → email" /></div>
+                <div class="space-y-1"><label class="text-xs">Name</label><Input bind:value={editingRule.name} placeholder="Production → Team A" /></div>
                 <div class="space-y-1"><label class="text-xs">Project</label>
                   <select class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={editingRule.projectId}>
                     <option value={null}>All projects</option>
@@ -873,13 +817,35 @@
                 <label class="flex items-center gap-2"><input type="checkbox" bind:checked={editingRule.notifyNewIssue} /> New issues</label>
                 <label class="flex items-center gap-2"><input type="checkbox" bind:checked={editingRule.notifyReopened} /> Reopened</label>
               </div>
-              <div class="space-y-1">
-                <p class="text-xs">Channels (none = all enabled)</p>
-                <div class="flex flex-wrap gap-3 text-sm">
-                  {#each allChannels as c}
-                    <label class="flex items-center gap-1.5"><input type="checkbox" checked={editingRule.channels?.includes(c)} on:change={() => toggleRuleChannel(c)} /> {c}</label>
-                  {/each}
-                </div>
+              <div class="space-y-2">
+                <p class="text-xs">Integrations</p>
+                {#if integrations.length === 0}
+                  <p class="text-xs text-muted-foreground">No integrations yet — create one under Notifications first.</p>
+                {:else}
+                  <div class="space-y-2">
+                    {#each integrations as i}
+                      <div class="rounded-md border border-border p-2">
+                        <label class="flex items-center gap-2 text-sm">
+                          <input type="checkbox" checked={(editingRule.integrations ?? []).some((l) => l.integrationId === i.id)} on:change={() => toggleRuleIntegration(i.id)} />
+                          <span class="font-medium">{i.name}</span><span class="text-muted-foreground">· {i.provider}{i.enabled ? "" : " (disabled)"}</span>
+                        </label>
+                        {#if (editingRule.integrations ?? []).some((l) => l.integrationId === i.id)}
+                          <div class="mt-2 grid grid-cols-2 gap-2">
+                            {#if i.provider === "telegram"}
+                              <div class="space-y-1"><label class="text-xs">Chat ID override (blank = default)</label><Input value={getOverride(i.id, "chat_id")} on:input={(e) => setOverride(i.id, "chat_id", (e.target as HTMLInputElement).value)} placeholder={String((i.credentials?.default_chat_id ?? "") || "default")} /></div>
+                            {:else if i.provider === "smtp"}
+                              <div class="space-y-1 col-span-2"><label class="text-xs">Recipients (comma-separated)</label><Input value={toString(i.id)} on:input={(e) => setToString(i.id, (e.target as HTMLInputElement).value)} placeholder="ops@example.com" /></div>
+                            {:else if i.provider === "generic"}
+                              <div class="space-y-1"><label class="text-xs">URL override (blank = default)</label><Input value={getOverride(i.id, "url")} on:input={(e) => setOverride(i.id, "url", (e.target as HTMLInputElement).value)} placeholder="default" /></div>
+                            {:else}
+                              <div class="space-y-1"><label class="text-xs">URL override (blank = default)</label><Input value={getOverride(i.id, "url")} on:input={(e) => setOverride(i.id, "url", (e.target as HTMLInputElement).value)} placeholder="default" /></div>
+                            {/if}
+                          </div>
+                        {/if}
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
               </div>
               <div class="flex gap-2">
                 <Button type="submit" size="sm">Save rule</Button>

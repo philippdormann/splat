@@ -237,52 +237,32 @@ export const api = {
     }),
 
   settings: () => req<SettingsData>("/api/v1/settings"),
-  saveTelegram: (input: { botToken: string; chatId: string; enabled: boolean }) =>
-    req<SettingsData>("/api/v1/settings/telegram", {
-      method: "PUT",
-      body: JSON.stringify(input),
-    }),
-  testTelegram: () =>
-    req<{ ok: boolean; message: string }>("/api/v1/settings/telegram/test", {
-      method: "POST",
-      body: "{}",
-    }),
-  saveWebhook: (channel: string, input: { url: string; enabled: boolean }) =>
-    req<SettingsData>(`/api/v1/settings/webhooks/${channel}`, {
-      method: "PUT",
-      body: JSON.stringify(input),
-    }),
-  testWebhook: (channel: string) =>
-    req<{ ok: boolean; message: string }>(
-      `/api/v1/settings/webhooks/${channel}/test`,
-      { method: "POST", body: "{}" },
-    ),
-
-  genericWebhooks: () => req<GenericWebhook[]>("/api/v1/settings/generic-webhooks"),
-  createGenericWebhook: (input: { name: string; url: string; secret: string; headers: Record<string, string>; enabled: boolean }) =>
-    req<GenericWebhook>("/api/v1/settings/generic-webhooks", {
-      method: "POST",
-      body: JSON.stringify(input),
-    }),
-  updateGenericWebhook: (id: number, input: { name: string; url: string; secret: string; headers: Record<string, string>; enabled: boolean }) =>
-    req<GenericWebhook>(`/api/v1/settings/generic-webhooks/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(input),
-    }),
-  deleteGenericWebhook: (id: number) =>
-    req<{ ok: boolean }>(`/api/v1/settings/generic-webhooks/${id}`, {
-      method: "DELETE",
-    }),
-  testGenericWebhook: (id: number) =>
-    req<{ ok: boolean; message: string }>(
-      `/api/v1/settings/generic-webhooks/${id}/test`,
-      { method: "POST", body: "{}" },
-    ),
   saveTracing: (urlTemplate: string) =>
     req<SettingsData>("/api/v1/settings/tracing", {
       method: "PUT",
       body: JSON.stringify({ urlTemplate }),
     }),
+
+  integrations: () => req<Integration[]>("/api/v1/integrations"),
+  createIntegration: (input: IntegrationInput) =>
+    req<Integration>("/api/v1/integrations", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateIntegration: (id: number, input: IntegrationInput) =>
+    req<Integration>(`/api/v1/integrations/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+  deleteIntegration: (id: number) =>
+    req<{ ok: boolean }>(`/api/v1/integrations/${id}`, {
+      method: "DELETE",
+    }),
+  testIntegration: (id: number, routingOverride?: RoutingOverride) =>
+    req<{ ok: boolean; message: string }>(
+      `/api/v1/integrations/${id}/test`,
+      { method: "POST", body: JSON.stringify({ routingOverride: routingOverride ?? {} }) },
+    ),
 
   storage: () => req<StorageUsage>("/api/v1/storage"),
   storageSweep: () =>
@@ -296,7 +276,10 @@ export const api = {
       body: "{}",
     }),
 
-  rules: () => req<AlertRule[]>("/api/v1/rules"),
+  rules: (projectId?: number | null) => {
+    const qs = projectId === undefined ? "" : `?project_id=${projectId === null ? "null" : projectId}`;
+    return req<AlertRule[]>(`/api/v1/rules${qs}`);
+  },
   createRule: (input: AlertRuleInput) =>
     req<AlertRule>("/api/v1/rules", {
       method: "POST",
@@ -309,26 +292,6 @@ export const api = {
     }),
   deleteRule: (id: number) =>
     req<{ ok: boolean }>(`/api/v1/rules/${id}`, { method: "DELETE" }),
-
-  saveSMTP: (input: {
-    host: string;
-    port: number;
-    username: string;
-    password: string;
-    from: string;
-    to: string;
-    useTLS: boolean;
-    enabled: boolean;
-  }) =>
-    req<SettingsData>("/api/v1/settings/smtp", {
-      method: "PUT",
-      body: JSON.stringify(input),
-    }),
-  testSMTP: () =>
-    req<{ ok: boolean; message: string }>("/api/v1/settings/smtp/test", {
-      method: "POST",
-      body: "{}",
-    }),
 
   apiKeys: () => req<APIKey[]>("/api/v1/api-keys"),
   createAPIKey: (input: { name: string; projectId?: number | null; scopes?: string[]; expiresAt?: string }) =>
@@ -663,11 +626,6 @@ export interface SourceMapMeta {
 }
 
 export interface SettingsData {
-  telegram: { botToken: string; chatId: string; enabled: boolean };
-  botTokenMasked: string;
-  webhooks: Record<string, { urlMasked: string; enabled: boolean }>;
-  smtp: SMTPSettings;
-  genericWebhooks: GenericWebhook[];
   traceURLTemplate: string;
 }
 
@@ -686,7 +644,23 @@ export interface AlertRule {
   notifyThreshold: number;
   notifyReopened: boolean;
   cooldownSeconds: number;
-  channels: string[];
+  integrations: RuleIntegration[];
+  channels?: string[];
+}
+
+export interface RuleIntegration {
+  integrationId: number;
+  provider: string;
+  integrationName: string;
+  isEnabled: boolean;
+  routingOverride: RoutingOverride;
+}
+
+export interface RoutingOverride {
+  chat_id?: string;
+  url?: string;
+  to?: string[];
+  extra_headers?: Record<string, string>;
 }
 
 export interface AlertRuleInput {
@@ -697,7 +671,25 @@ export interface AlertRuleInput {
   notifyThreshold?: number;
   notifyReopened?: boolean;
   cooldownSeconds?: number;
+  integrations?: { integrationId: number; routingOverride?: RoutingOverride }[];
   channels?: string[];
+}
+
+export interface Integration {
+  id: number;
+  name: string;
+  provider: string;
+  enabled: boolean;
+  credentials: Record<string, unknown>;
+  failureCount: number;
+  lastFailure: string;
+}
+
+export interface IntegrationInput {
+  name: string;
+  provider: string;
+  enabled: boolean;
+  credentials: Record<string, unknown>;
 }
 
 export interface SMTPSettings {
