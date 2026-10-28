@@ -3,6 +3,7 @@
   import { AreaChart } from "layerchart";
   import { Activity, HeartPulse, Timer, Trophy, Zap, CircleDot, Gauge, TriangleAlert } from "lucide-svelte";
   import { api, type ProjectOverview, type SessionSummary } from "$lib/api";
+  import { loadPersisted, savePersisted, isStringIn } from "$lib/persisted";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as Tabs from "$lib/components/ui/tabs/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
@@ -29,7 +30,8 @@
     debug: { color: "#9ca3af", order: 4 },
   };
 
-  let period = "24h";
+  let period = loadPersisted<string>("splat.projectOverview.period", "24h", isStringIn(periods.map((p) => p.value)));
+  $: savePersisted("splat.projectOverview.period", period);
   let data: ProjectOverview | null = null;
   let sessions: SessionSummary | null = null;
   let error = "";

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api, type LogEntry } from "$lib/api";
+  import { loadPersisted, savePersisted, isString } from "$lib/persisted";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
   import * as Empty from "$lib/components/ui/empty/index.js";
@@ -14,8 +15,10 @@
   export let navigate: (path: string) => void;
 
   const levels = ["", "trace", "debug", "info", "warn", "error", "fatal"];
-  let level = "";
-  let query = "";
+  let level = loadPersisted<string>("splat.projectLogs.level", "", isString);
+  let query = loadPersisted<string>("splat.projectLogs.query", "", isString);
+  $: savePersisted("splat.projectLogs.level", level);
+  $: savePersisted("splat.projectLogs.query", query);
   let entries: LogEntry[] | null = null;
   let error = "";
   let busy = false;
