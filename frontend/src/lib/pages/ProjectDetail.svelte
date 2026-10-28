@@ -12,6 +12,7 @@
   import Dialog from "$lib/components/Dialog.svelte";
   import PlatformIcon from "$lib/components/PlatformIcon.svelte";
   import { loadPersisted, savePersisted, isStringIn } from "$lib/persisted";
+  import { queryParam, replaceQuery } from "$lib/urlquery";
   import ProjectOverview from "$lib/pages/ProjectOverview.svelte";
   import ProjectLogs from "$lib/pages/ProjectLogs.svelte";
   import ProjectTraces from "$lib/pages/ProjectTraces.svelte";
@@ -63,8 +64,13 @@
     { id: "repository", label: "Repository", icon: GitBranch },
     { id: "access", label: "Access", icon: Users, adminOnly: true },
   ];
-  let ptab = loadPersisted<string>("splat.project.tab", "overview", isStringIn(ptabs.map((t) => t.id)));
+  const ptabIds = ptabs.map((t) => t.id);
+  const urlTab = queryParam(window.location.search, "tab");
+  let ptab = urlTab && ptabIds.includes(urlTab)
+    ? urlTab
+    : loadPersisted<string>("splat.project.tab", "overview", isStringIn(ptabIds));
   $: savePersisted("splat.project.tab", ptab);
+  $: replaceQuery({ tab: ptab === "overview" ? null : ptab });
   $: visiblePtabs = ptabs.filter((t) => !t.adminOnly || isAdmin);
   $: if (!visiblePtabs.some((t) => t.id === ptab)) ptab = "overview";
 

@@ -18,6 +18,7 @@
   } from "lucide-svelte";
   import { api, type DashboardData } from "$lib/api";
   import { loadPersisted, savePersisted, isStringIn } from "$lib/persisted";
+  import { queryParam, replaceQuery } from "$lib/urlquery";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as Tabs from "$lib/components/ui/tabs/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
@@ -43,8 +44,13 @@
   export let navigate: (path: string) => void;
 
   const RANGE_KEY = "splat.dashboard.range";
-  let range = loadPersisted<string>(RANGE_KEY, "24h", isStringIn(ranges.map((r) => r.value)));
+  const rangeValues = ranges.map((r) => r.value);
+  const urlRange = queryParam(window.location.search, "range");
+  let range = urlRange && rangeValues.includes(urlRange)
+    ? urlRange
+    : loadPersisted<string>(RANGE_KEY, "24h", isStringIn(rangeValues));
   $: savePersisted(RANGE_KEY, range);
+  $: replaceQuery({ range });
   let data: DashboardData | null = null;
   let error = "";
 
