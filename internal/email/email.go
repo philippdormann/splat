@@ -45,11 +45,12 @@ func Subject(a Alert) string {
 	case a.Reopened:
 		kind = "Reopened issue"
 	}
-	title := a.ExceptionType
+	title := strings.ReplaceAll(strings.ReplaceAll(a.ExceptionType, "\r", " "), "\n", " ")
 	if title == "" {
 		title = "message"
 	}
-	return fmt.Sprintf("[Splat] %s in %s: %s", kind, a.ProjectName, title)
+	project := strings.ReplaceAll(strings.ReplaceAll(a.ProjectName, "\r", " "), "\n", " ")
+	return fmt.Sprintf("[Splat] %s in %s: %s", kind, project, title)
 }
 
 // Body is plain text - no HTML, no tracking pixels, nothing to render.
@@ -91,6 +92,9 @@ func Send(cfg Config, to string, a Alert) error {	if cfg.Host == "" {
 	}
 	if from == "" {
 		return fmt.Errorf("no sender address (set From or Username)")
+	}
+	if strings.ContainsAny(from, "\r\n") || strings.ContainsAny(to, "\r\n") {
+		return fmt.Errorf("invalid address: contains control characters")
 	}
 	port := cfg.Port
 	if port <= 0 {
@@ -161,6 +165,9 @@ func SendRaw(cfg Config, to, subject, body string) error {
 	}
 	if from == "" {
 		return fmt.Errorf("no sender address (set From or Username)")
+	}
+	if strings.ContainsAny(from, "\r\n") || strings.ContainsAny(to, "\r\n") || strings.ContainsAny(subject, "\r\n") {
+		return fmt.Errorf("invalid header value: contains control characters")
 	}
 	msg := "From: " + from + "\r\n" +
 		"To: " + to + "\r\n" +
