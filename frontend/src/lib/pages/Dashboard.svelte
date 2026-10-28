@@ -17,6 +17,7 @@
     TriangleAlert,
   } from "lucide-svelte";
   import { api, type DashboardData } from "$lib/api";
+  import { loadPersisted, savePersisted, isStringIn } from "$lib/persisted";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as Tabs from "$lib/components/ui/tabs/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
@@ -40,7 +41,9 @@
 
   export let navigate: (path: string) => void;
 
-  let range = "24h";
+  const RANGE_KEY = "splat.dashboard.range";
+  let range = loadPersisted<string>(RANGE_KEY, "24h", isStringIn(ranges.map((r) => r.value)));
+  $: savePersisted(RANGE_KEY, range);
   let data: DashboardData | null = null;
   let error = "";
 
