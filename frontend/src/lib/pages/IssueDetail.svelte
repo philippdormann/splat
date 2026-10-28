@@ -208,6 +208,11 @@
       // Storage unavailable — fall through to the plain list.
     }
     navigate("/issues");
+  }
+
+  function copyLink() {
+    navigator.clipboard.writeText(window.location.href);
+    toast.success("Link copied to clipboard.");
   }</script>
 
 {#if error}
@@ -238,6 +243,7 @@
         <p class="mt-1 font-mono text-xs text-muted-foreground">{data.issue.exceptionType}: {data.issue.exceptionValue}</p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
+        <Button size="sm" variant="outline" title="Copy link to this issue" on:click={copyLink}><Copy class="h-3.5 w-3.5" /> Copy link</Button>
         <Button size="sm" variant="outline" class="border-green-600/50 text-green-700 hover:bg-green-50 dark:border-green-500/40 dark:text-green-400 dark:hover:bg-green-950" on:click={() => (pendingAction = "resolved")}><Check class="h-3.5 w-3.5" /> Resolve</Button>
         <Button size="sm" variant="outline" class="border-green-600/50 text-green-700 hover:bg-green-50 dark:border-green-500/40 dark:text-green-400 dark:hover:bg-green-950" title="Resolve, but reopen automatically if the bug appears in a different release" on:click={() => (pendingAction = "resolved-next")}><CalendarClock class="h-3.5 w-3.5" /> Resolve in next release</Button>
         <Button size="sm" variant="outline" class="text-muted-foreground" on:click={() => (pendingAction = "ignored")}><EyeOff class="h-3.5 w-3.5" /> Ignore</Button>
