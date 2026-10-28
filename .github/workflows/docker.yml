@@ -37,7 +37,7 @@ jobs:
         with:
           go-version-file: go.mod
           repo-checkout: false
-      - run: cd frontend && bun audit --audit-level=moderate
+      - run: cd frontend && bun audit
 
   trivy-fs:
     # Dependency/license gate on the repo itself: fails the run on any
