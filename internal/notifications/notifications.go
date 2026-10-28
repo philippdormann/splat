@@ -21,6 +21,7 @@ import (
 
 	"github.com/philippdormann/splat/internal/database"
 	"github.com/philippdormann/splat/internal/email"
+	"github.com/philippdormann/splat/internal/secretbox"
 	"github.com/philippdormann/splat/internal/telegram"
 	"github.com/philippdormann/splat/internal/webhooks"
 )
@@ -86,44 +87,61 @@ type RoutingOverride struct {
 	ExtraHeaders map[string]string `json:"extra_headers,omitempty"`
 }
 
-func encodeOverride(o RoutingOverride) string {
+func (s *Store) encodeOverride(o RoutingOverride) (string, error) {
 	b, _ := json.Marshal(o)
 	if string(b) == "null" {
-		return "{}"
+		b = []byte("{}")
 	}
-	return string(b)
+	// Empty overrides stay plaintext "{}" so rule/queue rows without
+	// secrets don't churn; anything else is sealed at rest.
+	if string(b) == "{}" {
+		return "{}", nil
+	}
+	return secretbox.Encrypt(s.secret, string(b))
 }
 
-func decodeOverride(raw string) RoutingOverride {
+func (s *Store) decodeOverride(raw string) (RoutingOverride, error) {
 	var o RoutingOverride
-	if raw == "" {
-		return o
+	if raw == "" || raw == "{}" {
+		o.ExtraHeaders = map[string]string{}
+		return o, nil
 	}
-	_ = json.Unmarshal([]byte(raw), &o)
+	plain, err := secretbox.Decrypt(s.secret, raw)
+	if err != nil {
+		return o, err
+	}
+	_ = json.Unmarshal([]byte(plain), &o)
 	if o.ExtraHeaders == nil {
 		o.ExtraHeaders = map[string]string{}
 	}
-	return o
+	return o, nil
 }
 
-func encodeCreds(m map[string]any) string {
+func (s *Store) encodeCreds(m map[string]any) (string, error) {
 	if m == nil {
-		return "{}"
+		m = map[string]any{}
 	}
 	b, _ := json.Marshal(m)
-	return string(b)
+	if string(b) == "null" || string(b) == "{}" {
+		return "{}", nil
+	}
+	return secretbox.Encrypt(s.secret, string(b))
 }
 
-func decodeCreds(raw string) map[string]any {
+func (s *Store) decodeCreds(raw string) (map[string]any, error) {
 	out := map[string]any{}
-	if raw == "" {
-		return out
+	if raw == "" || raw == "{}" {
+		return out, nil
 	}
-	_ = json.Unmarshal([]byte(raw), &out)
+	plain, err := secretbox.Decrypt(s.secret, raw)
+	if err != nil {
+		return nil, err
+	}
+	_ = json.Unmarshal([]byte(plain), &out)
 	if out == nil {
-		return map[string]any{}
+		return map[string]any{}, nil
 	}
-	return out
+	return out, nil
 }
 
 func credsString(m map[string]any, key string) string {
@@ -312,15 +330,22 @@ type Store struct {
 	telegram *telegram.Client
 	webhook  *webhooks.Client
 	logger   *slog.Logger
+	// secret seals credentials and routing overrides at rest
+	// (SPLAT_SESSION_SECRET). Empty fails writes closed; reads of
+	// legacy plaintext rows still work so existing DBs migrate cleanly.
+	secret string
 }
 
-func NewStore(db *database.DB, logger *slog.Logger) *Store {
-	return &Store{db: db, telegram: telegram.NewClient(), webhook: webhooks.NewClient(), logger: logger}
+func NewStore(db *database.DB, logger *slog.Logger, sessionSecret string) *Store {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Store{db: db, telegram: telegram.NewClient(), webhook: webhooks.NewClient(), logger: logger, secret: sessionSecret}
 }
 
 // --- integrations ---
 
-func scanIntegration(row interface {
+func (s *Store) scanIntegration(row interface {
 	Scan(...any) error
 }) (Integration, error) {
 	var in Integration
@@ -330,7 +355,11 @@ func scanIntegration(row interface {
 		return in, err
 	}
 	in.IsEnabled = enabled != 0
-	in.Credentials = decodeCreds(creds)
+	credsMap, err := s.decodeCreds(creds)
+	if err != nil {
+		return in, err
+	}
+	in.Credentials = credsMap
 	return in, nil
 }
 
@@ -342,7 +371,7 @@ func (s *Store) Integrations() ([]Integration, error) {
 	defer rows.Close()
 	out := []Integration{}
 	for rows.Next() {
-		in, err := scanIntegration(rows)
+		in, err := s.scanIntegration(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -353,7 +382,7 @@ func (s *Store) Integrations() ([]Integration, error) {
 
 func (s *Store) GetIntegration(id int64) (Integration, error) {
 	row := s.db.QueryRow(`SELECT id, name, provider, credentials, is_enabled, failure_count, last_failure FROM integrations WHERE id = ?`, id)
-	in, err := scanIntegration(row)
+	in, err := s.scanIntegration(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return in, sql.ErrNoRows
 	}
@@ -374,7 +403,10 @@ func (s *Store) CreateIntegration(in Integration) (Integration, error) {
 	if err := ValidateCredentials(in.Provider, in.Credentials); err != nil {
 		return Integration{}, err
 	}
-	creds := encodeCreds(in.Credentials)
+	creds, err := s.encodeCreds(in.Credentials)
+	if err != nil {
+		return Integration{}, fmt.Errorf("encrypt credentials: %w", err)
+	}
 	enabled := 0
 	if in.IsEnabled {
 		enabled = 1
@@ -415,13 +447,16 @@ func (s *Store) UpdateIntegration(in Integration) (Integration, error) {
 	if err := ValidateCredentials(in.Provider, in.Credentials); err != nil {
 		return Integration{}, err
 	}
-	creds := encodeCreds(in.Credentials)
+	creds, err := s.encodeCreds(in.Credentials)
+	if err != nil {
+		return Integration{}, fmt.Errorf("encrypt credentials: %w", err)
+	}
 	enabled := 0
 	if in.IsEnabled {
 		enabled = 1
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err := s.db.Exec(`UPDATE integrations SET name = ?, provider = ?, credentials = ?, is_enabled = ?, updated_at = ? WHERE id = ?`,
+	_, err = s.db.Exec(`UPDATE integrations SET name = ?, provider = ?, credentials = ?, is_enabled = ?, updated_at = ? WHERE id = ?`,
 		in.Name, in.Provider, creds, enabled, now, in.ID)
 	if err != nil {
 		return Integration{}, err
@@ -440,6 +475,119 @@ func (s *Store) bumpFailure(id int64, msg string) {
 
 func (s *Store) clearFailure(id int64) {
 	_, _ = s.db.Exec(`UPDATE integrations SET failure_count = 0, last_failure = '' WHERE id = ?`, id)
+}
+
+// MigratePlaintextSecrets re-encrypts legacy plaintext rows (written
+// before at-rest encryption) with the current server secret. Encrypted,
+// empty, and "{}" rows are left alone. Safe to run on every startup;
+// returns the number of rows sealed.
+func (s *Store) MigratePlaintextSecrets() (int, error) {
+	if s.secret == "" {
+		return 0, fmt.Errorf("cannot migrate secrets: server secret is not configured")
+	}
+	sealed := 0
+	// 1) integrations.credentials
+	rows, err := s.db.Query(`SELECT id, credentials FROM integrations`)
+	if err != nil {
+		return sealed, err
+	}
+	type pending struct{ id int64; creds string }
+	var work []pending
+	for rows.Next() {
+		var p pending
+		if err := rows.Scan(&p.id, &p.creds); err != nil {
+			continue
+		}
+		work = append(work, p)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return sealed, err
+	}
+	for _, p := range work {
+		if p.creds == "" || p.creds == "{}" || secretbox.IsEncrypted(p.creds) {
+			continue
+		}
+		enc, err := secretbox.Encrypt(s.secret, p.creds)
+		if err != nil {
+			return sealed, err
+		}
+		if _, err := s.db.Exec(`UPDATE integrations SET credentials = ? WHERE id = ?`, enc, p.id); err != nil {
+			return sealed, err
+		}
+		sealed++
+	}
+	// 2) routing overrides in rule links and the durable queue.
+	// Only non-empty, non-"{}" plaintext rows are sealed; "{}" carries
+	// no secret and stays plaintext by design.
+	rules, err := s.db.Query(`SELECT rule_id, integration_id, routing_override FROM notification_rule_integrations`)
+	if err != nil {
+		return sealed, err
+	}
+	type ruleRow struct {
+		ruleID, integrationID int64
+		raw                  string
+	}
+	var ruleRows []ruleRow
+	for rules.Next() {
+		var rr ruleRow
+		if err := rules.Scan(&rr.ruleID, &rr.integrationID, &rr.raw); err != nil {
+			continue
+		}
+		ruleRows = append(ruleRows, rr)
+	}
+	rules.Close()
+	if err := rules.Err(); err != nil {
+		return sealed, err
+	}
+	for _, rr := range ruleRows {
+		if rr.raw == "" || rr.raw == "{}" || secretbox.IsEncrypted(rr.raw) {
+			continue
+		}
+		enc, err := secretbox.Encrypt(s.secret, rr.raw)
+		if err != nil {
+			return sealed, err
+		}
+		if _, err := s.db.Exec(`UPDATE notification_rule_integrations SET routing_override = ? WHERE rule_id = ? AND integration_id = ?`,
+			enc, rr.ruleID, rr.integrationID); err != nil {
+			return sealed, err
+		}
+		sealed++
+	}
+	queue, err := s.db.Query(`SELECT id, routing_override FROM notification_queue`)
+	if err != nil {
+		return sealed, err
+	}
+	type queueRow struct {
+		id  int64
+		raw string
+	}
+	var queueRows []queueRow
+	for queue.Next() {
+		var qr queueRow
+		if err := queue.Scan(&qr.id, &qr.raw); err != nil {
+			continue
+		}
+		queueRows = append(queueRows, qr)
+	}
+	queue.Close()
+	if err := queue.Err(); err != nil {
+		return sealed, err
+	}
+	for _, qr := range queueRows {
+		if qr.raw == "" || qr.raw == "{}" || secretbox.IsEncrypted(qr.raw) {
+			continue
+		}
+		enc, err := secretbox.Encrypt(s.secret, qr.raw)
+		if err != nil {
+			return sealed, err
+		}
+		if _, err := s.db.Exec(`UPDATE notification_queue SET routing_override = ? WHERE id = ?`, enc, qr.id); err != nil {
+			return sealed, err
+		}
+		sealed++
+	}
+	return sealed, nil
 }
 
 // SendTestIntegration delivers a canned alert via one integration.
@@ -498,7 +646,11 @@ func (s *Store) loadRuleLinks(ruleID int64) ([]RuleIntegration, error) {
 			return nil, err
 		}
 		ri.IsEnabled = enabled != 0
-		ri.Override = decodeOverride(override)
+		ov, err := s.decodeOverride(override)
+		if err != nil {
+			return nil, err
+		}
+		ri.Override = ov
 		out = append(out, ri)
 	}
 	return out, rows.Err()
@@ -568,8 +720,12 @@ func (s *Store) saveRuleLinks(ruleID int64, links []RuleIntegration) error {
 		return err
 	}
 	for _, l := range links {
+		enc, err := s.encodeOverride(l.Override)
+		if err != nil {
+			return fmt.Errorf("encrypt routing override: %w", err)
+		}
 		if _, err := s.db.Exec(`INSERT INTO notification_rule_integrations (rule_id, integration_id, routing_override) VALUES (?, ?, ?)`,
-			ruleID, l.IntegrationID, encodeOverride(l.Override)); err != nil {
+			ruleID, l.IntegrationID, enc); err != nil {
 			return err
 		}
 	}
@@ -766,8 +922,12 @@ func (s *Store) enqueue(e AlertEvent, integrationID int64, provider string, over
 	if err != nil {
 		return err
 	}
+	enc, err := s.encodeOverride(override)
+	if err != nil {
+		return fmt.Errorf("encrypt routing override: %w", err)
+	}
 	_, err = s.db.Exec(`INSERT INTO notification_queue (issue_id, kind, channel, provider, integration_id, routing_override, payload_json, next_attempt_at) VALUES (?, 'issue_alert', ?, ?, ?, ?, ?, ?)`,
-		e.IssueID, provider, provider, integrationID, encodeOverride(override), string(payload), sortableNow())
+		e.IssueID, provider, provider, integrationID, enc, string(payload), sortableNow())
 	return err
 }
 
@@ -812,7 +972,12 @@ func (s *Store) DrainOnce(ctx context.Context, batchSize int) {
 		if provider == "" {
 			provider = j.channel
 		}
-		skip, err := s.sendToIntegration(ctx, j.integrationID, provider, decodeOverride(j.override), e)
+		override, err := s.decodeOverride(j.override)
+		if err != nil {
+			s.markFailed(j.id, "cannot decrypt routing override: "+err.Error())
+			continue
+		}
+		skip, err := s.sendToIntegration(ctx, j.integrationID, provider, override, e)
 		switch {
 		case skip:
 			s.markSkipped(j.id)
@@ -827,7 +992,13 @@ func (s *Store) DrainOnce(ctx context.Context, batchSize int) {
 func (s *Store) sendToIntegration(ctx context.Context, integrationID int64, provider string, override RoutingOverride, e AlertEvent) (bool, error) {
 	in, err := s.GetIntegration(integrationID)
 	if err != nil {
-		return true, nil // deleted integration: skip, don't retry forever
+		if errors.Is(err, sql.ErrNoRows) {
+			return true, nil // deleted integration: skip, don't retry forever
+		}
+		// Decrypt failure (e.g. rotated server secret): retry with
+		// backoff so the operator sees failure_count/last_failure
+		// instead of silently dropping the alert.
+		return false, err
 	}
 	if !in.IsEnabled {
 		return true, nil
