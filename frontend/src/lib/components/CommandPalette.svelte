@@ -2,6 +2,7 @@
   import {
     LayoutDashboard,
     TriangleAlert,
+    ListChecks,
     Folder,
     FolderPlus,
     Settings,
@@ -108,6 +109,9 @@
             <Command.Item value="issues" keywords={["errors", "bugs", "list"]} onSelect={() => go("/issues")}>
               <TriangleAlert /><span>Issues</span>
               <Command.Shortcut>⇧I</Command.Shortcut>
+            </Command.Item>
+            <Command.Item value="triage queue" keywords={["review", "sweep", "oncall", "on-call"]} onSelect={() => go("/triage")}>
+              <ListChecks /><span>Triage queue</span>
             </Command.Item>
             <Command.Item value="projects" keywords={["apps", "dsn", "list"]} onSelect={() => go("/projects")}>
               <Folder /><span>Projects</span>

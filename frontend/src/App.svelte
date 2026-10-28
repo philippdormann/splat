@@ -7,6 +7,7 @@
     FolderPlus,
     Settings,
     ShieldCheck,
+    ListChecks,
     LogOut,
     Menu,
     ChevronDown,
@@ -19,6 +20,7 @@
   import Login from "$lib/pages/Login.svelte";
   import Dashboard from "$lib/pages/Dashboard.svelte";
   import Issues from "$lib/pages/Issues.svelte";
+  import TriageQueue from "$lib/pages/TriageQueue.svelte";
   import IssueDetail from "$lib/pages/IssueDetail.svelte";
   import Projects from "$lib/pages/Projects.svelte";
   import ProjectDetail from "$lib/pages/ProjectDetail.svelte";
@@ -154,6 +156,7 @@
       <nav class="min-h-0 flex-1 space-y-1 overflow-y-auto">
         <a href="/" class={navClass(path === "/")} on:click|preventDefault={() => navigate("/")}><LayoutDashboard class="h-4 w-4" /> Dashboard</a>
         <a href="/issues" class={navClass(path.startsWith("/issues"))} on:click|preventDefault={() => navigate("/issues")}><TriangleAlert class="h-4 w-4" /> Issues</a>
+        <a href="/triage" class={navClass(path === "/triage")} on:click|preventDefault={() => navigate("/triage")}><ListChecks class="h-4 w-4" /> Triage</a>
         <DropdownMenu.Root>
           <DropdownMenu.Trigger
             class={path.startsWith("/projects") ? "bg-primary text-primary-foreground" : "text-zinc-400 hover:bg-white/10 hover:text-white"}
@@ -208,6 +211,8 @@
           <Dashboard {navigate} />
         {:else if path === "/issues"}
           <Issues {navigate} urlSearch={search} />
+        {:else if path === "/triage"}
+          <TriageQueue {navigate} />
         {:else if path.startsWith("/issues/")}
           <IssueDetail id={path.slice("/issues/".length)} {navigate} urlSearch={search} />
         {:else if path === "/projects"}
