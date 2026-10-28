@@ -376,8 +376,7 @@
   }
 
   function viewIssues() {
-    savePersisted("splat.issues.project", String(id));
-    navigate("/issues");
+    navigate(`/issues?project=${encodeURIComponent(id)}`);
   }
 
   onMount(load);
