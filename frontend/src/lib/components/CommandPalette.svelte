@@ -22,7 +22,10 @@
 
   let query = $state("");
   let projects = $state<{ id: number; name: string }[]>([]);
+  let issueResults = $state<{ id: number; title: string; status: string; projectName: string }[]>([]);
   let panel = $state<HTMLElement | null>(null);
+  let searchTimer: ReturnType<typeof setTimeout>;
+  let searchSeq = 0;
 
   async function loadProjects() {
     try {
@@ -51,6 +54,26 @@
         panel?.querySelector("input")?.focus();
       });
     }
+  });
+
+  // Debounced issue search so on-call can jump straight to an error.
+  $effect(() => {
+    const term = query.trim();
+    clearTimeout(searchTimer);
+    if (!open || term.length < 2) {
+      issueResults = [];
+      return;
+    }
+    searchTimer = setTimeout(async () => {
+      const mine = ++searchSeq;
+      try {
+        const params = new URLSearchParams({ q: term, page: "1" });
+        const res = await api.issues(params);
+        if (mine === searchSeq) issueResults = res.issues.slice(0, 7);
+      } catch {
+        if (mine === searchSeq) issueResults = [];
+      }
+    }, 250);
   });
 
   function onKeydown(e: KeyboardEvent) {
@@ -104,6 +127,22 @@
               <LogOut /><span>Log out</span>
             </Command.Item>
           </Command.Group>
+          {#if issueResults.length}
+            <Command.Separator />
+            <Command.Group heading="Issues">
+              {#each issueResults as r (r.id)}
+                <Command.Item
+                  value={`issue ${r.title}`}
+                  keywords={[r.title, String(r.id)]}
+                  onSelect={() => go(`/issues/${r.id}`)}
+                >
+                  <TriangleAlert />
+                  <span class="min-w-0 flex-1 truncate">{r.title}</span>
+                  <span class="text-muted-foreground shrink-0 text-xs">{r.projectName}</span>
+                </Command.Item>
+              {/each}
+            </Command.Group>
+          {/if}
           {#if projects.length}
             <Command.Separator />
             <Command.Group heading="Projects">
