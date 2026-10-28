@@ -519,7 +519,11 @@ your provider's snapshots as usual.
   `X-Robots-Tag: noindex, nofollow`, plus a deny-all `robots.txt`.
 - Webhook URLs are SSRF-guarded at save time (no private/link-local
   targets); generic webhooks sign bodies with HMAC-SHA256. API keys store
-  hashes only.
+  hashes only. Integration credentials (SMTP passwords, Telegram bot
+  tokens, webhook URLs/secrets, routing overrides) and linked forge
+  tokens are AES-256-GCM encrypted at rest, keyed by
+  `SPLAT_SESSION_SECRET` - rotating that secret without re-encrypting
+  makes existing secrets unreadable, so back it up with the database.
 
 ## What's deliberately not here
 
