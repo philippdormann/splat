@@ -16,6 +16,7 @@
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import { toast } from "svelte-sonner";
 
   export let navigate: (path: string) => void;
   export let urlSearch: string = "";
@@ -106,13 +107,16 @@
   async function confirmBulk() {
     if (!pendingBulk || selected.size === 0) return;
     bulkBusy = true;
+    const count = selected.size;
+    const label = pendingBulk ? bulkCopy[pendingBulk].label : "Updated";
     try {
       await api.bulkIssueStatus([...selected], pendingBulk);
       selected = new Set();
       pendingBulk = null;
+      toast.success(`${label}d ${count} issue${count === 1 ? "" : "s"}.`);
       await load();
     } catch (e) {
-      error = e instanceof Error ? e.message : "Bulk update failed.";
+      toast.error(e instanceof Error ? e.message : "Bulk update failed.");
       pendingBulk = null;
     } finally {
       bulkBusy = false;
