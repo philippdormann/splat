@@ -177,7 +177,8 @@
   $: tracePath =
     data && data.traceId
       ? `/projects/${data.project.id}/traces/${encodeURIComponent(data.traceId)}`
-      : "";</script>
+      : "";
+  $: projectPath = data ? `/projects/${data.project.id}` : "";</script>
 
 {#if error}
   <Alert.Root variant="destructive">
@@ -201,7 +202,7 @@
           <StatusBadge status={data.issue.status} />
           {#if data.issue.status === "muted"}<span class="text-xs text-muted-foreground">{formatMutedUntil(data.issue.mutedUntil)}</span>{/if}
           {#if data.issue.status === "resolved" && data.issue.resolvedInRelease}<span class="text-xs text-muted-foreground" title="Reopens automatically if the bug appears in a different release">pinned to {data.issue.resolvedInRelease}</span>{/if}
-          <span class="text-xs text-muted-foreground"><button class="text-primary hover:underline" on:click={() => navigate(`/projects/${data.project.id}`)}>{data.project.name}</button> · {data.issue.environment} · {data.issue.eventCount} events</span>
+          <span class="text-xs text-muted-foreground"><button class="text-primary hover:underline" on:click={() => projectPath && navigate(projectPath)}>{data.project.name}</button> · {data.issue.environment} · {data.issue.eventCount} events</span>
         </div>
         <h2 class="mt-2 text-xl font-semibold tracking-tight">{data.issue.title}</h2>
         <p class="mt-1 font-mono text-xs text-muted-foreground">{data.issue.exceptionType}: {data.issue.exceptionValue}</p>
