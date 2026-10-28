@@ -7,22 +7,28 @@
     FolderPlus,
     Settings,
     LogOut,
+    Keyboard,
+    Zap,
   } from "lucide-svelte";
   import * as Command from "$lib/components/ui/command/index.js";
   import { api } from "$lib/api";
+  import { getContextActions, type ContextAction } from "$lib/commandactions";
 
   let {
     open = $bindable(false),
     navigate,
     logout,
+    onShortcuts,
   }: {
     open?: boolean;
     navigate: (to: string) => void;
     logout: () => void;
+    onShortcuts?: () => void;
   } = $props();
 
   let query = $state("");
   let projects = $state<{ id: number; name: string }[]>([]);
+  let contextActions = $state<ContextAction[]>([]);
   let issueResults = $state<{ id: number; title: string; status: string; projectName: string }[]>([]);
   let panel = $state<HTMLElement | null>(null);
   let searchTimer: ReturnType<typeof setTimeout>;
@@ -41,6 +47,11 @@
     navigate(to);
   }
 
+  function runAction(a: ContextAction) {
+    open = false;
+    a.run();
+  }
+
   function doLogout() {
     open = false;
     logout();
@@ -49,6 +60,7 @@
   $effect(() => {
     if (open) {
       query = "";
+      contextActions = getContextActions();
       loadProjects();
       // Focus the filter input once the panel is in the DOM.
       queueMicrotask(() => {
@@ -102,27 +114,47 @@
         <Command.Input bind:value={query} placeholder="Type a command or search…" />
         <Command.List>
           <Command.Empty>No results found.</Command.Empty>
+          {#if contextActions.length}
+            <Command.Group heading="Page actions">
+              {#each contextActions as a (a.label)}
+                <Command.Item
+                  value={a.label}
+                  keywords={a.keywords ?? []}
+                  onSelect={() => runAction(a)}
+                >
+                  <Zap /><span>{a.label}</span>
+                </Command.Item>
+              {/each}
+            </Command.Group>
+            <Command.Separator />
+          {/if}
           <Command.Group heading="Navigation">
             <Command.Item value="dashboard" keywords={["home", "overview"]} onSelect={() => go("/")}>
               <LayoutDashboard /><span>Dashboard</span>
+              <Command.Shortcut>G D</Command.Shortcut>
             </Command.Item>
             <Command.Item value="issues" keywords={["errors", "bugs", "list"]} onSelect={() => go("/issues")}>
               <TriangleAlert /><span>Issues</span>
-              <Command.Shortcut>⇧I</Command.Shortcut>
+              <Command.Shortcut>G I</Command.Shortcut>
             </Command.Item>
             <Command.Item value="triage queue" keywords={["review", "sweep", "oncall", "on-call"]} onSelect={() => go("/triage")}>
               <ListChecks /><span>Triage queue</span>
+              <Command.Shortcut>G T</Command.Shortcut>
             </Command.Item>
             <Command.Item value="projects" keywords={["apps", "dsn", "list"]} onSelect={() => go("/projects")}>
               <Folder /><span>Projects</span>
-              <Command.Shortcut>⇧P</Command.Shortcut>
+              <Command.Shortcut>G P</Command.Shortcut>
             </Command.Item>
             <Command.Item value="new project" keywords={["create", "add", "app"]} onSelect={() => go("/projects/new")}>
               <FolderPlus /><span>New project</span>
             </Command.Item>
             <Command.Item value="settings" keywords={["config", "notifications", "alerts"]} onSelect={() => go("/settings")}>
               <Settings /><span>Settings</span>
-              <Command.Shortcut>⇧S</Command.Shortcut>
+              <Command.Shortcut>G S</Command.Shortcut>
+            </Command.Item>
+            <Command.Item value="keyboard shortcuts" keywords={["keys", "help", "hotkeys"]} onSelect={() => { open = false; onShortcuts?.(); }}>
+              <Keyboard /><span>Keyboard shortcuts</span>
+              <Command.Shortcut>?</Command.Shortcut>
             </Command.Item>
           </Command.Group>
           <Command.Separator />

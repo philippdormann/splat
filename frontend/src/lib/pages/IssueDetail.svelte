@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { api, type IssueDetail, type IssueLink } from "$lib/api";
   import { loadPersisted, savePersisted, isString } from "$lib/persisted";
   import * as CardUI from "$lib/components/ui/card/index.js";
@@ -15,6 +15,7 @@
   import DateTime from "$lib/components/DateTime.svelte";
   import { queryParam, replaceQuery } from "$lib/urlquery";
   import { dropFromQueue, readQueue } from "$lib/queue";
+  import { clearContextActions, setContextActions } from "$lib/commandactions";
   import { toast } from "svelte-sonner";
 
   export let id: string;
@@ -53,6 +54,7 @@
       // Keep the shown occurrence addressable: copy-pasting the URL
       // reopens the same event, not just the issue.
       replaceQuery({ event: data.currentEventId });
+      registerActions();
       links = data.links ?? [];
       localSpans = null;
       if (data.traceId) {
@@ -257,7 +259,31 @@
   function copyLink() {
     navigator.clipboard.writeText(window.location.href);
     toast.success("Link copied to clipboard.");
-  }</script>
+  }
+
+  // Command-palette actions for this issue. The palette snapshots them
+  // when it opens; cleared when leaving the page.
+  function registerActions() {
+    if (!data) {
+      setContextActions([]);
+      return;
+    }
+    const issueId = data.issue.id;
+    const title = data.issue.title;
+    const acts = [
+      { label: `Resolve issue #${issueId}`, keywords: ["resolve", "fix", title], run: () => { pendingAction = "resolved"; } },
+      { label: `Ignore issue #${issueId}`, keywords: ["ignore", "hide", title], run: () => { pendingAction = "ignored"; } },
+      { label: `Mute issue #${issueId}`, keywords: ["mute", "silence", title], run: () => { pendingAction = "muted"; } },
+      { label: `Reopen issue #${issueId}`, keywords: ["reopen", "unresolve", title], run: () => { pendingAction = "unresolved"; } },
+      { label: `Copy link to issue #${issueId}`, keywords: ["copy", "link", "share", title], run: copyLink },
+    ];
+    if (nextQueueId !== null) {
+      acts.splice(1, 0, { label: `Resolve issue #${issueId} and next`, keywords: ["resolve", "next", "queue", title], run: () => { void resolveAndNext(); } });
+    }
+    setContextActions(acts);
+  }
+
+  onDestroy(clearContextActions);</script>
 
 {#if error}
   <Alert.Root variant="destructive">

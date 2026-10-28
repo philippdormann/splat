@@ -32,6 +32,7 @@
   import InvitePage from "$lib/pages/Invite.svelte";
   import SecurityPage from "$lib/pages/Security.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
+  import ShortcutsHelp from "$lib/components/ShortcutsHelp.svelte";
 
   let authed: boolean | null = null;
   let isAdmin = false;
@@ -44,6 +45,9 @@
   let search = window.location.search;
   let sidebarOpen = false;
   let paletteOpen = false;
+  let shortcutsOpen = false;
+  let gPending = false;
+  let gTimer: ReturnType<typeof setTimeout>;
   let navProjects: { id: number; name: string }[] = [];
 
   async function loadNavProjects() {
@@ -105,17 +109,34 @@
       if (authed) paletteOpen = !paletteOpen;
       return;
     }
-    if (e.key === "Escape" && sidebarOpen) {
-      sidebarOpen = false;
+    if (e.key === "Escape") {
+      if (shortcutsOpen) shortcutsOpen = false;
+      else if (sidebarOpen) sidebarOpen = false;
       return;
     }
-    // Single-key shortcuts (ignored while typing).
+    // g-sequences and ? (ignored while typing).
     const tag = (e.target as HTMLElement | null)?.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || !authed || paletteOpen) return;
-    if (e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      if (e.key === "I") navigate("/issues");
-      else if (e.key === "P") navigate("/projects");
-      else if (e.key === "S") navigate("/settings");
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || !authed || paletteOpen || shortcutsOpen) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (gPending) {
+      gPending = false;
+      clearTimeout(gTimer);
+      const k = e.key.toLowerCase();
+      if (k === "d") navigate("/");
+      else if (k === "i") navigate("/issues");
+      else if (k === "t") navigate("/triage");
+      else if (k === "p") navigate("/projects");
+      else if (k === "s") navigate("/settings");
+      return;
+    }
+    if (e.key === "?") {
+      shortcutsOpen = true;
+      return;
+    }
+    if ((e.key === "g" || e.key === "G") && !e.shiftKey) {
+      gPending = true;
+      clearTimeout(gTimer);
+      gTimer = setTimeout(() => (gPending = false), 800);
     }
   }
 
@@ -146,7 +167,8 @@
 {:else if !authed}
   <Login onLoggedIn={async () => { authed = true; try { isAdmin = (await api.me()).role === "admin"; } catch { isAdmin = false; } loadNavProjects(); navigate("/"); }} />
 {:else}
-  <CommandPalette bind:open={paletteOpen} {navigate} {logout} />
+  <CommandPalette bind:open={paletteOpen} {navigate} {logout} onShortcuts={() => (shortcutsOpen = true)} />
+  <ShortcutsHelp bind:open={shortcutsOpen} />
   <div class="flex min-h-screen">
     {#if sidebarOpen}
       <button aria-label="Close menu" class="fixed inset-0 z-10 bg-black/50 md:hidden" on:click={() => (sidebarOpen = false)} />

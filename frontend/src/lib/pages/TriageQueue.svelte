@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { api, type IssuesData, type IssueDetail } from "$lib/api";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
@@ -11,6 +11,7 @@
   import RelativeTime from "$lib/components/RelativeTime.svelte";
   import DateTime from "$lib/components/DateTime.svelte";
   import { stashQueue } from "$lib/queue";
+  import { clearContextActions, setContextActions } from "$lib/commandactions";
   import { toast } from "svelte-sonner";
   import { Check, EyeOff, BellOff, SkipForward, ExternalLink, ListChecks, TriangleAlert } from "lucide-svelte";
 
@@ -81,6 +82,25 @@
     stashQueue(items.slice(idx).map((i) => i.id));
     navigate(`/issues/${cur.id}`);
   }
+
+  // Palette actions track the current queue item.
+  $: if (detail) {
+    const cur = items[idx];
+    if (cur) {
+      const t = cur.title;
+      setContextActions([
+        { label: `Resolve & next (“${t}”)`, keywords: ["resolve", "next", "queue"], run: () => { void act("resolved", "Resolved"); } },
+        { label: `Ignore (“${t}”)`, keywords: ["ignore"], run: () => { void act("ignored", "Ignored"); } },
+        { label: `Mute (“${t}”)`, keywords: ["mute"], run: () => { void act("muted", "Muted"); } },
+        { label: `Skip (“${t}”)`, keywords: ["skip"], run: () => { void skip(); } },
+        { label: `Open full detail (“${t}”)`, keywords: ["open", "detail"], run: openFull },
+      ]);
+    }
+  } else {
+    setContextActions([]);
+  }
+
+  onDestroy(clearContextActions);
 
   onMount(async () => {
     try {
