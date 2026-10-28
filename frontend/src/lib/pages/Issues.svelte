@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { ChevronRight, TriangleAlert } from "lucide-svelte";
   import { api, type IssuesData } from "$lib/api";
+  import { loadPersisted, savePersisted, isString } from "$lib/persisted";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
   import * as Empty from "$lib/components/ui/empty/index.js";
@@ -18,11 +19,16 @@
   export let navigate: (path: string) => void;
 
   let data: IssuesData | null = null;
-  let q = "";
-  let project = "";
-  let environment = "";
-  let status = "";
-  let sort = "";
+  let q = loadPersisted<string>("splat.issues.q", "", isString);
+  let project = loadPersisted<string>("splat.issues.project", "", isString);
+  let environment = loadPersisted<string>("splat.issues.environment", "", isString);
+  let status = loadPersisted<string>("splat.issues.status", "", isString);
+  let sort = loadPersisted<string>("splat.issues.sort", "", isString);
+  $: savePersisted("splat.issues.q", q);
+  $: savePersisted("splat.issues.project", project);
+  $: savePersisted("splat.issues.environment", environment);
+  $: savePersisted("splat.issues.status", status);
+  $: savePersisted("splat.issues.sort", sort);
   let page = 1;
   let selected = new Set<number>();
   let error = "";
