@@ -7,6 +7,7 @@
   import * as Table from "$lib/components/ui/table/index.js";
   import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
   import LevelBadge from "$lib/components/LevelBadge.svelte";
+  import StatusBadge from "$lib/components/StatusBadge.svelte";
   import DateTime from "$lib/components/DateTime.svelte";
 
   export let id: string;
@@ -148,6 +149,7 @@
             <Table.Header>
               <Table.Row class="hover:bg-transparent">
                 <Table.Head>Issue</Table.Head>
+                <Table.Head>Status</Table.Head>
                 <Table.Head class="text-right">Events</Table.Head>
                 <Table.Head class="text-right">First seen</Table.Head>
                 <Table.Head class="w-8"></Table.Head>
@@ -161,6 +163,9 @@
                       <LevelBadge level={i.level} />
                       <span class="truncate font-medium">{i.title}</span>
                     </span>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <StatusBadge status={i.status} />
                   </Table.Cell>
                   <Table.Cell class="text-right tabular-nums">{i.eventCount.toLocaleString()}</Table.Cell>
                   <Table.Cell class="text-muted-foreground text-right whitespace-nowrap">

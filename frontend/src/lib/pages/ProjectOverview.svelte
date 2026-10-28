@@ -11,6 +11,7 @@
   import * as Chart from "$lib/components/ui/chart/index.js";
   import Button from "$lib/components/button.svelte";
   import LevelBadge from "$lib/components/LevelBadge.svelte";
+  import StatusBadge from "$lib/components/StatusBadge.svelte";
   import RelativeTime from "$lib/components/RelativeTime.svelte";
 
   export let projectId: string;
@@ -285,6 +286,7 @@
                   <button class="flex w-full items-center justify-between gap-3 py-2 text-left" on:click={() => navigate(`/issues/${i.id}`)}>
                     <span class="flex min-w-0 items-center gap-2">
                       <LevelBadge level={i.level} />
+                      <StatusBadge status={i.status} />
                       <span class="truncate text-sm font-medium hover:underline">{i.title}</span>
                     </span>
                     <span class="shrink-0 text-xs text-muted-foreground tabular-nums">{i.eventCount.toLocaleString()} events · <RelativeTime iso={i.lastSeen} /></span>
