@@ -2,6 +2,7 @@ package repolink
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/philippdormann/splat/internal/database"
@@ -20,7 +21,7 @@ func testStore(t *testing.T) (*Store, int64) {
 	if _, err := db.Exec(`INSERT INTO issues (project_id, fingerprint, title, first_seen, last_seen) VALUES (1, 'fp', 't', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
-	return NewStore(db), 1
+	return NewStore(db, "test-session-secret-32-bytes-minimum!!"), 1
 }
 
 func TestRepoSaveGetDelete(t *testing.T) {
@@ -88,5 +89,60 @@ func TestLinksCRUD(t *testing.T) {
 	links, _ = s.Links(1)
 	if len(links) != 1 {
 		t.Fatalf("cross-issue remove must not delete, got %v", links)
+	}
+}
+
+func TestTokenEncryptedAtRest(t *testing.T) {
+	s, projectID := testStore(t)
+	const secret = "ghp_super-secret-token"
+	if _, err := s.Save(projectID, "github", "", "octo", "app", secret); err != nil {
+		t.Fatal(err)
+	}
+	var raw string
+	if err := s.db.QueryRow(`SELECT token FROM project_repos WHERE project_id = ?`, projectID).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(raw, secret) {
+		t.Fatalf("forge token stored in plaintext: %q", raw)
+	}
+	if !strings.HasPrefix(raw, "enc:v1:") {
+		t.Fatalf("forge token not sealed: %q", raw)
+	}
+	got, err := s.Token(projectID)
+	if err != nil || got != secret {
+		t.Fatalf("token = %q, %v", got, err)
+	}
+	cfg, err := s.Config(projectID)
+	if err != nil || cfg.Token != secret {
+		t.Fatalf("config token = %+v, %v", cfg, err)
+	}
+	// Blank-token save keeps the sealed secret and still decrypts.
+	if _, err := s.Save(projectID, "github", "", "octo", "app2", ""); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Token(projectID); got != secret {
+		t.Fatalf("keep token = %q", got)
+	}
+}
+
+func TestLegacyPlaintextTokenMigrates(t *testing.T) {
+	s, projectID := testStore(t)
+	if _, err := s.db.Exec(`INSERT INTO project_repos (project_id, provider, base_url, owner, repo, token, updated_at)
+		VALUES (?, 'github', '', 'o', 'r', 'legacy-tok', '2024-01-01T00:00:00Z')
+		ON CONFLICT (project_id) DO UPDATE SET token = excluded.token`, projectID); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Token(projectID); err != nil || got != "legacy-tok" {
+		t.Fatalf("legacy token = %q, %v", got, err)
+	}
+	if n, err := s.MigratePlaintextSecrets(); err != nil || n != 1 {
+		t.Fatalf("migrate = %d, %v", n, err)
+	}
+	var raw string
+	if err := s.db.QueryRow(`SELECT token FROM project_repos WHERE project_id = ?`, projectID).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(raw, "enc:v1:") || strings.Contains(raw, "legacy-tok") {
+		t.Fatalf("not sealed after migrate: %q", raw)
 	}
 }

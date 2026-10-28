@@ -33,7 +33,7 @@ func newTestStore(t *testing.T) (*Store, int64, int64) {
 	if err != nil {
 		t.Fatalf("create issue: %v", err)
 	}
-	store := NewStore(db, slog.Default())
+	store := NewStore(db, slog.Default(), "test-session-secret-32-bytes-minimum!!")
 	if err := store.UpsertDefaultRule(p.ID); err != nil {
 		t.Fatalf("default rule: %v", err)
 	}
@@ -401,4 +401,106 @@ func TestEvaluateSkipsMutedAndIgnored(t *testing.T) {
 	if n := pendingCount(t, store); n == 0 {
 		t.Fatal("threshold should fire for unresolved issues")
 	}
+}
+
+func TestCredentialsEncryptedAtRest(t *testing.T) {
+	store, _, _ := newTestStore(t)
+	in, err := store.CreateIntegration(Integration{
+		Name: "smtp-enc", Provider: "smtp",
+		Credentials: map[string]any{"host": "mail.example.com", "from": "a@b.c", "password": "super-secret-pw"},
+		IsEnabled:   true,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	var raw string
+	if err := store.db.QueryRow(`SELECT credentials FROM integrations WHERE id = ?`, in.ID).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(raw, "super-secret-pw") {
+		t.Fatalf("password stored in plaintext: %q", raw)
+	}
+	if !strings.HasPrefix(raw, "enc:v1:") {
+		t.Fatalf("credentials not sealed: %q", raw)
+	}
+	got, err := store.GetIntegration(in.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Credentials["password"] != "super-secret-pw" {
+		t.Fatalf("decrypt = %v", got.Credentials)
+	}
+}
+
+func TestLegacyPlaintextCredentialsMigrate(t *testing.T) {
+	store, _, _ := newTestStore(t)
+	res, err := store.db.Exec(`INSERT INTO integrations (name, provider, credentials, is_enabled, created_at, updated_at)
+		VALUES ('legacy', 'telegram', '{"bot_token":"tok123","default_chat_id":"c"}', 1, '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := res.LastInsertId()
+	// Legacy rows still read through the new decrypt path.
+	got, err := store.GetIntegration(id)
+	if err != nil {
+		t.Fatalf("legacy read: %v", err)
+	}
+	if got.Credentials["bot_token"] != "tok123" {
+		t.Fatalf("legacy decrypt = %v", got.Credentials)
+	}
+	if n, err := store.MigratePlaintextSecrets(); err != nil || n < 1 {
+		t.Fatalf("migrate = %d, %v", n, err)
+	}
+	var raw string
+	if err := store.db.QueryRow(`SELECT credentials FROM integrations WHERE id = ?`, id).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(raw, "enc:v1:") || strings.Contains(raw, "tok123") {
+		t.Fatalf("not sealed after migrate: %q", raw)
+	}
+}
+
+func TestRoutingOverrideEncryptedAtRest(t *testing.T) {
+	store, projectID, _ := newTestStore(t)
+	tg := mustTelegram(t, store)
+	secretURL := "https://hooks.example.com/secret-token-abc"
+	attachIntegration(t, store, projectID, tg, RoutingOverride{URL: secretURL})
+	var raw string
+	if err := store.db.QueryRow(`SELECT routing_override FROM notification_rule_integrations`).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(raw, "secret-token-abc") {
+		t.Fatalf("override URL stored in plaintext: %q", raw)
+	}
+	rules, err := store.Rules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rules) == 0 || len(rules[0].Integrations) == 0 {
+		t.Fatal("no rules")
+	}
+	if got := rules[0].Integrations[0].Override.URL; got != secretURL {
+		t.Fatalf("override decrypt = %q", got)
+	}
+}
+
+func TestWriteWithoutSecretFailsClosed(t *testing.T) {
+	db := storeNoSecretDB(t)
+	bare := NewStore(db, slog.Default(), "")
+	if _, err := bare.CreateIntegration(Integration{
+		Name: "x", Provider: "telegram",
+		Credentials: map[string]any{"bot_token": "t"},
+	}); err == nil {
+		t.Fatal("create without server secret must fail")
+	}
+}
+
+func storeNoSecretDB(t *testing.T) *database.DB {
+	t.Helper()
+	db, err := database.Open(filepath.Join(t.TempDir(), "nosecret.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
 }
