@@ -525,6 +525,7 @@ export interface IssueDetail {
     status: string;
     mutedUntil: string | null;
     resolvedInRelease: string;
+    reopenedCount: number;
     eventCount: number;
     userCount: number;
     firstSeen: string;

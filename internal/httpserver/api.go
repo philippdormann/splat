@@ -756,6 +756,7 @@ func issueJSON(iss *issues.Issue) map[string]any {
 		"eventCount": iss.EventCount, "userCount": iss.UserCount,
 		"firstSeen": iss.FirstSeen, "lastSeen": iss.LastSeen,
 		"environment": iss.Environment, "release": iss.Release,
+		"reopenedCount": iss.ReopenedCount,
 		"mutedUntil":        mutedUntil,
 		"resolvedInRelease": iss.ResolvedInRelease,
 	}

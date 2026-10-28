@@ -67,6 +67,41 @@ func TestUpsertReopensResolvedIssue(t *testing.T) {
 	}
 }
 
+func TestReopenCountIncrements(t *testing.T) {
+	db, projectID := newTestDB(t)
+	store := NewStore(db)
+	ctx := context.Background()
+
+	r1, _ := store.Upsert(ctx, projectID, "fp-rc", "t", "T", "v", "c", "error", "production", "", time.Now())
+	if r1.Issue.ReopenedCount != 0 {
+		t.Fatalf("new issue should start at 0, got %d", r1.Issue.ReopenedCount)
+	}
+	// Plain reoccurrence without a resolve in between must not count.
+	r2, _ := store.Upsert(ctx, projectID, "fp-rc", "t", "T", "v", "c", "error", "production", "", time.Now())
+	if r2.Issue.ReopenedCount != 0 {
+		t.Fatalf("non-reopening upsert should not count, got %d", r2.Issue.ReopenedCount)
+	}
+	for i := 0; i < 2; i++ {
+		if err := store.SetStatus(r1.Issue.ID, StatusResolved); err != nil {
+			t.Fatalf("resolve: %v", err)
+		}
+		r, err := store.Upsert(ctx, projectID, "fp-rc", "t", "T", "v", "c", "error", "production", "", time.Now())
+		if err != nil {
+			t.Fatalf("reopen upsert: %v", err)
+		}
+		if !r.Reopened {
+			t.Fatal("expected reopened")
+		}
+	}
+	got, err := store.Get(r1.Issue.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.ReopenedCount != 2 {
+		t.Fatalf("expected reopened_count 2, got %d", got.ReopenedCount)
+	}
+}
+
 func TestUpsertIgnoredIssueStaysIgnored(t *testing.T) {
 	db, projectID := newTestDB(t)
 	store := NewStore(db)

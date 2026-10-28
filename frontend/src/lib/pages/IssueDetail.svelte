@@ -235,6 +235,7 @@
         <div class="flex flex-wrap items-center gap-2">
           <LevelBadge level={data.issue.level} />
           <StatusBadge status={data.issue.status} />
+          {#if data.issue.reopenedCount > 0}<span class="text-xs text-muted-foreground" title="Times a new occurrence flipped this issue back to unresolved">reopened {data.issue.reopenedCount}×</span>{/if}
           {#if data.issue.status === "muted"}<span class="text-xs text-muted-foreground">{formatMutedUntil(data.issue.mutedUntil)}</span>{/if}
           {#if data.issue.status === "resolved" && data.issue.resolvedInRelease}<span class="text-xs text-muted-foreground" title="Reopens automatically if the bug appears in a different release">pinned to {data.issue.resolvedInRelease}</span>{/if}
           <span class="text-xs text-muted-foreground"><button class="text-primary hover:underline" on:click={() => projectPath && navigate(projectPath)}>{data.project.name}</button> · {data.issue.environment} · {data.issue.eventCount} events</span>

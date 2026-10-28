@@ -43,6 +43,10 @@ type Issue struct {
 	// ResolvedInRelease pins a resolve to the issue's release at resolve
 	// time (see ResolveInNextRelease). Empty means a plain manual resolve.
 	ResolvedInRelease string
+	// ReopenedCount tracks how many times a new occurrence flipped the
+	// issue back to unresolved (regressions, lapsed mutes) - the
+	// chronic-regressor signal shown during triage.
+	ReopenedCount int64
 }
 
 var ErrNotFound = errors.New("issue not found")
@@ -176,6 +180,10 @@ func (s *Store) upsertPostgres(ctx context.Context, projectID int64, fingerprint
 		return nil, fmt.Errorf("lookup issue: %w", err)
 	}
 	newStatus, mutedOut, resolvedOut, reopened := nextStatus(status, mutedUntil, resolvedInRelease, release, seenAt)
+	reopenedN := 0
+	if reopened {
+		reopenedN = 1
+	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE issues SET
 			event_count = event_count + 1,
@@ -183,13 +191,14 @@ func (s *Store) upsertPostgres(ctx context.Context, projectID int64, fingerprint
 			status = ?,
 			muted_until = ?,
 			resolved_in_release = ?,
+			reopened_count = reopened_count + ?,
 			title = ?,
 			exception_value = ?,
 			culprit = ?,
 			environment = ?,
 			release = ?
 		WHERE id = ?`,
-		seenStr, newStatus, mutedOut, resolvedOut, title, excValue, culprit, environment, release, id); err != nil {
+		seenStr, newStatus, mutedOut, resolvedOut, reopenedN, title, excValue, culprit, environment, release, id); err != nil {
 		tx.Rollback()
 		return nil, fmt.Errorf("update issue: %w", err)
 	}
@@ -238,6 +247,10 @@ func (s *Store) upsertTx(ctx context.Context, conn *database.Conn, projectID int
 
 	newStatus, mutedOut, resolvedOut, reopened := nextStatus(status, mutedUntil, resolvedInRelease, release, seenAt)
 
+	reopenedN := 0
+	if reopened {
+		reopenedN = 1
+	}
 	_, err = conn.ExecContext(ctx, `
 		UPDATE issues SET
 			event_count = event_count + 1,
@@ -245,13 +258,14 @@ func (s *Store) upsertTx(ctx context.Context, conn *database.Conn, projectID int
 			status = ?,
 			muted_until = ?,
 			resolved_in_release = ?,
+			reopened_count = reopened_count + ?,
 			title = ?,
 			exception_value = ?,
 			culprit = ?,
 			environment = ?,
 			release = ?
 		WHERE id = ?`,
-		seenStr, newStatus, mutedOut, resolvedOut, title, excValue, culprit, environment, release, id)
+		seenStr, newStatus, mutedOut, resolvedOut, reopenedN, title, excValue, culprit, environment, release, id)
 	if err != nil {
 		return nil, fmt.Errorf("update issue: %w", err)
 	}
@@ -263,13 +277,13 @@ func (s *Store) upsertTx(ctx context.Context, conn *database.Conn, projectID int
 	return &UpsertResult{Issue: issue, IsNew: false, Reopened: reopened}, nil
 }
 
-const selectCols = `id, project_id, fingerprint, title, exception_type, exception_value, culprit, level, status, event_count, user_count, first_seen, last_seen, environment, release, muted_until, resolved_in_release`
+const selectCols = `id, project_id, fingerprint, title, exception_type, exception_value, culprit, level, status, event_count, user_count, first_seen, last_seen, environment, release, muted_until, resolved_in_release, reopened_count`
 
 func scan(row interface{ Scan(...any) error }) (*Issue, error) {
 	var iss Issue
 	var firstSeen, lastSeen, status, mutedUntil string
 	if err := row.Scan(&iss.ID, &iss.ProjectID, &iss.Fingerprint, &iss.Title, &iss.ExceptionType, &iss.ExceptionValue,
-		&iss.Culprit, &iss.Level, &status, &iss.EventCount, &iss.UserCount, &firstSeen, &lastSeen, &iss.Environment, &iss.Release, &mutedUntil, &iss.ResolvedInRelease); err != nil {
+		&iss.Culprit, &iss.Level, &status, &iss.EventCount, &iss.UserCount, &firstSeen, &lastSeen, &iss.Environment, &iss.Release, &mutedUntil, &iss.ResolvedInRelease, &iss.ReopenedCount); err != nil {
 		return nil, err
 	}
 	iss.Status = Status(status)
