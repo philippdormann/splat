@@ -6,7 +6,8 @@
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
   import TwoFASetup from "$lib/components/TwoFASetup.svelte";
-  import { Bug, TriangleAlert, KeyRound, Check } from "lucide-svelte";
+  import { TriangleAlert, KeyRound, Check } from "lucide-svelte";
+  import logoUrl from "$lib/assets/splat-long.png";
 
   export let onLoggedIn: () => void;
 
@@ -112,12 +113,9 @@
 
 <div class="flex min-h-screen items-center justify-center p-4">
   <Card.Root class="w-full max-w-sm gap-0">
-    <Card.Header class="flex-row items-center gap-2 pb-6">
-      <span class="bg-primary flex size-9 items-center justify-center rounded-lg">
-        <Bug class="text-primary-foreground size-5" />
-      </span>
+    <Card.Header class="pb-6">
+      <img src={logoUrl} alt="Splat" class="h-10 w-auto" />
       <div>
-        <Card.Title class="text-lg">Splat</Card.Title>
         <Card.Description>
           {#if recoveryCodes}Save your recovery codes
           {:else if challenge && enrollRequired}Set up two-factor authentication
