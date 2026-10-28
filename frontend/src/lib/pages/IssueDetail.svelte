@@ -38,6 +38,10 @@
   let fileBody = "";
   let fileBusy = false;
   let confirmUnlink: IssueLink | null = null;
+  let showStacktrace = true;
+  let showEvents = true;
+  let showNotes = true;
+  let showLinks = true;
 
   async function load() {
     try {
@@ -281,11 +285,20 @@
       </CardUI.Root>
     {/if}
 
+    <nav aria-label="Issue sections" class="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+      {#if data.stacktrace.length}<a class="text-primary hover:underline" href="#section-stacktrace">Stacktrace</a>{/if}
+      {#if data.events.length > 1}<a class="text-primary hover:underline" href="#section-events">Events ({data.events.length})</a>{/if}
+      <a class="text-primary hover:underline" href="#section-notes">Notes ({data.notes.length})</a>
+      <a class="text-primary hover:underline" href="#section-links">External issues ({links.length})</a>
+    </nav>
+
     {#if data.stacktrace.length}
+      <div id="section-stacktrace" class="scroll-mt-4">
       <CardUI.Root class="gap-0">
-        <CardUI.Header>
-          <CardUI.Title>Stacktrace</CardUI.Title>
+        <CardUI.Header class="flex-row items-center justify-between">
+          <button class="text-sm font-medium hover:underline" on:click={() => (showStacktrace = !showStacktrace)}>{showStacktrace ? "▾" : "▸"} Stacktrace</button>
         </CardUI.Header>
+        {#if showStacktrace}
         <CardUI.Content>
           <div class="space-y-3">
             {#each data.stacktrace as f}
@@ -309,7 +322,9 @@
             {/each}
           </div>
         </CardUI.Content>
+        {/if}
       </CardUI.Root>
+      </div>
     {/if}
 
     <div class="grid gap-4 lg:grid-cols-2">
@@ -354,14 +369,16 @@
     {#if data.events.length > 1}
       {@const prevId = data.prevEventId}
       {@const nextId = data.nextEventId}
+      <div id="section-events" class="scroll-mt-4">
       <CardUI.Root class="gap-0">
         <CardUI.Header class="flex-row items-center justify-between">
-          <CardUI.Title>Events ({data.events.length})</CardUI.Title>
+          <button class="text-sm font-medium hover:underline" on:click={() => (showEvents = !showEvents)}>{showEvents ? "▾" : "▸"} Events ({data.events.length})</button>
           <div class="flex items-center gap-1 text-xs">
             <Button size="sm" variant="outline" disabled={!prevId} on:click={() => prevId && showEvent(prevId)}>← Older</Button>
             <Button size="sm" variant="outline" disabled={!nextId} on:click={() => nextId && showEvent(nextId)}>Newer →</Button>
           </div>
         </CardUI.Header>
+        {#if showEvents}
         <CardUI.Content>
           {#if data.currentEventId}
             <p class="mb-2 font-mono text-xs text-muted-foreground">Showing event <span class="text-foreground">{data.currentEventId}</span>{data.latestEventId && data.currentEventId !== data.latestEventId ? " (not the latest)" : ""}</p>
@@ -372,7 +389,9 @@
             {/each}
           </div>
         </CardUI.Content>
+        {/if}
       </CardUI.Root>
+      </div>
     {/if}
 
     {#if data.rawEvent}
@@ -396,8 +415,12 @@
       </CardUI.Root>
     {/if}
 
+    <div id="section-notes" class="scroll-mt-4">
     <CardUI.Root class="gap-0">
-      <CardUI.Header><CardUI.Title>Notes ({data.notes.length})</CardUI.Title></CardUI.Header>
+      <CardUI.Header class="flex-row items-center justify-between">
+        <button class="text-sm font-medium hover:underline" on:click={() => (showNotes = !showNotes)}>{showNotes ? "▾" : "▸"} Notes ({data.notes.length})</button>
+      </CardUI.Header>
+      {#if showNotes}
       <CardUI.Content>
         {#if data.notes.length}
           <div class="mb-3 space-y-2">
@@ -419,7 +442,9 @@
           <Button type="submit" size="sm" disabled={noteBusy || !noteBody.trim()}>Add</Button>
         </form>
       </CardUI.Content>
+      {/if}
     </CardUI.Root>
+    </div>
 
     <ConfirmDialog
       open={confirmDeleteNote !== null}
@@ -430,11 +455,13 @@
       onCancel={() => (confirmDeleteNote = null)}
     />
 
+    <div id="section-links" class="scroll-mt-4">
     <CardUI.Root class="gap-0">
       <CardUI.Header class="flex-row items-center justify-between">
-        <CardUI.Title>External issues ({links.length})</CardUI.Title>
+        <button class="text-sm font-medium hover:underline" on:click={() => (showLinks = !showLinks)}>{showLinks ? "▾" : "▸"} External issues ({links.length})</button>
         <Button size="sm" variant="outline" on:click={openFileDialog}><ExternalLink class="h-3.5 w-3.5" /> File issue</Button>
       </CardUI.Header>
+      {#if showLinks}
       <CardUI.Content>
         {#if links.length}
           <div class="mb-1 divide-y divide-border rounded-md border border-border">
@@ -453,7 +480,9 @@
           <p class="text-xs text-muted-foreground">Not filed anywhere yet. Needs a repository linked on the project page first.</p>
         {/if}
       </CardUI.Content>
+      {/if}
     </CardUI.Root>
+    </div>
 
     {#if showFileIssue}
       <Dialog open={true} title="File as external issue" onClose={() => (showFileIssue = false)}>
