@@ -499,6 +499,7 @@ export interface IssuesData {
   total: number;
   page: number;
   totalPages: number;
+  perPage: number;
   projects: { id: number; name: string }[];
   environments: string[];
 }

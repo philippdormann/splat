@@ -41,6 +41,11 @@
   let page = 1;
   const initialPage = Number(queryParam(urlSearch, "page"));
   if (Number.isInteger(initialPage) && initialPage > 0) page = initialPage;
+  const initialPerPage = Number(queryParam(urlSearch, "per_page"));
+  let perPage = [25, 50, 100].includes(initialPerPage)
+    ? initialPerPage
+    : loadPersisted<number>("splat.issues.perPage", 50, (v): v is number => typeof v === "number" && [25, 50, 100].includes(v));
+  $: savePersisted("splat.issues.perPage", perPage);
   let selected = new Set<number>();
   let error = "";
   let newCount = 0;
@@ -61,6 +66,7 @@
     if (environment) p.set("environment", environment);
     if (status) p.set("status", status);
     if (sort) p.set("sort", sort);
+    if (perPage !== 50) p.set("per_page", String(perPage));
     p.set("page", String(page));
     return p;
   }
@@ -105,6 +111,7 @@
       environment: environment || null,
       status: status || null,
       sort: sort || null,
+      per_page: perPage !== 50 ? String(perPage) : null,
       page: page > 1 ? String(page) : null,
     });
     try {
@@ -217,6 +224,23 @@
   }
 
   $: allVisibleSelected = !!data && data.issues.length > 0 && data.issues.every((i) => selected.has(i.id));
+
+  // Windowed page buttons: 1 … p-2 p-1 p p+1 p+2 … last.
+  $: pageItems = ((): (number | string)[] => {
+    const t = data?.totalPages ?? 0;
+    if (t <= 1) return [];
+    const keep = new Set(
+      [1, t, page - 2, page - 1, page, page + 1, page + 2].filter((n) => n >= 1 && n <= t),
+    );
+    const out: (number | string)[] = [];
+    let prev = 0;
+    for (const n of [...keep].sort((a, b) => a - b)) {
+      if (n - prev > 1) out.push("…");
+      out.push(n);
+      prev = n;
+    }
+    return out;
+  })();
 
   onMount(() => {
     load();
@@ -422,13 +446,28 @@
     {/if}
   </Card.Root>
 
-  {#if data && data.totalPages > 1}
-    <div class="flex items-center gap-3 text-sm">
+  {#if data && data.total > 0}
+    <div class="flex flex-wrap items-center gap-2 text-sm">
       <Button size="sm" variant="outline" disabled={page <= 1} on:click={() => { page -= 1; load(); }}>Prev</Button>
-      <Separator orientation="vertical" class="h-5" />
-      <span class="text-muted-foreground tabular-nums">Page {data.page} of {data.totalPages} ({data.total.toLocaleString()})</span>
-      <Separator orientation="vertical" class="h-5" />
+      {#each pageItems as n}
+        {#if typeof n === "number"}
+          <Button size="sm" variant={n === page ? "default" : "outline"} on:click={() => { page = n; load(); }}>{n}</Button>
+        {:else}
+          <span class="text-muted-foreground px-1">…</span>
+        {/if}
+      {/each}
       <Button size="sm" variant="outline" disabled={page >= data.totalPages} on:click={() => { page += 1; load(); }}>Next</Button>
+      <Separator orientation="vertical" class="h-5" />
+      <span class="text-muted-foreground tabular-nums">{data.total.toLocaleString()} issue{data.total === 1 ? "" : "s"}</span>
+      <Separator orientation="vertical" class="h-5" />
+      <label class="text-muted-foreground flex items-center gap-1.5 text-xs">
+        Per page
+        <select class="h-8 rounded-md border border-input bg-background px-1.5 text-xs text-foreground" bind:value={perPage} on:change={() => { page = 1; load(); }} aria-label="Issues per page">
+          <option value={25}>25</option>
+          <option value={50}>50</option>
+          <option value={100}>100</option>
+        </select>
+      </label>
     </div>
   {/if}
 </div>

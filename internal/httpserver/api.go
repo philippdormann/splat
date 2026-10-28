@@ -252,7 +252,11 @@ func pointsJSON(points []dashboard.Point) []map[string]any {
 
 func (s *Server) apiIssuesList(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	f := issues.ListFilter{Limit: issuesPerPage, OrderBy: q.Get("sort"), Query: q.Get("q"), Environment: q.Get("environment"), Status: issues.Status(q.Get("status"))}
+	perPage := issuesPerPage
+	if n, err := strconv.Atoi(q.Get("per_page")); err == nil && n >= 10 && n <= 200 {
+		perPage = n
+	}
+	f := issues.ListFilter{Limit: perPage, OrderBy: q.Get("sort"), Query: q.Get("q"), Environment: q.Get("environment"), Status: issues.Status(q.Get("status"))}
 	if id, err := strconv.ParseInt(q.Get("project"), 10, 64); err == nil {
 		f.ProjectID = id
 	}
@@ -268,7 +272,7 @@ func (s *Server) apiIssuesList(w http.ResponseWriter, r *http.Request) {
 	// A member session only ever sees granted projects.
 	if ids, ok := s.accessScope(r); !ok {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"issues": []any{}, "total": 0, "page": page, "totalPages": 1,
+			"issues": []any{}, "total": 0, "page": page, "totalPages": 1, "perPage": perPage,
 			"projects": []any{}, "environments": []string{},
 		})
 		return
@@ -289,7 +293,7 @@ func (s *Server) apiIssuesList(w http.ResponseWriter, r *http.Request) {
 			f.ProjectIDs = ids
 		}
 	}
-	f.Offset = (page - 1) * issuesPerPage
+	f.Offset = (page - 1) * perPage
 
 	list, total, err := s.Issues.List(f)
 	if err != nil {
@@ -315,7 +319,7 @@ func (s *Server) apiIssuesList(w http.ResponseWriter, r *http.Request) {
 			"sparkline": sparklines[iss.ID],
 		})
 	}
-	totalPages := (total + issuesPerPage - 1) / issuesPerPage
+	totalPages := (total + perPage - 1) / perPage
 	if totalPages < 1 {
 		totalPages = 1
 	}
@@ -341,7 +345,7 @@ func (s *Server) apiIssuesList(w http.ResponseWriter, r *http.Request) {
 	}
 	envs, _ := s.Dashboard.DistinctEnvironments(f.ProjectID)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"issues": rows, "total": total, "page": page, "totalPages": totalPages,
+		"issues": rows, "total": total, "page": page, "totalPages": totalPages, "perPage": perPage,
 		"projects": projJSON, "environments": envs,
 	})
 }
