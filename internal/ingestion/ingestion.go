@@ -276,8 +276,15 @@ func (h *Handler) resolveProject(w http.ResponseWriter, r *http.Request, authKey
 	project, err := h.Projects.GetByPublicKey(authKey)
 	if err != nil {
 		// Wrong DSN key, but maybe a Bearer API key was also sent.
-		if p, ok := h.resolveProjectByKey(w, r); ok {
-			return p, true
+		// Only attempt the Bearer fallback when a token is present:
+		// resolveProjectByKey writes its own rejection, so calling it
+		// unconditionally would produce two responses (superfluous
+		// WriteHeader) for the common wrong-key/no-Bearer case.
+		if apikeys.BearerToken(r) != "" {
+			if p, ok := h.resolveProjectByKey(w, r); ok {
+				return p, true
+			}
+			return nil, false
 		}
 		h.reject(w, "auth", http.StatusUnauthorized, `{"error":"invalid project key"}`)
 		return nil, false
