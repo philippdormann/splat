@@ -59,15 +59,15 @@ func (s *Store) Create(name, slug, defaultEnv, platform string, retentionDays in
 	}
 	if s.db.IsPostgres() {
 		var id int64
-		err := s.db.QueryRow(`INSERT INTO projects (name, slug, public_key, default_environment, retention_days, platform) VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
-			name, slug, key, defaultEnv, retentionDays, platform).Scan(&id)
+		err := s.db.QueryRow(`INSERT INTO projects (name, slug, public_key, default_environment, retention_days, platform, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+			name, slug, key, defaultEnv, retentionDays, platform, time.Now().UTC().Format(time.RFC3339Nano)).Scan(&id)
 		if err != nil {
 			return nil, err
 		}
 		return s.Get(id)
 	}
-	res, err := s.db.Exec(`INSERT INTO projects (name, slug, public_key, default_environment, retention_days, platform) VALUES (?, ?, ?, ?, ?, ?)`,
-		name, slug, key, defaultEnv, retentionDays, platform)
+	res, err := s.db.Exec(`INSERT INTO projects (name, slug, public_key, default_environment, retention_days, platform, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		name, slug, key, defaultEnv, retentionDays, platform, time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +86,27 @@ func scanProject(row interface{ Scan(...any) error }) (*Project, error) {
 		return nil, err
 	}
 	p.Enabled = enabled != 0
-	p.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	p.CreatedAt = parseCreatedAt(createdAt)
 	return &p, nil
+}
+
+// parseCreatedAt tolerates every timestamp shape this column can hold:
+// RFC3339Nano written by Go, and Postgres now()::text ("2006-01-02
+// 15:04:05.999999+00") left behind by the column default on rows created
+// before inserts set created_at explicitly. A strict RFC3339 parse
+// silently zeroed those rows, showing up as "739917d ago" in the UI.
+func parseCreatedAt(s string) time.Time {
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999-07",
+		"2006-01-02T15:04:05.999999999-07",
+	} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }
 
 const selectCols = `id, name, slug, public_key, enabled, default_environment, retention_days, platform, created_at`
@@ -138,7 +157,13 @@ func (s *Store) List() ([]*Project, error) {
 }
 
 func (s *Store) SetEnabled(id int64, enabled bool) error {
-	_, err := s.db.Exec(`UPDATE projects SET enabled = ? WHERE id = ?`, enabled, id)
+	// INTEGER column: pass 0/1, a raw bool trips pgx with
+	// "unable to encode ... into binary format for int4".
+	flag := 0
+	if enabled {
+		flag = 1
+	}
+	_, err := s.db.Exec(`UPDATE projects SET enabled = ? WHERE id = ?`, flag, id)
 	return err
 }
 
