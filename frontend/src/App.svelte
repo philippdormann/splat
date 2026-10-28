@@ -209,7 +209,7 @@
         {:else if path === "/issues"}
           <Issues {navigate} urlSearch={search} />
         {:else if path.startsWith("/issues/")}
-          <IssueDetail id={path.slice("/issues/".length)} {navigate} />
+          <IssueDetail id={path.slice("/issues/".length)} {navigate} urlSearch={search} />
         {:else if path === "/projects"}
           <Projects {navigate} />
         {:else if path === "/projects/new"}

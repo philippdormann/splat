@@ -13,10 +13,12 @@
   import { Copy, Check, CalendarClock, EyeOff, BellOff, Bell, Undo2, ExternalLink, TriangleAlert } from "lucide-svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import DateTime from "$lib/components/DateTime.svelte";
+  import { queryParam, replaceQuery } from "$lib/urlquery";
   import { toast } from "svelte-sonner";
 
   export let id: string;
   export let navigate: (path: string) => void;
+  export let urlSearch: string = "";
 
   let data: IssueDetail | null = null;
   let error = "";
@@ -25,7 +27,7 @@
   let muteCount = 50;
   let pendingAction: "resolved" | "resolved-next" | "ignored" | "muted" | "unresolved" | null = null;
   let actionBusy = false;
-  let selectedEvent: string | null = null;
+  let selectedEvent: string | null = queryParam(urlSearch, "event");
   let showRaw = false;
   let copiedRaw = false;
   let copiedRawTimer: ReturnType<typeof setTimeout>;
@@ -47,6 +49,9 @@
   async function load() {
     try {
       data = await api.issue(id, selectedEvent ?? undefined);
+      // Keep the shown occurrence addressable: copy-pasting the URL
+      // reopens the same event, not just the issue.
+      replaceQuery({ event: data.currentEventId });
       links = data.links ?? [];
       localSpans = null;
       if (data.traceId) {
