@@ -52,10 +52,16 @@ func writeAPIError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
+// maxAPIBodyBytes bounds a management-API request body. Ingestion has its
+// own (larger) cap; here we just need to keep a single authenticated
+// request from exhausting memory.
+const maxAPIBodyBytes = 4 << 20 // 4 MiB
+
 func decodeJSON(r *http.Request, v any) bool {
 	if r.Body == nil {
 		return false
 	}
+	r.Body = http.MaxBytesReader(nil, r.Body, maxAPIBodyBytes)
 	defer r.Body.Close()
 	return json.NewDecoder(r.Body).Decode(v) == nil
 }
@@ -1581,7 +1587,9 @@ func (s *Server) apiSourceMapsUpload(w http.ResponseWriter, r *http.Request) {
 			BundleURL string `json:"bundleUrl"`
 			Content   string `json:"content"`
 		}
-		if !decodeJSON(r, &input) {
+		r.Body = http.MaxBytesReader(w, r.Body, sourcemaps.MaxMapBytes+(1<<20))
+		defer r.Body.Close()
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			writeAPIError(w, http.StatusBadRequest, "invalid JSON")
 			return
 		}
