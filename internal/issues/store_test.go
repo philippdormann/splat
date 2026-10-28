@@ -300,6 +300,68 @@ func TestUpsertCountMuteDecrementsAndLifts(t *testing.T) {
 	}
 }
 
+func TestMergeMovesEventsAndDeletesLosers(t *testing.T) {
+	db, projectID := newTestDB(t)
+	store := NewStore(db)
+	ctx := context.Background()
+
+	w, _ := store.Upsert(ctx, projectID, "fp-w", "winner", "T", "v", "c", "error", "production", "", time.Now())
+	l, _ := store.Upsert(ctx, projectID, "fp-l", "loser", "T", "v", "c", "error", "production", "", time.Now())
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, e := range []struct {
+		eventID string
+		issueID int64
+	}{
+		{"e1", w.Issue.ID},
+		{"e2", l.Issue.ID},
+		{"e3", l.Issue.ID},
+	} {
+		if _, err := db.Exec(`INSERT INTO events (event_id, issue_id, project_id, timestamp) VALUES (?, ?, ?, ?)`, e.eventID, e.issueID, projectID, now); err != nil {
+			t.Fatalf("insert event: %v", err)
+		}
+	}
+	if _, err := store.AddNote(l.Issue.ID, "loser note"); err != nil {
+		t.Fatalf("add note: %v", err)
+	}
+	if err := store.SetStatus(w.Issue.ID, StatusResolved); err != nil {
+		t.Fatalf("resolve winner: %v", err)
+	}
+
+	merged, err := store.Merge(w.Issue.ID, []int64{l.Issue.ID})
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	if merged.EventCount != 3 {
+		t.Fatalf("expected recomputed count 3, got %d", merged.EventCount)
+	}
+	if merged.Status != StatusResolved {
+		t.Fatalf("winner status should be kept, got %q", merged.Status)
+	}
+	notes, err := store.Notes(w.Issue.ID)
+	if err != nil || len(notes) != 1 || notes[0].Body != "loser note" {
+		t.Fatalf("loser note should move to winner, got %+v, err %v", notes, err)
+	}
+	if _, err := store.Get(l.Issue.ID); err == nil {
+		t.Fatal("loser should be deleted")
+	}
+}
+
+func TestMergeRejectsCrossProject(t *testing.T) {
+	db, projectID := newTestDB(t)
+	store := NewStore(db)
+	ctx := context.Background()
+
+	p2, err := projects.NewStore(db).Create("Other", "other", "production", "", 90)
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	w, _ := store.Upsert(ctx, projectID, "fp-w2", "winner", "T", "v", "c", "error", "production", "", time.Now())
+	l, _ := store.Upsert(ctx, p2.ID, "fp-l2", "loser", "T", "v", "c", "error", "production", "", time.Now())
+	if _, err := store.Merge(w.Issue.ID, []int64{l.Issue.ID}); err == nil {
+		t.Fatal("cross-project merge must fail")
+	}
+}
+
 func TestSetStatusClearsMute(t *testing.T) {
 	db, projectID := newTestDB(t)
 	store := NewStore(db)

@@ -181,6 +181,7 @@ func (s *Server) routes() {
 
 	s.mux.HandleFunc("GET /api/v1/issues", s.requireScope(s.apiIssuesList))
 	s.mux.HandleFunc("POST /api/v1/issues/bulk", s.requireScope(s.apiIssuesBulk))
+	s.mux.HandleFunc("POST /api/v1/issues/merge", s.requireScope(s.apiIssuesMerge))
 	s.mux.HandleFunc("GET /api/v1/issues/{id}", s.requireScope(s.apiIssueDetail))
 	s.mux.HandleFunc("POST /api/v1/issues/{id}/status", s.requireScope(s.apiIssueSetStatus))
 	s.mux.HandleFunc("GET /api/v1/issues/{id}/notes", s.requireScope(s.apiIssueNotesList))

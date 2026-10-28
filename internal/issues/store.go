@@ -573,6 +573,79 @@ func (s *Store) bulkSet(ids []int64, status Status, mutedUntil string, mutedCoun
 	return tx.Commit()
 }
 
+// Merge folds loserIDs into winnerID: events, notes and external links
+// move over, counters are recomputed from the moved events, then the
+// losers are deleted (cascades clean up anything left behind). All IDs
+// must belong to one project; the winner's status, title and
+// mute/resolve state are kept. Fingerprints are NOT merged, so a future
+// event matching a loser's fingerprint opens a fresh issue.
+func (s *Store) Merge(winnerID int64, loserIDs []int64) (*Issue, error) {
+	if len(loserIDs) == 0 || len(loserIDs) > 20 {
+		return nil, fmt.Errorf("merge needs 1-20 losers")
+	}
+	winner, err := s.Get(winnerID)
+	if err != nil {
+		return nil, err
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(loserIDs)), ",")
+	loserArgs := make([]any, 0, len(loserIDs))
+	for _, id := range loserIDs {
+		if id == winnerID {
+			return nil, fmt.Errorf("cannot merge an issue into itself")
+		}
+		loserArgs = append(loserArgs, id)
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	rollback := func(err error) (*Issue, error) {
+		tx.Rollback()
+		return nil, err
+	}
+	var userBump int64
+	for _, id := range loserIDs {
+		var projectID int64
+		var userCount int64
+		if err := tx.QueryRow(`SELECT project_id, user_count FROM issues WHERE id = ?`, id).Scan(&projectID, &userCount); err != nil {
+			return rollback(ErrNotFound)
+		}
+		if projectID != winner.ProjectID {
+			return rollback(fmt.Errorf("cross-project merge"))
+		}
+		userBump += userCount
+	}
+	move := func(table string) error {
+		q := fmt.Sprintf(`UPDATE %s SET issue_id = ? WHERE issue_id IN (%s)`, table, placeholders)
+		_, err := tx.Exec(q, append([]any{winnerID}, loserArgs...)...)
+		return err
+	}
+	for _, table := range []string{"events", "issue_notes", "issue_links"} {
+		if err := move(table); err != nil {
+			return rollback(err)
+		}
+	}
+	if _, err := tx.Exec(`
+		UPDATE issues SET
+			event_count = (SELECT COUNT(*) FROM events WHERE issue_id = ?),
+			user_count = user_count + ?,
+			first_seen = COALESCE((SELECT MIN(timestamp) FROM events WHERE issue_id = ?), first_seen),
+			last_seen = COALESCE((SELECT MAX(timestamp) FROM events WHERE issue_id = ?), last_seen)
+		WHERE id = ?`,
+		winnerID, userBump, winnerID, winnerID, winnerID); err != nil {
+		return rollback(err)
+	}
+	q := fmt.Sprintf(`DELETE FROM issues WHERE id IN (%s)`, placeholders)
+	if _, err := tx.Exec(q, loserArgs...); err != nil {
+		return rollback(err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return s.Get(winnerID)
+}
+
 // MaxNoteBytes caps a note at 10 KiB of text - generous for an operator
 // memo, small enough that notes can't bloat the database.
 const MaxNoteBytes = 10 << 10

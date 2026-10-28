@@ -126,6 +126,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ ids, status, mutedUntil: opts?.mutedUntil, mutedCount: opts?.mutedCount }),
     }),
+  mergeIssues: (winnerId: number, loserIds: number[]) =>
+    req<{ ok: boolean; id: number; eventCount: number }>("/api/v1/issues/merge", {
+      method: "POST",
+      body: JSON.stringify({ winnerId, loserIds }),
+    }),
 
   projects: ((params?: { page?: number; perPage?: number; query?: string; statsPeriod?: string }) => {
     const qs = new URLSearchParams();
@@ -487,6 +492,7 @@ export interface IssuesData {
     culprit: string;
     level: string;
     status: string;
+    projectId: number;
     projectName: string;
     environment: string;
     eventCount: number;

@@ -1442,6 +1442,41 @@
         }
       }
     },
+    "/api/v1/issues/merge": {
+      "post": {
+        "summary": "Merge duplicate issues into one winner",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "winnerId",
+                  "loserIds"
+                ],
+                "properties": {
+                  "winnerId": {
+                    "type": "integer"
+                  },
+                  "loserIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Merged; winner keeps its status."
+          }
+        }
+      }
+    },
     "/api/v1/issues/{id}": {
       "get": {
         "summary": "Issue detail",

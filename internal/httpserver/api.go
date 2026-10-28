@@ -313,6 +313,7 @@ func (s *Server) apiIssuesList(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, map[string]any{
 			"id": iss.ID, "title": iss.Title, "culprit": iss.Culprit, "level": iss.Level,
 			"status":      string(iss.Status),
+			"projectId": iss.ProjectID,
 			"projectName": names[iss.ProjectID], "environment": iss.Environment,
 			"eventCount": iss.EventCount, "userCount": iss.UserCount,
 			"firstSeen": iss.FirstSeen, "lastSeen": iss.LastSeen, "lastSeenRelative": relativeTime(iss.LastSeen),
@@ -775,6 +776,46 @@ func (s *Server) apiIssuesBulk(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+func (s *Server) apiIssuesMerge(w http.ResponseWriter, r *http.Request) {
+	// Merge spans issues, so project-bound keys are refused outright.
+	if a := s.authenticate(r); !a.admin && a.key != nil && a.key.ProjectID.Valid {
+		writeAPIError(w, http.StatusForbidden, "project-bound keys cannot merge across issues")
+		return
+	}
+	var input struct {
+		WinnerID int64   `json:"winnerId"`
+		LoserIDs []int64 `json:"loserIds"`
+	}
+	if !decodeJSON(r, &input) {
+		writeAPIError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if input.WinnerID == 0 || len(input.LoserIDs) == 0 || len(input.LoserIDs) > 20 {
+		writeAPIError(w, http.StatusBadRequest, "winnerId plus 1-20 loserIds required")
+		return
+	}
+	// Enforce per-project access on every touched issue, same as bulk.
+	winner, err := s.Issues.Get(input.WinnerID)
+	if err != nil || !s.canAccessProject(r, winner.ProjectID) {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	for _, id := range input.LoserIDs {
+		iss, err := s.Issues.Get(id)
+		if err != nil || iss.ProjectID != winner.ProjectID || !s.canAccessProject(r, iss.ProjectID) {
+			writeAPIError(w, http.StatusNotFound, "not found")
+			return
+		}
+	}
+	merged, err := s.Issues.Merge(input.WinnerID, input.LoserIDs)
+	if err != nil {
+		s.Logger.Error("merge issues", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": merged.ID, "eventCount": merged.EventCount})
+}
+
 func issueJSON(iss *issues.Issue) map[string]any {
 	var mutedUntil any
 	if !iss.MutedUntil.IsZero() {
@@ -787,7 +828,7 @@ func issueJSON(iss *issues.Issue) map[string]any {
 		"eventCount": iss.EventCount, "userCount": iss.UserCount,
 		"firstSeen": iss.FirstSeen, "lastSeen": iss.LastSeen,
 		"environment": iss.Environment, "release": iss.Release,
-		"reopenedCount": iss.ReopenedCount,
+		"reopenedCount":     iss.ReopenedCount,
 		"mutedUntil":        mutedUntil,
 		"mutedUntilCount":   iss.MutedCount,
 		"resolvedInRelease": iss.ResolvedInRelease,

@@ -17,6 +17,7 @@
   import Input from "$lib/components/input.svelte";
   import Button from "$lib/components/button.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import Dialog from "$lib/components/Dialog.svelte";
   import { toast } from "svelte-sonner";
 
   export let navigate: (path: string) => void;
@@ -59,6 +60,12 @@
   let bulkMuteCount = 50;
   let pendingQuick: { id: number; status: string; title: string } | null = null;
   let quickBusy = false;
+  let showMerge = false;
+  let mergeWinner: number | null = null;
+  let mergeBusy = false;
+
+  $: selectedRows = data ? data.issues.filter((i) => selected.has(i.id)) : [];
+  $: mergeable = selectedRows.length >= 2 && selectedRows.every((i) => i.projectId === selectedRows[0].projectId);
 
   function params() {
     const p = new URLSearchParams();
@@ -193,6 +200,30 @@
     selected = s;
   }
 
+  function openMerge() {
+    if (selectedRows.length === 0) return;
+    mergeWinner = selectedRows[0].id;
+    showMerge = true;
+  }
+
+  async function confirmMerge() {
+    if (mergeWinner === null || selected.size < 2) return;
+    mergeBusy = true;
+    try {
+      const losers = [...selected].filter((id) => id !== mergeWinner);
+      const r = await api.mergeIssues(mergeWinner, losers);
+      toast.success(`Merged ${losers.length + 1} issues into #${r.id} (${r.eventCount} events).`);
+      selected = new Set();
+      showMerge = false;
+      mergeWinner = null;
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Merge failed.");
+    } finally {
+      mergeBusy = false;
+    }
+  }
+
   const quickCopy: Record<string, { title: string; label: string }> = {
     resolved: { title: "Resolve issue?", label: "Resolve" },
     ignored: { title: "Ignore issue?", label: "Ignore" },
@@ -264,6 +295,15 @@
         <Button size="sm" variant="outline" on:click={() => bulk("resolved")}>Resolve ({selected.size})</Button>
         <Button size="sm" variant="outline" on:click={() => bulk("ignored")}>Ignore ({selected.size})</Button>
         <Button size="sm" variant="outline" on:click={() => bulk("muted")}>Mute ({selected.size})</Button>
+        {#if selected.size >= 2}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!mergeable}
+            title={mergeable ? "Merge duplicates into one issue" : "Merging needs issues from a single project"}
+            on:click={openMerge}
+          >Merge ({selected.size})</Button>
+        {/if}
       </div>
     {/if}
   </div>
@@ -302,6 +342,24 @@
     onConfirm={confirmQuick}
     onCancel={() => { if (!quickBusy) pendingQuick = null; }}
   />
+
+  {#if showMerge}
+    <Dialog open={true} title="Merge duplicate issues" onClose={() => { if (!mergeBusy) showMerge = false; }}>
+      <div class="space-y-3">
+        <p class="text-xs text-muted-foreground">Events, notes and external links move to the winner, which keeps its status. Losers are deleted — a future event matching a loser opens a fresh issue.</p>
+        <div class="space-y-1">
+          <label class="text-xs" for="merge-winner">Winner (keeps its status)</label>
+          <select id="merge-winner" class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={mergeWinner}>
+            {#each selectedRows as r}<option value={r.id}>#{r.id} · {r.title}</option>{/each}
+          </select>
+        </div>
+        <div class="flex gap-2">
+          <Button size="sm" disabled={mergeBusy || mergeWinner === null} on:click={confirmMerge}>{mergeBusy ? "Merging…" : `Merge ${selected.size} issues`}</Button>
+          <Button size="sm" variant="outline" disabled={mergeBusy} on:click={() => (showMerge = false)}>Cancel</Button>
+        </div>
+      </div>
+    </Dialog>
+  {/if}
 
   <Card.Root class="gap-0">
     <Card.Content class="flex flex-wrap gap-2 pt-6">
