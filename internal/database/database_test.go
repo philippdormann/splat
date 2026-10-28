@@ -13,7 +13,7 @@ func TestOpenRunsMigrations(t *testing.T) {
 	}
 	defer db.Close()
 
-	for _, table := range []string{"projects", "issues", "events", "admin_users", "sessions", "telegram_config", "notification_queue"} {
+	for _, table := range []string{"projects", "issues", "events", "admin_users", "sessions", "integrations", "notification_rule_integrations", "notification_queue"} {
 		var name string
 		if err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name = ?`, table).Scan(&name); err != nil {
 			t.Fatalf("expected table %q to exist: %v", table, err)

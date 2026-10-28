@@ -1,7 +1,6 @@
 // Package notifications decides which issue events deserve an alert and
-// durably queues them per-channel in SQLite so a flaky Telegram/Slack/
-// Discord/Teams API never blocks or fails event ingestion, and one
-// channel's outage never blocks or duplicates another's delivery.
+// durably queues them per-integration in SQLite so a flaky Telegram/Slack/
+// Discord/Teams API never blocks or fails event ingestion.
 package notifications
 
 import (
@@ -15,6 +14,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -25,118 +25,218 @@ import (
 	"github.com/philippdormann/splat/internal/webhooks"
 )
 
-type TelegramConfig struct {
-	BotToken string
-	ChatID   string
-	Enabled  bool
-}
+// Providers.
+var allProviders = []string{"telegram", "slack", "discord", "teams", "sheets", "smtp", "generic"}
 
-// WebhookConfig is the shape shared by Slack, Discord, and Teams: a single
-// incoming-webhook URL plus an enabled flag.
-type WebhookConfig struct {
-	URL     string
-	Enabled bool
-}
-
-var webhookChannelNames = []string{"slack", "discord", "teams", "sheets"}
-
-// allChannelNames is every deliverable destination, used to validate
-// per-rule channel selections.
-var allChannelNames = []string{"telegram", "slack", "discord", "teams", "sheets", "email", "generic"}
-
-// ValidChannel reports whether c names a deliverable destination.
-func ValidChannel(c string) bool {
-	for _, n := range allChannelNames {
-		if n == c {
+// ValidProvider reports whether p names a supported integration provider.
+func ValidProvider(p string) bool {
+	for _, n := range allProviders {
+		if n == p {
 			return true
 		}
 	}
 	return false
 }
 
-// SMTPConfig is the instance-level mail setup. The To address is the
-// on-call recipient - alert rules pick channels, not people.
-type SMTPConfig struct {
-	Host     string
-	Port     int
-	Username string
-	Password string
-	From     string
-	To       string
-	UseTLS   bool
-	Enabled  bool
+// ValidChannel is kept for backwards compatibility; providers replaced channels.
+func ValidChannel(c string) bool { return ValidProvider(c) }
+
+// Integration is a named set of credentials for one provider.
+// Credentials hold defaults only; per-rule routing lives in RoutingOverride.
+type Integration struct {
+	ID           int64
+	Name         string
+	Provider     string
+	Credentials  map[string]any
+	IsEnabled    bool
+	FailureCount int
+	LastFailure  string
 }
 
-func (s *Store) GetSMTPConfig() (SMTPConfig, error) {
-	var c SMTPConfig
-	var useTLS, enabled int
-	err := s.db.QueryRow(`SELECT host, port, username, password, from_address, to_address, use_tls, enabled FROM smtp_config WHERE id = 1`).
-		Scan(&c.Host, &c.Port, &c.Username, &c.Password, &c.From, &c.To, &useTLS, &enabled)
-	c.UseTLS, c.Enabled = useTLS != 0, enabled != 0
-	return c, err
+type TelegramCreds struct {
+	BotToken      string `json:"bot_token"`
+	DefaultChatID string `json:"default_chat_id"`
 }
 
-func (s *Store) SetSMTPConfig(c SMTPConfig) error {
-	_, err := s.db.Exec(`UPDATE smtp_config SET host = ?, port = ?, username = ?, password = ?, from_address = ?, to_address = ?, use_tls = ?, enabled = ? WHERE id = 1`,
-		c.Host, c.Port, c.Username, c.Password, c.From, c.To, c.UseTLS, c.Enabled)
-	return err
+type WebhookCreds struct {
+	URL string `json:"url"`
 }
 
-func (s *Store) SendTestEmail(ctx context.Context) error {
-	cfg, err := s.GetSMTPConfig()
-	if err != nil {
-		return err
+type SMTPCreds struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	From     string `json:"from"`
+	UseTLS   bool   `json:"use_tls"`
+}
+
+type GenericCreds struct {
+	URL     string            `json:"url"`
+	Secret  string            `json:"secret"`
+	Headers map[string]string `json:"headers"`
+}
+
+// RoutingOverride is stored per rule->integration link. Only the fields
+// relevant to the integration's provider are used.
+type RoutingOverride struct {
+	ChatID       string            `json:"chat_id,omitempty"`
+	URL          string            `json:"url,omitempty"`
+	To           []string          `json:"to,omitempty"`
+	ExtraHeaders map[string]string `json:"extra_headers,omitempty"`
+}
+
+func encodeOverride(o RoutingOverride) string {
+	b, _ := json.Marshal(o)
+	if string(b) == "null" {
+		return "{}"
 	}
-	return email.Send(email.Config{
-		Host: cfg.Host, Port: cfg.Port, Username: cfg.Username,
-		Password: cfg.Password, From: cfg.From, UseTLS: cfg.UseTLS,
-	}, cfg.To, email.Alert{
-		ProjectName: "Splat", ExceptionType: "Test",
-		Message: "Test notification - if you can read this, email alerts are working.",
-		IsNew:   true, Timestamp: time.Now(),
-	})
+	return string(b)
 }
 
-// GenericWebhook is a user-defined HTTP endpoint receiving the standard
-// JSON alert payload. Secret signs the body (HMAC-SHA256, sent as
-// X-Splat-Signature); Headers are extra request headers merged in,
-// one per line as "Name: value" in storage, parsed on send.
-type GenericWebhook struct {
-	ID      int64
-	Name    string
-	URL     string
-	Secret  string
-	Headers map[string]string
-	Enabled bool
+func decodeOverride(raw string) RoutingOverride {
+	var o RoutingOverride
+	if raw == "" {
+		return o
+	}
+	_ = json.Unmarshal([]byte(raw), &o)
+	if o.ExtraHeaders == nil {
+		o.ExtraHeaders = map[string]string{}
+	}
+	return o
 }
 
-// SignatureHeader is the HMAC header name receivers should verify.
+func encodeCreds(m map[string]any) string {
+	if m == nil {
+		return "{}"
+	}
+	b, _ := json.Marshal(m)
+	return string(b)
+}
+
+func decodeCreds(raw string) map[string]any {
+	out := map[string]any{}
+	if raw == "" {
+		return out
+	}
+	_ = json.Unmarshal([]byte(raw), &out)
+	if out == nil {
+		return map[string]any{}
+	}
+	return out
+}
+
+func credsString(m map[string]any, key string) string {
+	v, _ := m[key].(string)
+	return strings.TrimSpace(v)
+}
+
+func isHTTPURL(s string) bool {
+	u, err := url.Parse(s)
+	if err != nil {
+		return false
+	}
+	return u.Scheme == "http" || u.Scheme == "https"
+}
+
+func isEmail(s string) bool {
+	s = strings.TrimSpace(s)
+	at := strings.Index(s, "@")
+	return at > 0 && strings.Contains(s[at:], ".")
+}
+
+// ValidateCredentials checks provider-specific credential shapes.
+// URL checks are scheme-only here (no DNS); the HTTP layer applies SSRF
+// validation on save.
+func ValidateCredentials(provider string, creds map[string]any) error {
+	if !ValidProvider(provider) {
+		return fmt.Errorf("unknown provider %q", provider)
+	}
+	switch provider {
+	case "telegram":
+		if credsString(creds, "bot_token") == "" {
+			return fmt.Errorf("bot_token is required")
+		}
+	case "slack", "discord", "teams", "sheets":
+		u := credsString(creds, "url")
+		if u == "" {
+			return fmt.Errorf("url is required")
+		}
+		if !isHTTPURL(u) {
+			return fmt.Errorf("url must use http or https")
+		}
+	case "smtp":
+		if credsString(creds, "host") == "" {
+			return fmt.Errorf("host is required")
+		}
+		if credsString(creds, "from") == "" {
+			return fmt.Errorf("from address is required")
+		}
+	case "generic":
+		u := credsString(creds, "url")
+		if u == "" {
+			return fmt.Errorf("url is required")
+		}
+		if !isHTTPURL(u) {
+			return fmt.Errorf("url must use http or https")
+		}
+	}
+	return nil
+}
+
+// ValidateRoutingOverride checks the per-link override against the provider.
+func ValidateRoutingOverride(provider string, creds map[string]any, o RoutingOverride) error {
+	if !ValidProvider(provider) {
+		return fmt.Errorf("unknown provider %q", provider)
+	}
+	switch provider {
+	case "telegram":
+		chat := strings.TrimSpace(o.ChatID)
+		if chat == "" {
+			chat = credsString(creds, "default_chat_id")
+		}
+		if chat == "" {
+			return fmt.Errorf("chat_id is required (no default configured)")
+		}
+	case "slack", "discord", "teams", "sheets":
+		u := strings.TrimSpace(o.URL)
+		if u == "" {
+			u = credsString(creds, "url")
+		}
+		if u == "" {
+			return fmt.Errorf("url is required (no default configured)")
+		}
+		if !isHTTPURL(u) {
+			return fmt.Errorf("url must use http or https")
+		}
+	case "smtp":
+		if len(o.To) == 0 {
+			return fmt.Errorf("at least one recipient (to) is required")
+		}
+		for _, t := range o.To {
+			if !isEmail(t) {
+				return fmt.Errorf("invalid recipient email %q", t)
+			}
+		}
+	case "generic":
+		u := strings.TrimSpace(o.URL)
+		if u == "" {
+			u = credsString(creds, "url")
+		}
+		if u == "" {
+			return fmt.Errorf("url is required (no default configured)")
+		}
+		if !isHTTPURL(u) {
+			return fmt.Errorf("url must use http or https")
+		}
+	}
+	return nil
+}
+
+// SignatureHeader is the HMAC header name generic receivers should verify.
 const SignatureHeader = "X-Splat-Signature"
 
-func (s *Store) GenericWebhooks() ([]GenericWebhook, error) {
-	rows, err := s.db.Query(`SELECT id, name, url, secret, headers, enabled FROM generic_webhooks ORDER BY id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []GenericWebhook{}
-	for rows.Next() {
-		var w GenericWebhook
-		var headersJSON string
-		var enabled int
-		if err := rows.Scan(&w.ID, &w.Name, &w.URL, &w.Secret, &headersJSON, &enabled); err != nil {
-			return nil, err
-		}
-		w.Enabled = enabled != 0
-		w.Headers = parseHeaders(headersJSON)
-		out = append(out, w)
-	}
-	return out, rows.Err()
-}
-
-// parseHeaders turns stored "Name: value" lines into a map, skipping
-// blank lines and malformed rows (header values may contain colons; only
-// the first colon splits).
+// parseHeaders turns stored "Name: value" lines into a map.
 func parseHeaders(raw string) map[string]string {
 	out := map[string]string{}
 	for _, line := range strings.Split(raw, "\n") {
@@ -172,73 +272,6 @@ func encodeHeaders(headers map[string]string) string {
 	return b.String()
 }
 
-func (s *Store) CreateGenericWebhook(w GenericWebhook) (GenericWebhook, error) {
-	if strings.TrimSpace(w.URL) == "" {
-		return GenericWebhook{}, fmt.Errorf("url is required")
-	}
-	headers := encodeHeaders(w.Headers)
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if s.db.IsPostgres() {
-		var id int64
-		err := s.db.QueryRow(`INSERT INTO generic_webhooks (name, url, secret, headers, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
-			w.Name, w.URL, w.Secret, headers, w.Enabled, now).Scan(&id)
-		if err != nil {
-			return GenericWebhook{}, err
-		}
-		w.ID = id
-		return w, nil
-	}
-	res, err := s.db.Exec(`INSERT INTO generic_webhooks (name, url, secret, headers, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		w.Name, w.URL, w.Secret, headers, w.Enabled, now)
-	if err != nil {
-		return GenericWebhook{}, err
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return GenericWebhook{}, err
-	}
-	w.ID = id
-	w.Headers = parseHeaders(headers)
-	return w, nil
-}
-
-func (s *Store) UpdateGenericWebhook(w GenericWebhook) (GenericWebhook, error) {
-	if strings.TrimSpace(w.URL) == "" {
-		return GenericWebhook{}, fmt.Errorf("url is required")
-	}
-	headers := encodeHeaders(w.Headers)
-	_, err := s.db.Exec(`UPDATE generic_webhooks SET name = ?, url = ?, secret = ?, headers = ?, enabled = ? WHERE id = ?`,
-		w.Name, w.URL, w.Secret, headers, w.Enabled, w.ID)
-	if err != nil {
-		return GenericWebhook{}, err
-	}
-	w.Headers = parseHeaders(headers)
-	return w, nil
-}
-
-func (s *Store) DeleteGenericWebhook(id int64) error {
-	_, err := s.db.Exec(`DELETE FROM generic_webhooks WHERE id = ?`, id)
-	return err
-}
-
-func (s *Store) SendTestGeneric(ctx context.Context, id int64) error {
-	hooks, err := s.GenericWebhooks()
-	if err != nil {
-		return err
-	}
-	for _, h := range hooks {
-		if h.ID != id {
-			continue
-		}
-		return s.sendGeneric(ctx, h, webhooks.Alert{
-			ProjectName: "Splat", ExceptionType: "Test",
-			Message: "Test notification - if you can read this, it's working.",
-			IsNew:   true, Timestamp: time.Now(),
-		})
-	}
-	return fmt.Errorf("generic webhook %d not found", id)
-}
-
 // genericPayload is the JSON body every generic webhook receives.
 func genericPayload(a webhooks.Alert) []byte {
 	b, _ := json.Marshal(map[string]any{
@@ -265,8 +298,6 @@ func kindOf(a webhooks.Alert) string {
 	}
 }
 
-// signBody returns "sha256=<hex HMAC-SHA256(body, secret)>" - empty secret
-// means unsigned.
 func signBody(secret string, body []byte) string {
 	if secret == "" {
 		return ""
@@ -274,23 +305,6 @@ func signBody(secret string, body []byte) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(body)
 	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
-}
-
-func (s *Store) sendGeneric(ctx context.Context, h GenericWebhook, a webhooks.Alert) error {
-	if h.URL == "" {
-		return fmt.Errorf("generic webhook %q has no URL", h.Name)
-	}
-	// No ValidateURL here: the URL was validated on save (same as the
-	// fixed channels, which also only validate at save time).
-	body := genericPayload(a)
-	headers := map[string]string{}
-	for k, v := range h.Headers {
-		headers[k] = v
-	}
-	if sig := signBody(h.Secret, body); sig != "" {
-		headers[SignatureHeader] = sig
-	}
-	return s.webhook.SendWithHeaders(ctx, h.URL, headers, body)
 }
 
 type Store struct {
@@ -304,92 +318,156 @@ func NewStore(db *database.DB, logger *slog.Logger) *Store {
 	return &Store{db: db, telegram: telegram.NewClient(), webhook: webhooks.NewClient(), logger: logger}
 }
 
-func (s *Store) GetTelegramConfig() (TelegramConfig, error) {
-	var c TelegramConfig
+// --- integrations ---
+
+func scanIntegration(row interface {
+	Scan(...any) error
+}) (Integration, error) {
+	var in Integration
+	var creds string
 	var enabled int
-	err := s.db.QueryRow(`SELECT bot_token, chat_id, enabled FROM telegram_config WHERE id = 1`).Scan(&c.BotToken, &c.ChatID, &enabled)
-	c.Enabled = enabled != 0
-	return c, err
+	if err := row.Scan(&in.ID, &in.Name, &in.Provider, &creds, &enabled, &in.FailureCount, &in.LastFailure); err != nil {
+		return in, err
+	}
+	in.IsEnabled = enabled != 0
+	in.Credentials = decodeCreds(creds)
+	return in, nil
 }
 
-func (s *Store) SetTelegramConfig(c TelegramConfig) error {
-	_, err := s.db.Exec(`UPDATE telegram_config SET bot_token = ?, chat_id = ?, enabled = ? WHERE id = 1`,
-		c.BotToken, c.ChatID, c.Enabled)
-	return err
-}
-
-func (s *Store) SendTest(ctx context.Context) error {
-	cfg, err := s.GetTelegramConfig()
+func (s *Store) Integrations() ([]Integration, error) {
+	rows, err := s.db.Query(`SELECT id, name, provider, credentials, is_enabled, failure_count, last_failure FROM integrations ORDER BY id`)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return s.telegram.Send(ctx, cfg.BotToken, cfg.ChatID, "<b>Splat</b>\nTest notification - if you can read this, Telegram alerts are working.")
-}
-
-// NotifyQuotaBreach alerts every enabled channel that a project blew its
-// ingestion quota. Unlike issue alerts it sends synchronously and
-// best-effort (throttled by the caller): a breach is an operational
-// signal, not queued work, and failures must never affect ingestion.
-func (s *Store) NotifyQuotaBreach(ctx context.Context, projectName, projectURL, window string, used, limit int) {
-	e := AlertEvent{
-		ProjectName:   projectName,
-		ExceptionType: "Quota exceeded",
-		Message:       fmt.Sprintf("%s ingested %d error events in the last %s (limit %d) - ingestion is rejected with 429 until usage drops.", projectName, used, window, limit),
-		EventCount:    int64(used),
-		Timestamp:     time.Now(),
-		IssueURL:      projectURL,
-	}
-	for _, channel := range s.enabledChannels() {
-		if skip, err := s.send(ctx, channel, e); err != nil {
-			s.logger.Error("quota breach notify", "error", err, "channel", channel, "project", projectName)
-		} else if skip {
-			s.logger.Debug("quota breach notify skipped", "channel", channel, "project", projectName)
+	defer rows.Close()
+	out := []Integration{}
+	for rows.Next() {
+		in, err := scanIntegration(rows)
+		if err != nil {
+			return nil, err
 		}
+		out = append(out, in)
 	}
+	return out, rows.Err()
 }
 
-// GetWebhookConfig and SetWebhookConfig manage Slack/Discord/Teams, which
-// is why channel must be one of webhookChannelNames - anything else is a
-// caller bug, not bad user input (the HTTP layer validates the path
-// segment before it gets here).
-func (s *Store) GetWebhookConfig(channel string) (WebhookConfig, error) {
-	var c WebhookConfig
-	var enabled int
-	err := s.db.QueryRow(`SELECT webhook_url, enabled FROM webhook_channels WHERE channel = ?`, channel).Scan(&c.URL, &enabled)
-	c.Enabled = enabled != 0
-	return c, err
+func (s *Store) GetIntegration(id int64) (Integration, error) {
+	row := s.db.QueryRow(`SELECT id, name, provider, credentials, is_enabled, failure_count, last_failure FROM integrations WHERE id = ?`, id)
+	in, err := scanIntegration(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return in, sql.ErrNoRows
+	}
+	return in, err
 }
 
-func (s *Store) SetWebhookConfig(channel string, c WebhookConfig) error {
-	_, err := s.db.Exec(`UPDATE webhook_channels SET webhook_url = ?, enabled = ? WHERE channel = ?`, c.URL, c.Enabled, channel)
+func (s *Store) CreateIntegration(in Integration) (Integration, error) {
+	in.Name = strings.TrimSpace(in.Name)
+	if in.Name == "" {
+		return Integration{}, fmt.Errorf("name is required")
+	}
+	if !ValidProvider(in.Provider) {
+		return Integration{}, fmt.Errorf("unknown provider %q", in.Provider)
+	}
+	if in.Credentials == nil {
+		in.Credentials = map[string]any{}
+	}
+	if err := ValidateCredentials(in.Provider, in.Credentials); err != nil {
+		return Integration{}, err
+	}
+	creds := encodeCreds(in.Credentials)
+	enabled := 0
+	if in.IsEnabled {
+		enabled = 1
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if s.db.IsPostgres() {
+		var id int64
+		err := s.db.QueryRow(`INSERT INTO integrations (name, provider, credentials, is_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+			in.Name, in.Provider, creds, enabled, now, now).Scan(&id)
+		if err != nil {
+			return Integration{}, err
+		}
+		return s.GetIntegration(id)
+	}
+	res, err := s.db.Exec(`INSERT INTO integrations (name, provider, credentials, is_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		in.Name, in.Provider, creds, enabled, now, now)
+	if err != nil {
+		return Integration{}, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return Integration{}, err
+	}
+	return s.GetIntegration(id)
+}
+
+func (s *Store) UpdateIntegration(in Integration) (Integration, error) {
+	in.Name = strings.TrimSpace(in.Name)
+	if in.Name == "" {
+		return Integration{}, fmt.Errorf("name is required")
+	}
+	if !ValidProvider(in.Provider) {
+		return Integration{}, fmt.Errorf("unknown provider %q", in.Provider)
+	}
+	if in.Credentials == nil {
+		in.Credentials = map[string]any{}
+	}
+	if err := ValidateCredentials(in.Provider, in.Credentials); err != nil {
+		return Integration{}, err
+	}
+	creds := encodeCreds(in.Credentials)
+	enabled := 0
+	if in.IsEnabled {
+		enabled = 1
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := s.db.Exec(`UPDATE integrations SET name = ?, provider = ?, credentials = ?, is_enabled = ?, updated_at = ? WHERE id = ?`,
+		in.Name, in.Provider, creds, enabled, now, in.ID)
+	if err != nil {
+		return Integration{}, err
+	}
+	return s.GetIntegration(in.ID)
+}
+
+func (s *Store) DeleteIntegration(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM integrations WHERE id = ?`, id)
 	return err
 }
 
-func (s *Store) SendTestWebhook(ctx context.Context, channel string) error {
-	cfg, err := s.GetWebhookConfig(channel)
+func (s *Store) bumpFailure(id int64, msg string) {
+	_, _ = s.db.Exec(`UPDATE integrations SET failure_count = failure_count + 1, last_failure = ? WHERE id = ?`, msg, id)
+}
+
+func (s *Store) clearFailure(id int64) {
+	_, _ = s.db.Exec(`UPDATE integrations SET failure_count = 0, last_failure = '' WHERE id = ?`, id)
+}
+
+// SendTestIntegration delivers a canned alert via one integration.
+func (s *Store) SendTestIntegration(ctx context.Context, id int64, override RoutingOverride) error {
+	in, err := s.GetIntegration(id)
 	if err != nil {
 		return err
 	}
-	body := formatForChannel(channel, webhooks.Alert{
+	if err := ValidateRoutingOverride(in.Provider, in.Credentials, override); err != nil {
+		return err
+	}
+	e := AlertEvent{
 		ProjectName: "Splat", ExceptionType: "Test",
-		Message: "Test notification - if you can read this, it's working.", IsNew: true, Timestamp: time.Now(),
-	})
-	return s.webhook.Send(ctx, cfg.URL, body)
+		Message: "Test notification - if you can read this, it's working.",
+		IsNew: true, Timestamp: time.Now(),
+	}
+	_, err = s.deliver(ctx, in, override, e)
+	return err
 }
 
-func formatForChannel(channel string, a webhooks.Alert) []byte {
-	switch channel {
-	case "slack":
-		return webhooks.FormatSlack(a)
-	case "discord":
-		return webhooks.FormatDiscord(a)
-	case "teams":
-		return webhooks.FormatTeams(a)
-	case "sheets":
-		return webhooks.FormatSheets(a)
-	default:
-		return nil
-	}
+// --- rules ---
+
+type RuleIntegration struct {
+	IntegrationID   int64           `json:"integrationId"`
+	Provider        string          `json:"provider"`
+	IntegrationName string          `json:"integrationName"`
+	IsEnabled       bool            `json:"isEnabled"`
+	Override        RoutingOverride `json:"routingOverride"`
 }
 
 type Rule struct {
@@ -401,124 +479,150 @@ type Rule struct {
 	NotifyThreshold int64
 	NotifyReopened  bool
 	CooldownSeconds int
-	// Channels selects this rule's destinations. Empty means "every enabled
-	// channel" (the pre-rules-upgrade behavior), so old rules keep working
-	// unchanged while new rules can route e.g. production to email and
-	// staging to a chat channel.
-	Channels []string
+	Integrations    []RuleIntegration
 }
 
-func scanRule(row interface {
-	Scan(...any) error
-}) (Rule, error) {
-	var r Rule
-	var newIssue, reopened int
-	var channels string
-	if err := row.Scan(&r.ID, &r.Name, &r.ProjectID, &r.Environment, &newIssue, &r.NotifyThreshold, &reopened, &r.CooldownSeconds, &channels); err != nil {
-		return r, err
+func (s *Store) loadRuleLinks(ruleID int64) ([]RuleIntegration, error) {
+	rows, err := s.db.Query(`SELECT ri.integration_id, i.provider, i.name, i.is_enabled, ri.routing_override
+		FROM notification_rule_integrations ri JOIN integrations i ON i.id = ri.integration_id WHERE ri.rule_id = ? ORDER BY i.id`, ruleID)
+	if err != nil {
+		return nil, err
 	}
-	r.NotifyNewIssue, r.NotifyReopened = newIssue != 0, reopened != 0
-	if channels != "" {
-		_ = json.Unmarshal([]byte(channels), &r.Channels)
+	defer rows.Close()
+	out := []RuleIntegration{}
+	for rows.Next() {
+		var ri RuleIntegration
+		var override string
+		var enabled int
+		if err := rows.Scan(&ri.IntegrationID, &ri.Provider, &ri.IntegrationName, &enabled, &override); err != nil {
+			return nil, err
+		}
+		ri.IsEnabled = enabled != 0
+		ri.Override = decodeOverride(override)
+		out = append(out, ri)
 	}
-	return r, nil
+	return out, rows.Err()
 }
-
-const ruleCols = `id, name, project_id, environment, notify_new_issue, notify_threshold, notify_reopened, cooldown_seconds, channels`
 
 func (s *Store) Rules() ([]Rule, error) {
-	rows, err := s.db.Query(`SELECT ` + ruleCols + ` FROM notification_rules ORDER BY id`)
+	rows, err := s.db.Query(`SELECT id, name, project_id, environment, notify_new_issue, notify_threshold, notify_reopened, cooldown_seconds FROM notification_rules ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := []Rule{}
 	for rows.Next() {
-		r, err := scanRule(rows)
+		var r Rule
+		var newIssue, reopened int
+		if err := rows.Scan(&r.ID, &r.Name, &r.ProjectID, &r.Environment, &newIssue, &r.NotifyThreshold, &reopened, &r.CooldownSeconds); err != nil {
+			return nil, err
+		}
+		r.NotifyNewIssue, r.NotifyReopened = newIssue != 0, reopened != 0
+		links, err := s.loadRuleLinks(r.ID)
 		if err != nil {
 			return nil, err
 		}
+		r.Integrations = links
 		out = append(out, r)
 	}
 	return out, rows.Err()
 }
 
 func (s *Store) GetRule(id int64) (Rule, error) {
-	row := s.db.QueryRow(`SELECT `+ruleCols+` FROM notification_rules WHERE id = ?`, id)
-	r, err := scanRule(row)
-	if errors.Is(err, sql.ErrNoRows) {
-		return r, sql.ErrNoRows
-	}
-	return r, err
-}
-
-func encodeChannels(channels []string) (string, error) {
-	if len(channels) == 0 {
-		return "[]", nil
-	}
-	seen := map[string]bool{}
-	clean := make([]string, 0, len(channels))
-	for _, c := range channels {
-		if !ValidChannel(c) {
-			return "", fmt.Errorf("unknown channel %q", c)
-		}
-		if !seen[c] {
-			seen[c] = true
-			clean = append(clean, c)
-		}
-	}
-	b, err := json.Marshal(clean)
-	return string(b), err
-}
-
-// CreateRule validates and stores a new alert rule.
-func (s *Store) CreateRule(r Rule) (Rule, error) {
-	ch, err := encodeChannels(r.Channels)
+	var r Rule
+	var newIssue, reopened int
+	err := s.db.QueryRow(`SELECT id, name, project_id, environment, notify_new_issue, notify_threshold, notify_reopened, cooldown_seconds FROM notification_rules WHERE id = ?`, id).
+		Scan(&r.ID, &r.Name, &r.ProjectID, &r.Environment, &newIssue, &r.NotifyThreshold, &reopened, &r.CooldownSeconds)
 	if err != nil {
-		return Rule{}, err
+		return r, err
 	}
+	r.NotifyNewIssue, r.NotifyReopened = newIssue != 0, reopened != 0
+	links, err := s.loadRuleLinks(r.ID)
+	if err != nil {
+		return r, err
+	}
+	r.Integrations = links
+	return r, nil
+}
+
+func (s *Store) validateRuleLinks(links []RuleIntegration) error {
+	seen := map[int64]bool{}
+	for _, l := range links {
+		if seen[l.IntegrationID] {
+			return fmt.Errorf("duplicate integration %d", l.IntegrationID)
+		}
+		seen[l.IntegrationID] = true
+		in, err := s.GetIntegration(l.IntegrationID)
+		if err != nil {
+			return fmt.Errorf("integration %d not found", l.IntegrationID)
+		}
+		if err := ValidateRoutingOverride(in.Provider, in.Credentials, l.Override); err != nil {
+			return fmt.Errorf("integration %q: %w", in.Name, err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) saveRuleLinks(ruleID int64, links []RuleIntegration) error {
+	if _, err := s.db.Exec(`DELETE FROM notification_rule_integrations WHERE rule_id = ?`, ruleID); err != nil {
+		return err
+	}
+	for _, l := range links {
+		if _, err := s.db.Exec(`INSERT INTO notification_rule_integrations (rule_id, integration_id, routing_override) VALUES (?, ?, ?)`,
+			ruleID, l.IntegrationID, encodeOverride(l.Override)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) CreateRule(r Rule) (Rule, error) {
 	if r.CooldownSeconds < 0 {
 		r.CooldownSeconds = 0
 	}
+	if err := s.validateRuleLinks(r.Integrations); err != nil {
+		return Rule{}, err
+	}
+	var id int64
 	if s.db.IsPostgres() {
-		var id int64
-		err := s.db.QueryRow(`
-			INSERT INTO notification_rules (name, project_id, environment, notify_new_issue, notify_threshold, notify_reopened, cooldown_seconds, channels)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-			r.Name, nullableProjectID(r.ProjectID), r.Environment, r.NotifyNewIssue, r.NotifyThreshold, r.NotifyReopened, r.CooldownSeconds, ch).Scan(&id)
+		err := s.db.QueryRow(`INSERT INTO notification_rules (name, project_id, environment, notify_new_issue, notify_threshold, notify_reopened, cooldown_seconds)
+			VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+			r.Name, nullableProjectID(r.ProjectID), r.Environment, r.NotifyNewIssue, r.NotifyThreshold, r.NotifyReopened, r.CooldownSeconds).Scan(&id)
 		if err != nil {
 			return Rule{}, err
 		}
-		return s.GetRule(id)
+	} else {
+		res, err := s.db.Exec(`INSERT INTO notification_rules (name, project_id, environment, notify_new_issue, notify_threshold, notify_reopened, cooldown_seconds)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			r.Name, nullableProjectID(r.ProjectID), r.Environment, r.NotifyNewIssue, r.NotifyThreshold, r.NotifyReopened, r.CooldownSeconds)
+		if err != nil {
+			return Rule{}, err
+		}
+		id, err = res.LastInsertId()
+		if err != nil {
+			return Rule{}, err
+		}
 	}
-	res, err := s.db.Exec(`
-		INSERT INTO notification_rules (name, project_id, environment, notify_new_issue, notify_threshold, notify_reopened, cooldown_seconds, channels)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.Name, nullableProjectID(r.ProjectID), r.Environment, r.NotifyNewIssue, r.NotifyThreshold, r.NotifyReopened, r.CooldownSeconds, ch)
-	if err != nil {
-		return Rule{}, err
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
+	if err := s.saveRuleLinks(id, r.Integrations); err != nil {
 		return Rule{}, err
 	}
 	return s.GetRule(id)
 }
 
-// UpdateRule replaces a rule's editable fields.
 func (s *Store) UpdateRule(r Rule) (Rule, error) {
-	ch, err := encodeChannels(r.Channels)
-	if err != nil {
-		return Rule{}, err
-	}
 	if r.CooldownSeconds < 0 {
 		r.CooldownSeconds = 0
 	}
-	_, err = s.db.Exec(`
-		UPDATE notification_rules SET name = ?, project_id = ?, environment = ?, notify_new_issue = ?,
-			notify_threshold = ?, notify_reopened = ?, cooldown_seconds = ?, channels = ? WHERE id = ?`,
-		r.Name, nullableProjectID(r.ProjectID), r.Environment, r.NotifyNewIssue, r.NotifyThreshold, r.NotifyReopened, r.CooldownSeconds, ch, r.ID)
+	if err := s.validateRuleLinks(r.Integrations); err != nil {
+		return Rule{}, err
+	}
+	_, err := s.db.Exec(`UPDATE notification_rules SET name = ?, project_id = ?, environment = ?, notify_new_issue = ?,
+		notify_threshold = ?, notify_reopened = ?, cooldown_seconds = ? WHERE id = ?`,
+		r.Name, nullableProjectID(r.ProjectID), r.Environment, r.NotifyNewIssue, r.NotifyThreshold, r.NotifyReopened, r.CooldownSeconds, r.ID)
 	if err != nil {
+		return Rule{}, err
+	}
+	if err := s.saveRuleLinks(r.ID, r.Integrations); err != nil {
 		return Rule{}, err
 	}
 	return s.GetRule(r.ID)
@@ -548,7 +652,8 @@ func (s *Store) UpsertDefaultRule(projectID int64) error {
 	return err
 }
 
-// AlertEvent is the evaluation input: what just happened to an issue.
+// --- events ---
+
 type AlertEvent struct {
 	IssueID       int64
 	ProjectID     int64
@@ -559,19 +664,11 @@ type AlertEvent struct {
 	EventCount    int64
 	IsNew         bool
 	Reopened      bool
-	// Status is the issue's status after this event was grouped. Muted and
-	// ignored issues never notify - not on new occurrences, not on
-	// thresholds: silenced means silenced.
-	Status    string
-	Timestamp time.Time
-	IssueURL  string
+	Status        string
+	Timestamp     time.Time
+	IssueURL      string
 }
 
-// Evaluate checks configured rules against what just happened to an issue
-// and, if warranted, enqueues one alert per enabled channel (Telegram,
-// Slack, Discord, Teams - any combination). Never returns an error that
-// should interrupt ingestion - failures are logged and swallowed, since a
-// missed alert is recoverable but a dropped event is not.
 func (s *Store) Evaluate(ctx context.Context, e AlertEvent) {
 	if e.Status == "muted" || e.Status == "ignored" {
 		return
@@ -585,7 +682,20 @@ func (s *Store) Evaluate(ctx context.Context, e AlertEvent) {
 	shouldNotify := false
 	cooldown := 300
 	cooldownSet := false
-	wantChannels := map[string]bool{}
+	type want struct {
+		integration Integration
+		override    RoutingOverride
+	}
+	wants := map[int64]want{}
+	integrations, err := s.Integrations()
+	if err != nil {
+		s.logger.Error("load integrations", "error", err)
+		return
+	}
+	byID := map[int64]Integration{}
+	for _, in := range integrations {
+		byID[in.ID] = in
+	}
 	for _, r := range rules {
 		if r.ProjectID.Valid && r.ProjectID.Int64 != e.ProjectID {
 			continue
@@ -611,57 +721,25 @@ func (s *Store) Evaluate(ctx context.Context, e AlertEvent) {
 			cooldown = r.CooldownSeconds
 			cooldownSet = true
 		}
-		if len(r.Channels) == 0 {
-			// No explicit selection: every enabled channel.
-			for _, c := range s.enabledChannels() {
-				wantChannels[c] = true
+		for _, l := range r.Integrations {
+			in, ok := byID[l.IntegrationID]
+			if !ok || !in.IsEnabled {
+				continue
 			}
-		} else {
-			for _, c := range r.Channels {
-				wantChannels[c] = true
-			}
+			wants[in.ID] = want{integration: in, override: l.Override}
 		}
 	}
 	if !shouldNotify {
 		return
 	}
-
-	// Cooldown applies once across every channel: if any channel already
-	// alerted about this issue recently, don't let a second trigger spam
-	// through whichever channels are enabled.
 	if s.withinCooldown(e.IssueID, cooldown) {
 		return
 	}
-
-	for channel := range wantChannels {
-		if err := s.enqueue(e, channel); err != nil {
-			s.logger.Error("enqueue notification", "error", err, "issue_id", e.IssueID, "channel", channel)
+	for _, w := range wants {
+		if err := s.enqueue(e, w.integration.ID, w.integration.Provider, w.override); err != nil {
+			s.logger.Error("enqueue notification", "error", err, "issue_id", e.IssueID, "integration", w.integration.ID)
 		}
 	}
-}
-
-func (s *Store) enabledChannels() []string {
-	var out []string
-	if cfg, err := s.GetTelegramConfig(); err == nil && cfg.Enabled {
-		out = append(out, "telegram")
-	}
-	for _, channel := range webhookChannelNames {
-		if cfg, err := s.GetWebhookConfig(channel); err == nil && cfg.Enabled {
-			out = append(out, channel)
-		}
-	}
-	if cfg, err := s.GetSMTPConfig(); err == nil && cfg.Enabled {
-		out = append(out, "email")
-	}
-	if hooks, err := s.GenericWebhooks(); err == nil {
-		for _, h := range hooks {
-			if h.Enabled {
-				out = append(out, "generic")
-				break
-			}
-		}
-	}
-	return out
 }
 
 func (s *Store) withinCooldown(issueID int64, cooldownSeconds int) bool {
@@ -683,49 +761,41 @@ func (s *Store) withinCooldown(issueID int64, cooldownSeconds int) bool {
 	return time.Since(last) < time.Duration(cooldownSeconds)*time.Second
 }
 
-func (s *Store) enqueue(e AlertEvent, channel string) error {
+func (s *Store) enqueue(e AlertEvent, integrationID int64, provider string, override RoutingOverride) error {
 	payload, err := json.Marshal(e)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(`INSERT INTO notification_queue (issue_id, kind, channel, payload_json, next_attempt_at) VALUES (?, 'issue_alert', ?, ?, ?)`,
-		e.IssueID, channel, string(payload), sortableNow())
+	_, err = s.db.Exec(`INSERT INTO notification_queue (issue_id, kind, channel, provider, integration_id, routing_override, payload_json, next_attempt_at) VALUES (?, 'issue_alert', ?, ?, ?, ?, ?, ?)`,
+		e.IssueID, provider, provider, integrationID, encodeOverride(override), string(payload), sortableNow())
 	return err
 }
 
-// sortableNow formats the current time for any column compared via plain
-// SQL string ordering (next_attempt_at). time.RFC3339 (second precision,
-// always UTC "Z" suffix here) is fixed-width, so lexicographic and
-// chronological ordering always agree. RFC3339Nano is NOT safe for this:
-// its fractional part is variable-width (trailing zeros get trimmed), so
-// e.g. "...123Z" can sort *after* "...123456789Z" despite being earlier,
-// since 'Z' > any digit - which could leave a just-written row invisible
-// to a query run moments later. (Columns that get time.Parse'd instead of
-// string-compared, like created_at, aren't affected by this and can stay
-// on RFC3339Nano.)
 func sortableNow() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
 
-// DrainOnce sends up to batchSize pending notifications. Called on a timer
-// by the worker (see worker.go), never from the request path.
+// DrainOnce sends up to batchSize pending notifications.
 func (s *Store) DrainOnce(ctx context.Context, batchSize int) {
-	rows, err := s.db.Query(`SELECT id, channel, payload_json, attempts FROM notification_queue WHERE status = 'pending' AND next_attempt_at <= ? ORDER BY id LIMIT ?`,
+	rows, err := s.db.Query(`SELECT id, channel, provider, integration_id, routing_override, payload_json, attempts FROM notification_queue WHERE status = 'pending' AND next_attempt_at <= ? ORDER BY id LIMIT ?`,
 		sortableNow(), batchSize)
 	if err != nil {
 		s.logger.Error("query notification queue", "error", err)
 		return
 	}
 	type job struct {
-		id       int64
-		channel  string
-		payload  string
-		attempts int
+		id            int64
+		channel       string
+		provider      string
+		integrationID int64
+		override      string
+		payload       string
+		attempts      int
 	}
 	var jobs []job
 	for rows.Next() {
 		var j job
-		if err := rows.Scan(&j.id, &j.channel, &j.payload, &j.attempts); err != nil {
+		if err := rows.Scan(&j.id, &j.channel, &j.provider, &j.integrationID, &j.override, &j.payload, &j.attempts); err != nil {
 			continue
 		}
 		jobs = append(jobs, j)
@@ -738,7 +808,11 @@ func (s *Store) DrainOnce(ctx context.Context, batchSize int) {
 			s.markFailed(j.id, "invalid payload: "+err.Error())
 			continue
 		}
-		skip, err := s.send(ctx, j.channel, e)
+		provider := j.provider
+		if provider == "" {
+			provider = j.channel
+		}
+		skip, err := s.sendToIntegration(ctx, j.integrationID, provider, decodeOverride(j.override), e)
 		switch {
 		case skip:
 			s.markSkipped(j.id)
@@ -750,80 +824,195 @@ func (s *Store) DrainOnce(ctx context.Context, batchSize int) {
 	}
 }
 
-// send delivers one alert to one channel. skip=true means the channel was
-// disabled between enqueue and drain - not a failure worth retrying, just
-// nothing to do.
-func (s *Store) send(ctx context.Context, channel string, e AlertEvent) (skip bool, err error) {
-	switch channel {
+func (s *Store) sendToIntegration(ctx context.Context, integrationID int64, provider string, override RoutingOverride, e AlertEvent) (bool, error) {
+	in, err := s.GetIntegration(integrationID)
+	if err != nil {
+		return true, nil // deleted integration: skip, don't retry forever
+	}
+	if !in.IsEnabled {
+		return true, nil
+	}
+	if provider == "" {
+		provider = in.Provider
+	}
+	skip, err := s.deliver(ctx, in, override, e)
+	if err != nil {
+		s.bumpFailure(in.ID, err.Error())
+		return skip, err
+	}
+	s.clearFailure(in.ID)
+	return skip, nil
+}
+
+func (s *Store) deliver(ctx context.Context, in Integration, override RoutingOverride, e AlertEvent) (bool, error) {
+	alert := webhooks.Alert{
+		ProjectName: e.ProjectName, Environment: e.Environment, ExceptionType: e.ExceptionType, Message: e.Message,
+		IsNew: e.IsNew, Reopened: e.Reopened, EventCount: e.EventCount, Timestamp: e.Timestamp, IssueURL: e.IssueURL,
+	}
+	switch in.Provider {
 	case "telegram":
-		cfg, err := s.GetTelegramConfig()
-		if err != nil {
-			return false, err
+		botToken := credsString(in.Credentials, "bot_token")
+		chatID := strings.TrimSpace(override.ChatID)
+		if chatID == "" {
+			chatID = credsString(in.Credentials, "default_chat_id")
 		}
-		if !cfg.Enabled {
+		if botToken == "" || chatID == "" {
 			return true, nil
 		}
 		text := telegram.Format(telegram.Alert{
 			ProjectName: e.ProjectName, Environment: e.Environment, ExceptionType: e.ExceptionType, Message: e.Message,
 			IsNew: e.IsNew, Reopened: e.Reopened, EventCount: e.EventCount, Timestamp: e.Timestamp, IssueURL: e.IssueURL,
 		})
-		return false, s.telegram.Send(ctx, cfg.BotToken, cfg.ChatID, text)
-
+		return false, s.telegram.Send(ctx, botToken, chatID, text)
 	case "slack", "discord", "teams", "sheets":
-		cfg, err := s.GetWebhookConfig(channel)
-		if err != nil {
-			return false, err
+		u := strings.TrimSpace(override.URL)
+		if u == "" {
+			u = credsString(in.Credentials, "url")
 		}
-		if !cfg.Enabled {
+		if u == "" {
 			return true, nil
 		}
-		body := formatForChannel(channel, webhooks.Alert{
-			ProjectName: e.ProjectName, Environment: e.Environment, ExceptionType: e.ExceptionType, Message: e.Message,
-			IsNew: e.IsNew, Reopened: e.Reopened, EventCount: e.EventCount, Timestamp: e.Timestamp, IssueURL: e.IssueURL,
-		})
-		return false, s.webhook.Send(ctx, cfg.URL, body)
-
-	case "email":
-		cfg, err := s.GetSMTPConfig()
-		if err != nil {
-			return false, err
+		var body []byte
+		switch in.Provider {
+		case "slack":
+			body = webhooks.FormatSlack(alert)
+		case "discord":
+			body = webhooks.FormatDiscord(alert)
+		case "teams":
+			body = webhooks.FormatTeams(alert)
+		default:
+			body = webhooks.FormatSheets(alert)
 		}
-		if !cfg.Enabled {
+		return false, s.webhook.Send(ctx, u, body)
+	case "smtp":
+		host := credsString(in.Credentials, "host")
+		from := credsString(in.Credentials, "from")
+		if host == "" || from == "" {
 			return true, nil
 		}
-		return false, email.Send(email.Config{
-			Host: cfg.Host, Port: cfg.Port, Username: cfg.Username,
-			Password: cfg.Password, From: cfg.From, UseTLS: cfg.UseTLS,
-		}, cfg.To, email.Alert{
-			ProjectName: e.ProjectName, Environment: e.Environment, ExceptionType: e.ExceptionType, Message: e.Message,
-			IsNew: e.IsNew, Reopened: e.Reopened, EventCount: e.EventCount, Timestamp: e.Timestamp, IssueURL: e.IssueURL,
-		})
-
-	case "generic":
-		hooks, err := s.GenericWebhooks()
-		if err != nil {
-			return false, err
+		if len(override.To) == 0 {
+			return true, nil
 		}
-		var anyEnabled bool
-		for _, h := range hooks {
-			if !h.Enabled {
-				continue
+		var port int
+		switch v := in.Credentials["port"].(type) {
+		case float64:
+			port = int(v)
+		case int:
+			port = v
+		case int64:
+			port = int(v)
+		case json.Number:
+			if n, err := v.Int64(); err == nil {
+				port = int(n)
 			}
-			anyEnabled = true
-			if err := s.sendGeneric(ctx, h, webhooks.Alert{
+		default:
+			port = 587
+		}
+		if port == 0 {
+			port = 587
+		}
+		username, _ := in.Credentials["username"].(string)
+		password, _ := in.Credentials["password"].(string)
+		useTLS := true
+		if v, ok := in.Credentials["use_tls"].(bool); ok {
+			useTLS = v
+		}
+		var lastErr error
+		for _, to := range override.To {
+			err := email.Send(email.Config{
+				Host: host, Port: port, Username: username,
+				Password: password, From: from, UseTLS: useTLS,
+			}, to, email.Alert{
 				ProjectName: e.ProjectName, Environment: e.Environment, ExceptionType: e.ExceptionType, Message: e.Message,
 				IsNew: e.IsNew, Reopened: e.Reopened, EventCount: e.EventCount, Timestamp: e.Timestamp, IssueURL: e.IssueURL,
-			}); err != nil {
-				return false, err
+			})
+			if err != nil {
+				lastErr = err
 			}
 		}
-		if !anyEnabled {
+		return false, lastErr
+	case "generic":
+		u := strings.TrimSpace(override.URL)
+		if u == "" {
+			u = credsString(in.Credentials, "url")
+		}
+		if u == "" {
 			return true, nil
 		}
-		return false, nil
-
+		secret, _ := in.Credentials["secret"].(string)
+		headers := map[string]string{}
+		if raw, ok := in.Credentials["headers"]; ok {
+			switch h := raw.(type) {
+			case map[string]any:
+				for k, v := range h {
+					if vs, ok := v.(string); ok {
+						headers[k] = vs
+					}
+				}
+			case map[string]string:
+				for k, v := range h {
+					headers[k] = v
+				}
+			case string:
+				for k, v := range parseHeaders(h) {
+					headers[k] = v
+				}
+			}
+		}
+		for k, v := range override.ExtraHeaders {
+			headers[k] = v
+		}
+		body := genericPayload(alert)
+		hdrs := map[string]string{}
+		for k, v := range headers {
+			hdrs[k] = v
+		}
+		if sig := signBody(secret, body); sig != "" {
+			hdrs[SignatureHeader] = sig
+		}
+		return false, s.webhook.SendWithHeaders(ctx, u, hdrs, body)
 	default:
-		return false, fmt.Errorf("unknown notification channel %q", channel)
+		return false, fmt.Errorf("unknown provider %q", in.Provider)
+	}
+}
+
+// NotifyQuotaBreach alerts every enabled integration synchronously.
+func (s *Store) NotifyQuotaBreach(ctx context.Context, projectName, projectURL, window string, used, limit int) {
+	e := AlertEvent{
+		ProjectName:   projectName,
+		ExceptionType: "Quota exceeded",
+		Message:       fmt.Sprintf("%s ingested %d error events in the last %s (limit %d) - ingestion is rejected with 429 until usage drops.", projectName, used, window, limit),
+		EventCount:    int64(used),
+		Timestamp:     time.Now(),
+		IssueURL:      projectURL,
+	}
+	integrations, err := s.Integrations()
+	if err != nil {
+		return
+	}
+	for _, in := range integrations {
+		if !in.IsEnabled {
+			continue
+		}
+		// Quota alerts use integration defaults (empty override where valid).
+		if _, err := s.deliver(ctx, in, RoutingOverride{}, e); err != nil {
+			s.logger.Error("quota breach notify", "error", err, "integration", in.ID, "project", projectName)
+		}
+	}
+}
+
+func formatForChannel(channel string, a webhooks.Alert) []byte {
+	switch channel {
+	case "slack":
+		return webhooks.FormatSlack(a)
+	case "discord":
+		return webhooks.FormatDiscord(a)
+	case "teams":
+		return webhooks.FormatTeams(a)
+	case "sheets":
+		return webhooks.FormatSheets(a)
+	default:
+		return nil
 	}
 }
 

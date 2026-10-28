@@ -18,10 +18,6 @@ import (
 	"github.com/philippdormann/splat/internal/webhooks"
 )
 
-// newTestStore sets up a project with Telegram enabled and the default
-// notification rule, plus one real issue row - notification_queue.issue_id
-// has a foreign key into issues(id), so tests must alert about an issue
-// that actually exists rather than an arbitrary int.
 func newTestStore(t *testing.T) (*Store, int64, int64) {
 	t.Helper()
 	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))
@@ -38,13 +34,41 @@ func newTestStore(t *testing.T) (*Store, int64, int64) {
 		t.Fatalf("create issue: %v", err)
 	}
 	store := NewStore(db, slog.Default())
-	if err := store.SetTelegramConfig(TelegramConfig{BotToken: "t", ChatID: "c", Enabled: true}); err != nil {
-		t.Fatalf("enable telegram: %v", err)
-	}
 	if err := store.UpsertDefaultRule(p.ID); err != nil {
 		t.Fatalf("default rule: %v", err)
 	}
 	return store, p.ID, res.Issue.ID
+}
+
+func mustTelegram(t *testing.T, store *Store) int64 {
+	t.Helper()
+	in, err := store.CreateIntegration(Integration{
+		Name: "tg", Provider: "telegram",
+		Credentials: map[string]any{"bot_token": "t", "default_chat_id": "c"},
+		IsEnabled:   true,
+	})
+	if err != nil {
+		t.Fatalf("create telegram: %v", err)
+	}
+	return in.ID
+}
+
+func attachIntegration(t *testing.T, store *Store, projectID, integrationID int64, override RoutingOverride) {
+	t.Helper()
+	rules, err := store.Rules()
+	if err != nil {
+		t.Fatalf("rules: %v", err)
+	}
+	for _, r := range rules {
+		if r.ProjectID.Valid && r.ProjectID.Int64 == projectID {
+			r.Integrations = append(r.Integrations, RuleIntegration{IntegrationID: integrationID, Override: override})
+			if _, err := store.UpdateRule(r); err != nil {
+				t.Fatalf("attach: %v", err)
+			}
+			return
+		}
+	}
+	t.Fatalf("no rule for project %d", projectID)
 }
 
 func pendingCount(t *testing.T, store *Store) int {
@@ -58,15 +82,23 @@ func pendingCount(t *testing.T, store *Store) int {
 
 func TestEvaluateEnqueuesNewIssue(t *testing.T) {
 	store, projectID, issueID := newTestStore(t)
+	tg := mustTelegram(t, store)
+	attachIntegration(t, store, projectID, tg, RoutingOverride{})
 	store.Evaluate(context.Background(), AlertEvent{IssueID: issueID, ProjectID: projectID, IsNew: true, EventCount: 1, Timestamp: time.Now()})
 	if got := pendingCount(t, store); got != 1 {
 		t.Fatalf("expected 1 queued notification, got %d", got)
 	}
 }
 
-func TestEvaluateSkipsWhenTelegramDisabled(t *testing.T) {
+func TestEvaluateSkipsWhenIntegrationDisabled(t *testing.T) {
 	store, projectID, issueID := newTestStore(t)
-	store.SetTelegramConfig(TelegramConfig{Enabled: false})
+	tg := mustTelegram(t, store)
+	attachIntegration(t, store, projectID, tg, RoutingOverride{})
+	in, _ := store.GetIntegration(tg)
+	in.IsEnabled = false
+	if _, err := store.UpdateIntegration(in); err != nil {
+		t.Fatalf("disable: %v", err)
+	}
 	store.Evaluate(context.Background(), AlertEvent{IssueID: issueID, ProjectID: projectID, IsNew: true, EventCount: 1, Timestamp: time.Now()})
 	if got := pendingCount(t, store); got != 0 {
 		t.Fatalf("expected no notification queued while disabled, got %d", got)
@@ -75,10 +107,12 @@ func TestEvaluateSkipsWhenTelegramDisabled(t *testing.T) {
 
 func TestEvaluateRespectsCooldown(t *testing.T) {
 	store, projectID, issueID := newTestStore(t)
+	tg := mustTelegram(t, store)
+	attachIntegration(t, store, projectID, tg, RoutingOverride{})
 	ev := AlertEvent{IssueID: issueID, ProjectID: projectID, IsNew: true, EventCount: 1, Timestamp: time.Now()}
 	store.Evaluate(context.Background(), ev)
 	ev2 := ev
-	ev2.IsNew, ev2.Reopened = false, true // still a notify-worthy transition, but same issue within cooldown
+	ev2.IsNew, ev2.Reopened = false, true
 	store.Evaluate(context.Background(), ev2)
 	if got := pendingCount(t, store); got != 1 {
 		t.Fatalf("expected cooldown to suppress the second alert, got %d queued", got)
@@ -87,15 +121,16 @@ func TestEvaluateRespectsCooldown(t *testing.T) {
 
 func TestEvaluateSkipsNonNotifyWorthyEvent(t *testing.T) {
 	store, projectID, issueID := newTestStore(t)
+	mustTelegram(t, store)
 	store.Evaluate(context.Background(), AlertEvent{IssueID: issueID, ProjectID: projectID, IsNew: false, Reopened: false, EventCount: 5, Timestamp: time.Now()})
 	if got := pendingCount(t, store); got != 0 {
 		t.Fatalf("expected no alert for a plain recurrence with no threshold rule, got %d", got)
 	}
 }
 
-func pendingChannels(t *testing.T, store *Store) []string {
+func pendingProviders(t *testing.T, store *Store) []string {
 	t.Helper()
-	rows, err := store.db.Query(`SELECT channel FROM notification_queue WHERE status = 'pending' ORDER BY channel`)
+	rows, err := store.db.Query(`SELECT COALESCE(provider, channel) FROM notification_queue WHERE status = 'pending' ORDER BY 1`)
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
@@ -109,47 +144,95 @@ func pendingChannels(t *testing.T, store *Store) []string {
 	return out
 }
 
-func TestEvaluateFansOutToEveryEnabledChannel(t *testing.T) {
+func mustWebhook(t *testing.T, store *Store, provider, url string) int64 {
+	t.Helper()
+	in, err := store.CreateIntegration(Integration{
+		Name: provider + "-test", Provider: provider,
+		Credentials: map[string]any{"url": url}, IsEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("create %s: %v", provider, err)
+	}
+	return in.ID
+}
+
+func TestEvaluateFansOutToEveryLinkedIntegration(t *testing.T) {
 	store, projectID, issueID := newTestStore(t)
-	store.SetWebhookConfig("slack", WebhookConfig{URL: "http://example.invalid", Enabled: true})
-	store.SetWebhookConfig("discord", WebhookConfig{URL: "http://example.invalid", Enabled: true})
-	// teams left disabled on purpose
+	tg := mustTelegram(t, store)
+	slack := mustWebhook(t, store, "slack", "http://example.invalid/slack")
+	discord := mustWebhook(t, store, "discord", "http://example.invalid/discord")
+	attachIntegration(t, store, projectID, tg, RoutingOverride{})
+	attachIntegration(t, store, projectID, slack, RoutingOverride{})
+	attachIntegration(t, store, projectID, discord, RoutingOverride{})
 
 	store.Evaluate(context.Background(), AlertEvent{IssueID: issueID, ProjectID: projectID, IsNew: true, EventCount: 1, Timestamp: time.Now()})
 
-	channels := pendingChannels(t, store)
-	if len(channels) != 3 {
-		t.Fatalf("expected telegram+slack+discord queued (teams disabled), got %v", channels)
+	got := pendingProviders(t, store)
+	if len(got) != 3 {
+		t.Fatalf("expected telegram+slack+discord queued, got %v", got)
 	}
 	want := map[string]bool{"telegram": true, "slack": true, "discord": true}
-	for _, c := range channels {
+	for _, c := range got {
 		if !want[c] {
-			t.Fatalf("unexpected channel %q queued: %v", c, channels)
+			t.Fatalf("unexpected provider %q queued: %v", c, got)
 		}
 	}
 }
 
-// TestDrainDeliversChannelsIndependently is the actual point of splitting
-// the queue per-channel: one channel failing must not block or duplicate
-// another channel's successful delivery for the same alert.
-func TestDrainDeliversChannelsIndependently(t *testing.T) {
-	store, projectID, issueID := newTestStore(t)
-	store.SetTelegramConfig(TelegramConfig{Enabled: false}) // isolate to just the two webhooks under test
+func TestRoutingOverrideWinsOverDefault(t *testing.T) {
+	store, _, _ := newTestStore(t)
+	in, err := store.CreateIntegration(Integration{Name: "tg", Provider: "telegram",
+		Credentials: map[string]any{"bot_token": "t", "default_chat_id": "default"}, IsEnabled: true})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	// Empty override with default present validates.
+	if err := ValidateRoutingOverride("telegram", in.Credentials, RoutingOverride{}); err != nil {
+		t.Fatalf("default chat should validate: %v", err)
+	}
+	// Missing default + empty override fails.
+	in2, err := store.CreateIntegration(Integration{Name: "tg2", Provider: "telegram",
+		Credentials: map[string]any{"bot_token": "t"}, IsEnabled: true})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := ValidateRoutingOverride("telegram", in2.Credentials, RoutingOverride{}); err == nil {
+		t.Fatal("want error for missing chat_id with no default")
+	}
+	// Explicit override fixes it.
+	if err := ValidateRoutingOverride("telegram", in2.Credentials, RoutingOverride{ChatID: "other"}); err != nil {
+		t.Fatalf("override should validate: %v", err)
+	}
+	// SMTP requires recipients.
+	if err := ValidateRoutingOverride("smtp", map[string]any{"host": "h", "from": "a@b.c"}, RoutingOverride{}); err == nil {
+		t.Fatal("want error for smtp without recipients")
+	}
+	if err := ValidateRoutingOverride("smtp", map[string]any{"host": "h", "from": "a@b.c"}, RoutingOverride{To: []string{"ops@example.com"}}); err != nil {
+		t.Fatalf("smtp override should validate: %v", err)
+	}
+	if !ValidProvider("telegram") || ValidProvider("pager") {
+		t.Fatal("ValidProvider wrong")
+	}
+}
 
+func TestDrainDeliversIntegrationsIndependently(t *testing.T) {
+	store, projectID, issueID := newTestStore(t)
 	slackOK := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
 	defer slackOK.Close()
 	discordDown := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) }))
 	defer discordDown.Close()
 
-	store.SetWebhookConfig("slack", WebhookConfig{URL: slackOK.URL, Enabled: true})
-	store.SetWebhookConfig("discord", WebhookConfig{URL: discordDown.URL, Enabled: true})
+	slack := mustWebhook(t, store, "slack", slackOK.URL)
+	discord := mustWebhook(t, store, "discord", discordDown.URL)
+	attachIntegration(t, store, projectID, slack, RoutingOverride{})
+	attachIntegration(t, store, projectID, discord, RoutingOverride{})
 
 	store.Evaluate(context.Background(), AlertEvent{IssueID: issueID, ProjectID: projectID, IsNew: true, EventCount: 1, Timestamp: time.Now()})
 	store.DrainOnce(context.Background(), 10)
 
 	var slackStatus, discordStatus string
-	store.db.QueryRow(`SELECT status FROM notification_queue WHERE channel = 'slack'`).Scan(&slackStatus)
-	store.db.QueryRow(`SELECT status FROM notification_queue WHERE channel = 'discord'`).Scan(&discordStatus)
+	store.db.QueryRow(`SELECT status FROM notification_queue WHERE integration_id = ?`, slack).Scan(&slackStatus)
+	store.db.QueryRow(`SELECT status FROM notification_queue WHERE integration_id = ?`, discord).Scan(&discordStatus)
 
 	if slackStatus != "sent" {
 		t.Fatalf("slack should have been delivered despite discord's outage, status=%q", slackStatus)
@@ -159,34 +242,40 @@ func TestDrainDeliversChannelsIndependently(t *testing.T) {
 	}
 }
 
-func TestDrainSkipsChannelDisabledBeforeDelivery(t *testing.T) {
+func TestDrainSkipsIntegrationDisabledBeforeDelivery(t *testing.T) {
 	store, projectID, issueID := newTestStore(t)
-	store.SetTelegramConfig(TelegramConfig{Enabled: false})
-	store.SetWebhookConfig("slack", WebhookConfig{URL: "http://example.invalid", Enabled: true})
-
+	slack := mustWebhook(t, store, "slack", "http://example.invalid")
+	attachIntegration(t, store, projectID, slack, RoutingOverride{})
 	store.Evaluate(context.Background(), AlertEvent{IssueID: issueID, ProjectID: projectID, IsNew: true, EventCount: 1, Timestamp: time.Now()})
-	// Disabled after enqueue, before the worker ever drains it.
-	store.SetWebhookConfig("slack", WebhookConfig{URL: "http://example.invalid", Enabled: false})
+	in, _ := store.GetIntegration(slack)
+	in.IsEnabled = false
+	store.UpdateIntegration(in)
 	store.DrainOnce(context.Background(), 10)
 
 	var status string
-	store.db.QueryRow(`SELECT status FROM notification_queue WHERE channel = 'slack'`).Scan(&status)
+	store.db.QueryRow(`SELECT status FROM notification_queue WHERE integration_id = ?`, slack).Scan(&status)
 	if status != "skipped" {
-		t.Fatalf("expected skipped (not failed/retried) for a channel disabled before delivery, got %q", status)
+		t.Fatalf("expected skipped for an integration disabled before delivery, got %q", status)
 	}
 }
 
 func TestRuleCRUD(t *testing.T) {
 	store, projectID, _ := newTestStore(t)
-	r, err := store.CreateRule(Rule{Name: "prod email", ProjectID: sqlNull(projectID), Environment: "production", NotifyNewIssue: true, CooldownSeconds: 60, Channels: []string{"email"}})
+	smtpIn, err := store.CreateIntegration(Integration{Name: "smtp", Provider: "smtp",
+		Credentials: map[string]any{"host": "smtp.example.com", "port": 587, "from": "splat@example.com", "use_tls": true}, IsEnabled: true})
+	if err != nil {
+		t.Fatalf("create smtp: %v", err)
+	}
+	r, err := store.CreateRule(Rule{Name: "prod email", ProjectID: sqlNull(projectID), Environment: "production", NotifyNewIssue: true, CooldownSeconds: 60,
+		Integrations: []RuleIntegration{{IntegrationID: smtpIn.ID, Override: RoutingOverride{To: []string{"ops@example.com"}}}}})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if r.Name != "prod email" || len(r.Channels) != 1 || r.Channels[0] != "email" {
+	if r.Name != "prod email" || len(r.Integrations) != 1 {
 		t.Fatalf("round trip mismatch: %+v", r)
 	}
-	if _, err := store.CreateRule(Rule{Name: "bad", Channels: []string{"pager"}}); err == nil {
-		t.Fatal("want error on unknown channel")
+	if _, err := store.CreateRule(Rule{Name: "bad", Integrations: []RuleIntegration{{IntegrationID: 9999}}}); err == nil {
+		t.Fatal("want error on unknown integration")
 	}
 	r.Name = "renamed"
 	r.NotifyReopened = true
@@ -209,78 +298,59 @@ func sqlNull(id int64) sql.NullInt64 {
 	return sql.NullInt64{Int64: id, Valid: true}
 }
 
-func TestEvaluateRespectsPerRuleChannels(t *testing.T) {
+func TestEvaluateRespectsPerRuleIntegrations(t *testing.T) {
 	store, projectID, issueID := newTestStore(t)
-	// Default rule (all channels) would fan out to telegram; replace it
-	// with a slack-only rule.
 	rules, _ := store.Rules()
 	for _, r := range rules {
 		store.DeleteRule(r.ID)
 	}
-	store.SetWebhookConfig("slack", WebhookConfig{URL: "http://example.invalid", Enabled: true})
-	if _, err := store.CreateRule(Rule{Name: "slack only", NotifyNewIssue: true, Channels: []string{"slack"}}); err != nil {
+	slack := mustWebhook(t, store, "slack", "http://example.invalid")
+	if _, err := store.CreateRule(Rule{Name: "slack only", NotifyNewIssue: true,
+		Integrations: []RuleIntegration{{IntegrationID: slack}}}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	store.Evaluate(context.Background(), AlertEvent{IssueID: issueID, ProjectID: projectID, IsNew: true, EventCount: 1, Timestamp: time.Now()})
-	channels := pendingChannels(t, store)
-	if len(channels) != 1 || channels[0] != "slack" {
-		t.Fatalf("want only slack queued, got %v", channels)
+	got := pendingProviders(t, store)
+	if len(got) != 1 || got[0] != "slack" {
+		t.Fatalf("want only slack queued, got %v", got)
 	}
 }
 
-func TestSMTPConfigRoundTrip(t *testing.T) {
+func TestIntegrationCRUDValidation(t *testing.T) {
 	store, _, _ := newTestStore(t)
-	cfg, err := store.GetSMTPConfig()
-	if err != nil {
-		t.Fatalf("get: %v", err)
+	if _, err := store.CreateIntegration(Integration{Name: "x", Provider: "pager", Credentials: map[string]any{}}); err == nil {
+		t.Fatal("want error on unknown provider")
 	}
-	if cfg.Enabled {
-		t.Fatal("SMTP must default to disabled")
+	if _, err := store.CreateIntegration(Integration{Name: "no-url", Provider: "slack", Credentials: map[string]any{}}); err == nil {
+		t.Fatal("want error on empty URL")
 	}
-	cfg.Host, cfg.Port, cfg.To, cfg.Enabled = "smtp.example.com", 587, "oncall@example.com", true
-	if err := store.SetSMTPConfig(cfg); err != nil {
-		t.Fatalf("set: %v", err)
-	}
-	got, _ := store.GetSMTPConfig()
-	if got.Host != "smtp.example.com" || got.To != "oncall@example.com" || !got.Enabled {
-		t.Fatalf("round trip mismatch: %+v", got)
-	}
-	if !ValidChannel("email") || ValidChannel("pager") {
-		t.Fatal("ValidChannel wrong")
-	}
-}
-
-func TestGenericWebhookCRUD(t *testing.T) {
-	store, _, _ := newTestStore(t)
-	h, err := store.CreateGenericWebhook(GenericWebhook{Name: "ops", URL: "http://example.invalid/hook", Secret: "s3cr3t", Headers: map[string]string{"X-Team": "ops"}, Enabled: true})
+	in, err := store.CreateIntegration(Integration{Name: "ops", Provider: "generic",
+		Credentials: map[string]any{"url": "http://example.invalid/hook", "secret": "s3cr3t", "headers": map[string]any{"X-Team": "ops"}}, IsEnabled: true})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if h.ID == 0 || h.Headers["X-Team"] != "ops" {
-		t.Fatalf("round trip mismatch: %+v", h)
+	if in.ID == 0 {
+		t.Fatalf("round trip mismatch: %+v", in)
 	}
-	if _, err := store.CreateGenericWebhook(GenericWebhook{Name: "no-url"}); err == nil {
-		t.Fatal("want error on empty URL")
+	list, err := store.Integrations()
+	if err != nil || len(list) != 1 {
+		t.Fatalf("list = %v, %v", list, err)
 	}
-	hooks, err := store.GenericWebhooks()
-	if err != nil || len(hooks) != 1 {
-		t.Fatalf("list = %v, %v", hooks, err)
-	}
-	h.Name = "ops-renamed"
-	updated, err := store.UpdateGenericWebhook(h)
+	in.Name = "ops-renamed"
+	updated, err := store.UpdateIntegration(in)
 	if err != nil || updated.Name != "ops-renamed" {
 		t.Fatalf("update = %+v, %v", updated, err)
 	}
-	if err := store.DeleteGenericWebhook(h.ID); err != nil {
+	if err := store.DeleteIntegration(in.ID); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	hooks, _ = store.GenericWebhooks()
-	if len(hooks) != 0 {
-		t.Fatalf("want empty list after delete, got %v", hooks)
+	list, _ = store.Integrations()
+	if len(list) != 0 {
+		t.Fatalf("want empty list after delete, got %v", list)
 	}
 }
 
-func TestGenericWebhookDeliverySignsAndMergesHeaders(t *testing.T) {
+func TestGenericDeliverySignsAndMergesHeaders(t *testing.T) {
 	store, _, _ := newTestStore(t)
 	var gotSig, gotTeam, gotCT string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -290,14 +360,13 @@ func TestGenericWebhookDeliverySignsAndMergesHeaders(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Read the body in a second server round-trip is awkward; instead verify
-	// the signature inline below against genericPayload directly.
-	h, err := store.CreateGenericWebhook(GenericWebhook{Name: "ops", URL: srv.URL, Secret: "s3cr3t", Headers: map[string]string{"X-Team": "ops"}, Enabled: true})
+	in, err := store.CreateIntegration(Integration{Name: "ops", Provider: "generic",
+		Credentials: map[string]any{"url": srv.URL, "secret": "s3cr3t", "headers": map[string]any{"X-Team": "ops"}}, IsEnabled: true})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	a := webhooks.Alert{ProjectName: "P", Environment: "prod", ExceptionType: "E", Message: "boom", IsNew: true, Timestamp: time.Now()}
-	if err := store.sendGeneric(context.Background(), h, a); err != nil {
+	a := AlertEvent{ProjectName: "P", Environment: "prod", ExceptionType: "E", Message: "boom", IsNew: true, Timestamp: time.Now()}
+	if _, err := store.deliver(context.Background(), in, RoutingOverride{}, a); err != nil {
 		t.Fatalf("send: %v", err)
 	}
 	if gotTeam != "ops" {
@@ -306,50 +375,28 @@ func TestGenericWebhookDeliverySignsAndMergesHeaders(t *testing.T) {
 	if gotCT != "application/json" {
 		t.Fatalf("content-type = %q", gotCT)
 	}
-	wantSig := signBody("s3cr3t", genericPayload(a))
+	wantSig := signBody("s3cr3t", genericPayload(webhooks.Alert{ProjectName: "P", Environment: "prod", ExceptionType: "E", Message: "boom", IsNew: true, Timestamp: a.Timestamp}))
 	if gotSig != wantSig || !strings.HasPrefix(gotSig, "sha256=") {
 		t.Fatalf("signature = %q, want %q", gotSig, wantSig)
 	}
-	if signBody("", genericPayload(a)) != "" {
+	if signBody("", genericPayload(webhooks.Alert{Timestamp: a.Timestamp})) != "" {
 		t.Fatal("empty secret must mean unsigned")
-	}
-}
-
-func TestGenericChannelFanout(t *testing.T) {
-	store, projectID, issueID := newTestStore(t)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
-	defer srv.Close()
-	if _, err := store.CreateGenericWebhook(GenericWebhook{Name: "ops", URL: srv.URL, Enabled: true}); err != nil {
-		t.Fatalf("create: %v", err)
-	}
-	// Default rule (no explicit channels) must include the generic channel
-	// once at least one generic webhook is enabled.
-	store.Evaluate(context.Background(), AlertEvent{IssueID: issueID, ProjectID: projectID, IsNew: true, EventCount: 1, Timestamp: time.Now()})
-	channels := pendingChannels(t, store)
-	found := false
-	for _, c := range channels {
-		if c == "generic" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("want generic in %v", channels)
 	}
 }
 
 func TestEvaluateSkipsMutedAndIgnored(t *testing.T) {
 	store, projectID, issueID := newTestStore(t)
-	if _, err := store.CreateRule(Rule{Name: "threshold", NotifyThreshold: 5, CooldownSeconds: 0}); err != nil {
+	tg := mustTelegram(t, store)
+	attachIntegration(t, store, projectID, tg, RoutingOverride{})
+	if _, err := store.CreateRule(Rule{Name: "threshold", NotifyThreshold: 5, CooldownSeconds: 0, Integrations: []RuleIntegration{{IntegrationID: tg}}}); err != nil {
 		t.Fatalf("create rule: %v", err)
 	}
 	for _, status := range []string{"muted", "ignored"} {
-		// Event count hits the threshold - would fire on any other status.
 		store.Evaluate(context.Background(), AlertEvent{IssueID: issueID, ProjectID: projectID, IsNew: false, Reopened: false, EventCount: 5, Status: status, Timestamp: time.Now()})
 		if n := pendingCount(t, store); n != 0 {
 			t.Fatalf("status %q must never notify, got %d queued", status, n)
 		}
 	}
-	// Sanity: the same threshold fires for unresolved issues.
 	store.Evaluate(context.Background(), AlertEvent{IssueID: issueID, ProjectID: projectID, IsNew: false, Reopened: false, EventCount: 5, Status: "unresolved", Timestamp: time.Now()})
 	if n := pendingCount(t, store); n == 0 {
 		t.Fatal("threshold should fire for unresolved issues")
