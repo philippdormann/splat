@@ -137,6 +137,17 @@
     selected = s;
   }
 
+  function toggleAll(checked: boolean) {
+    if (!data) return;
+    if (checked) {
+      selected = new Set(data.issues.map((i) => i.id));
+    } else {
+      selected = new Set();
+    }
+  }
+
+  $: allVisibleSelected = !!data && data.issues.length > 0 && data.issues.every((i) => selected.has(i.id));
+
   onMount(load);
 </script>
 
@@ -221,7 +232,15 @@
       <Table.Root>
         <Table.Header>
           <Table.Row class="hover:bg-transparent">
-            <Table.Head class="w-10"><span class="sr-only">Select</span></Table.Head>
+            <Table.Head class="w-10">
+              <input
+                type="checkbox"
+                class="accent-primary size-4"
+                checked={allVisibleSelected}
+                aria-label="Select all issues on this page"
+                on:change={(e) => toggleAll(e.currentTarget.checked)}
+              />
+            </Table.Head>
             <Table.Head>Issue</Table.Head>
             <Table.Head class="hidden text-right lg:table-cell">Trend</Table.Head>
             <Table.Head class="text-right">Events</Table.Head>
