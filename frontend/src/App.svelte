@@ -187,6 +187,7 @@
         </button>
       </header>
       <main class="mx-auto w-full max-w-6xl flex-1 p-4 md:p-6">
+        {#key path}
         {#if path === "/"}
           <Dashboard {navigate} />
         {:else if path === "/issues"}
@@ -218,6 +219,7 @@
         {:else}
           <p class="text-sm">Not found. <a href="/" class="underline" on:click|preventDefault={() => navigate("/")}>Home</a></p>
         {/if}
+        {/key}
       </main>
     </div>
   </div>
