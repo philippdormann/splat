@@ -20,6 +20,7 @@
 
   export let id: string;
   export let navigate: (path: string) => void;
+  export let initialTab: string = "";
 
   let data: ProjectDetail | null = null;
   let error = "";
@@ -66,9 +67,10 @@
   ];
   const ptabIds = ptabs.map((t) => t.id);
   const urlTab = queryParam(window.location.search, "tab");
-  let ptab = urlTab && ptabIds.includes(urlTab)
-    ? urlTab
-    : loadPersisted<string>("splat.project.tab", "overview", isStringIn(ptabIds));
+  // Deep routes (/projects/6/logs) win over ?tab=, which wins over the
+  // persisted tab — every project view stays linkable either way.
+  const forcedTab = [initialTab, urlTab].find((t) => t && ptabIds.includes(t));
+  let ptab = forcedTab ?? loadPersisted<string>("splat.project.tab", "overview", isStringIn(ptabIds));
   $: savePersisted("splat.project.tab", ptab);
   $: replaceQuery({ tab: ptab === "overview" ? null : ptab });
   $: visiblePtabs = ptabs.filter((t) => !t.adminOnly || isAdmin);

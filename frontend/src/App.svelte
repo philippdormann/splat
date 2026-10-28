@@ -220,6 +220,10 @@
             <ReleaseDetail id={relParts[0]} release={decodeURIComponent(relParts[1] ?? "")} {navigate} />
           {:else if path.endsWith("/releases")}
             <Releases id={path.slice("/projects/".length, -"/releases".length)} {navigate} />
+          {:else if path.endsWith("/logs")}
+            <ProjectDetail id={path.slice("/projects/".length, -"/logs".length)} {navigate} initialTab="logs" />
+          {:else if path.endsWith("/traces")}
+            <ProjectDetail id={path.slice("/projects/".length, -"/traces".length)} {navigate} initialTab="traces" />
           {:else if path.includes("/traces/")}
             {@const parts = path.slice("/projects/".length).split("/traces/")}
             <TraceDetail id={parts[0]} traceId={decodeURIComponent(parts[1] ?? "")} {navigate} />
