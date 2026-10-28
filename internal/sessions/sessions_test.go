@@ -70,9 +70,10 @@ func TestUpsertAndCrashFree(t *testing.T) {
 
 func TestAggregatesFeedSessions(t *testing.T) {
 	s, pid := setup(t)
+	now := time.Now().UTC().Format(time.RFC3339)
 	body := `{"attrs":{"release":"2.0","environment":"prod"},"aggregates":[
-		{"started":"2026-10-27T10:00:00Z","exited":8,"errored":1,"crashed":1,"abnormal":0},
-		{"started":"2026-10-27T10:01:00Z","exited":5,"crashed":0,"abnormal":0}
+		{"started":"` + now + `","exited":8,"errored":1,"crashed":1,"abnormal":0},
+		{"started":"` + now + `","exited":5,"crashed":0,"abnormal":0}
 	]}`
 	if err := s.AddAggregates(pid, []byte(body)); err != nil {
 		t.Fatalf("aggregates: %v", err)

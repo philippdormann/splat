@@ -373,7 +373,7 @@ func TestEnvelopeStoresSessionItems(t *testing.T) {
 	aggrItem, _ := json.Marshal(map[string]any{"type": "sessions"})
 	aggr, _ := json.Marshal(map[string]any{
 		"attrs":      map[string]any{"release": "9.9", "environment": "production"},
-		"aggregates": []map[string]any{{"started": "2026-10-27T10:00:00Z", "exited": 4, "crashed": 1}},
+		"aggregates": []map[string]any{{"started": time.Now().UTC().Format(time.RFC3339), "exited": 4, "crashed": 1}},
 	})
 	body := strings.Join([]string{string(header), string(sessItem), string(sess), string(aggrItem), string(aggr), ""}, "\n")
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/"+strconv.FormatInt(p.ID, 10)+"/envelope/", strings.NewReader(body))
