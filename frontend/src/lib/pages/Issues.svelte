@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { Check, ChevronRight, EyeOff, TriangleAlert } from "lucide-svelte";
   import { api, type IssuesData } from "$lib/api";
   import { loadPersisted, savePersisted, isString } from "$lib/persisted";
@@ -43,6 +43,9 @@
   if (Number.isInteger(initialPage) && initialPage > 0) page = initialPage;
   let selected = new Set<number>();
   let error = "";
+  let newCount = 0;
+  let listChanged = false;
+  let pollTimer: ReturnType<typeof setInterval>;
   let timer: ReturnType<typeof setTimeout>;
   let pendingBulk: string | null = null;
   let bulkBusy = false;
@@ -63,12 +66,33 @@
   }
 
   async function load() {
+    newCount = 0;
+    listChanged = false;
     try {
       data = await api.issues(params());
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load issues.";
     }
     syncURL();
+  }
+
+  // Background freshness check: never moves rows under the cursor, just
+  // offers a pill. Silent on failure — triage shouldn't flicker.
+  async function checkNew() {
+    if (document.hidden || !data) return;
+    try {
+      const p = params();
+      p.set("page", "1");
+      const fresh = await api.issues(p);
+      if (page === 1) {
+        const known = new Set(data.issues.map((i) => i.id));
+        newCount = fresh.issues.filter((f) => !known.has(f.id)).length;
+      } else if (fresh.total !== data.total) {
+        listChanged = true;
+      }
+    } catch {
+      // Ignore — the next poll retries.
+    }
   }
 
   // Mirror the current filters into the address bar (replaceState, no
@@ -194,7 +218,11 @@
 
   $: allVisibleSelected = !!data && data.issues.length > 0 && data.issues.every((i) => selected.has(i.id));
 
-  onMount(load);
+  onMount(() => {
+    load();
+    pollTimer = setInterval(checkNew, 30_000);
+  });
+  onDestroy(() => clearInterval(pollTimer));
 </script>
 
 <div class="space-y-6">
@@ -284,6 +312,13 @@
   {/if}
 
   <Card.Root class="gap-0 overflow-hidden">
+    {#if newCount > 0 || listChanged}
+      <div class="flex justify-center border-b border-border py-2">
+        <Button size="sm" variant="outline" on:click={() => { page = 1; load(); }}>
+          {newCount > 0 ? `${newCount} new issue${newCount === 1 ? "" : "s"} — show` : "List changed — refresh"}
+        </Button>
+      </div>
+    {/if}
     {#if !data}
       <Card.Content class="space-y-2 pt-6" aria-label="Loading issues">
         <Skeleton class="h-14 w-full" />
