@@ -40,7 +40,7 @@ func newTestHandler(t testing.TB) (*Handler, *projects.Project) {
 		Projects:      projStore,
 		Issues:        issues.NewStore(db),
 		Events:        events.NewStore(db),
-		Notifications: notifications.NewStore(db, logger),
+		Notifications: notifications.NewStore(db, logger, "test-session-secret-32-bytes-minimum!!"),
 		Sessions:      sessions.NewStore(db),
 		Logs:          logs.NewStore(db),
 		Traces:        traces.NewStore(db),

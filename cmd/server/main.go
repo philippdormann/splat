@@ -124,7 +124,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	notif := notifications.NewStore(db, logger)
+	notif := notifications.NewStore(db, logger, cfg.SessionSecret)
+	// Seal any legacy plaintext integration secrets written before
+	// at-rest encryption (best-effort: alerts still work without it).
+	if n, err := notif.MigratePlaintextSecrets(); err != nil {
+		logger.Warn("migrate integration secrets", "error", err)
+	} else if n > 0 {
+		logger.Info("sealed plaintext integration secrets", "rows", n)
+	}
 
 	quotaStore := quotas.NewStore(db)
 	// Breach alerts reuse the normal alert channels (best-effort).
@@ -162,6 +169,13 @@ func main() {
 		dbPath = cfg.DatabasePath
 	}
 
+	repoLinks := repolink.NewStore(db, cfg.SessionSecret)
+	if n, err := repoLinks.MigratePlaintextSecrets(); err != nil {
+		logger.Warn("migrate repo tokens", "error", err)
+	} else if n > 0 {
+		logger.Info("sealed plaintext repo tokens", "rows", n)
+	}
+
 	srv, err := httpserver.New(&httpserver.Server{
 		Auth:          authStore,
 		Projects:      projects.NewStore(db),
@@ -183,7 +197,7 @@ func main() {
 		SSO:           ssoProvider,
 		Logs:          logs.NewStore(db),
 		Traces:        traces.NewStore(db),
-		RepoLinks:     repolink.NewStore(db),
+		RepoLinks:     repoLinks,
 		Metrics:       reg,
 		DB:            db,
 		Logger:        logger,
