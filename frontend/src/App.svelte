@@ -27,6 +27,7 @@
   import ReleaseDetail from "$lib/pages/ReleaseDetail.svelte";
   import TraceDetail from "$lib/pages/TraceDetail.svelte";
   import SettingsPage from "$lib/pages/Settings.svelte";
+  import InvitePage from "$lib/pages/Invite.svelte";
   import SecurityPage from "$lib/pages/Security.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
 
@@ -104,7 +105,7 @@
     }
   }
 
-  $: if (authed === false && path !== "/login") {
+  $: if (authed === false && path !== "/login" && !path.startsWith("/invite/")) {
     navigate("/login");
   }
 
@@ -120,7 +121,9 @@
 
 <svelte:window onkeydown={onGlobalKeydown} />
 
-{#if authed === null}
+{#if path.startsWith("/invite/")}
+  <InvitePage token={path.slice("/invite/".length)} {navigate} />
+{:else if authed === null}
   <p class="p-6 text-sm text-muted-foreground">Loading…</p>
 {:else if !authed}
   <Login onLoggedIn={async () => { authed = true; try { isAdmin = (await api.me()).role === "admin"; } catch { isAdmin = false; } loadNavProjects(); navigate("/"); }} />

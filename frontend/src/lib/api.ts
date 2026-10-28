@@ -275,6 +275,32 @@ export const api = {
       method: "POST",
       body: "{}",
     }),
+  storageSummary: () => req<StorageSummary>("/api/v1/storage/summary"),
+  storageProjects: () => req<ProjectStorage[]>("/api/v1/storage/projects"),
+  storageAge: () => req<StorageAge>("/api/v1/storage/age"),
+  storageRetention: () => req<RetentionResponse>("/api/v1/storage/retention"),
+  saveRetention: (input: RetentionSettings) =>
+    req<RetentionResponse>("/api/v1/storage/retention", {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+  previewRetention: (settings: RetentionSettings, projectId?: number) =>
+    req<Record<string, number>>("/api/v1/storage/retention/preview", {
+      method: "POST",
+      body: JSON.stringify(projectId ? { settings, projectId } : { settings }),
+    }),
+  runRetention: () =>
+    req<CleanupStatus>("/api/v1/storage/retention/run", {
+      method: "POST",
+      body: "{}",
+    }),
+  cleanupStatus: () => req<CleanupStatus>("/api/v1/storage/cleanup/status"),
+  compaction: () => req<CompactionInfo>("/api/v1/storage/compaction"),
+  compact: () =>
+    req<CleanupStatus>("/api/v1/storage/compaction", {
+      method: "POST",
+      body: "{}",
+    }),
 
   rules: (projectId?: number | null) => {
     const qs = projectId === undefined ? "" : `?project_id=${projectId === null ? "null" : projectId}`;
@@ -381,6 +407,21 @@ export const api = {
   revokeProjectMember: (id: number | string, userId: number) =>
     req<{ ok: boolean }>(`/api/v1/projects/${id}/access/members/${userId}`, {
       method: "DELETE",
+    }),
+
+  invitations: () => req<Invitation[]>("/api/v1/invitations"),
+  createInvitation: (input: { email: string; username: string; role?: string }) =>
+    req<Invitation>("/api/v1/invitations", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  revokeInvitation: (token: string) =>
+    req<{ ok: boolean }>(`/api/v1/invitations/${token}`, { method: "DELETE" }),
+  getInvite: (token: string) => req<InviteInfo>(`/api/v1/invite/${token}`),
+  acceptInvite: (input: { token: string; username?: string; password: string }) =>
+    req<{ ok: boolean; username: string }>("/api/v1/invite/accept", {
+      method: "POST",
+      body: JSON.stringify(input),
     }),
 };
 
@@ -733,6 +774,95 @@ export interface User {
   totpEnabled: boolean;
   email: string;
   sso: boolean;
+  lastLogin: string;
+  isPrimary: boolean;
+}
+
+export interface Invitation {
+  token: string;
+  email: string;
+  username: string;
+  role: string;
+  status: string;
+  expiresAt: string;
+  createdAt: string;
+  acceptedAt?: string;
+  invitedBy?: number;
+}
+
+export interface InviteInfo {
+  email: string;
+  username: string;
+  role: string;
+  expiresAt: string;
+}
+
+export interface RetentionWindows {
+  events_days: number | null;
+  transactions_days: number | null;
+  logs_days: number | null;
+}
+
+export interface RetentionSettings {
+  defaults: RetentionWindows;
+  overrides: { project_id: number; events_days: number | null; transactions_days: number | null; logs_days: number | null }[];
+}
+
+export interface RetentionRun {
+  started_at: string;
+  finished_at?: string;
+  status: string;
+  removed?: Record<string, number>;
+  error?: string;
+}
+
+export interface RetentionResponse {
+  settings: RetentionSettings;
+  next_run_at?: string;
+  last_run?: RetentionRun;
+}
+
+export interface StorageSummary {
+  bytes: number;
+  events_rows: number;
+  transactions_rows: number;
+  logs_rows: number;
+  source_maps: { file_count: number; total_bytes: number };
+  frees_estimate: number;
+}
+
+export interface ProjectStorage {
+  id: number;
+  name: string;
+  bytes: number;
+  events_bytes: number;
+  transactions_bytes: number;
+  logs_bytes: number;
+  events_count: number;
+  transactions_count: number;
+  logs_count: number;
+  share: number;
+  custom: boolean;
+}
+
+export interface StorageAge {
+  bounds: number[];
+  buckets: { events: number; transactions: number; logs: number }[];
+}
+
+export interface CleanupStatus {
+  state: string;
+  kind: string;
+  started_at?: string;
+  removed?: Record<string, number>;
+  error?: string;
+}
+
+export interface CompactionInfo {
+  needed: boolean;
+  freeBytes?: number;
+  sizeBytes?: number;
+  reason?: string;
 }
 
 export interface LoginResponse {

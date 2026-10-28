@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput, type APIKey, type Integration, type IntegrationInput, type RoutingOverride, type User, type Team, type SecurityPolicy, type AuditLogEntry, type QuotaDefaults, type SSOSettings } from "$lib/api";
+  import { api, type SettingsData, type StorageUsage, type AlertRule, type AlertRuleInput, type APIKey, type Integration, type IntegrationInput, type RoutingOverride, type User, type Team, type SecurityPolicy, type AuditLogEntry, type QuotaDefaults, type SSOSettings, type Invitation, type RetentionSettings, type RetentionResponse, type StorageSummary, type ProjectStorage, type StorageAge, type CleanupStatus } from "$lib/api";
   import * as CardUI from "$lib/components/ui/card/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
   import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
@@ -9,7 +9,7 @@
   import { toast } from "svelte-sonner";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import Dialog from "$lib/components/Dialog.svelte";
-  import { Bell, KeyRound, Database, SlidersHorizontal, ScrollText, Users, TriangleAlert, ShieldCheck, History } from "lucide-svelte";
+  import { Bell, KeyRound, Database, SlidersHorizontal, ScrollText, Users, TriangleAlert, ShieldCheck, History, UserPlus, Copy, X, Mail, Trash2, Settings2, Pencil, Search, Loader2 } from "lucide-svelte";
 
   let tab = "general";
   const tabs = [
@@ -43,6 +43,24 @@
   let showNewTeam = false;
   let showNewKey = false;
   let meUsername = "";
+  let meId = 0;
+  let invitations: Invitation[] = [];
+  let inviteForm = { email: "", username: "", role: "member" };
+  let inviteBusy = false;
+  let inviteLink: string | null = null;
+  let memberToDelete: User | null = null;
+  let storageSummary: StorageSummary | null = null;
+  let storageProjects: ProjectStorage[] = [];
+  let storageAge: StorageAge | null = null;
+  let retention: RetentionResponse | null = null;
+  let cleanup: CleanupStatus | null = null;
+  let storageQuery = "";
+  let showRetention = false;
+  let showDeleteData = false;
+  let retentionBusy = false;
+  let retentionPreview: Record<string, number> | null = null;
+  let editingProject: { id: number; name: string } | null = null;
+  let projectRetention: { events_days: number | null | undefined; transactions_days: number | null | undefined; logs_days: number | null | undefined } = { events_days: undefined, transactions_days: undefined, logs_days: undefined };
   let security: SecurityPolicy = { require2fa: false };
   let quotaDefaults: QuotaDefaults = { defaultHourly: 5000, defaultDaily: 50000 };
   let ssoSettings: SSOSettings = { enabled: false, name: "", issuer: "", passwordLoginDisabled: false };
@@ -208,7 +226,11 @@
         security = await api.security();
         quotaDefaults = await api.quotaDefaults();
         ssoSettings = await api.ssoSettings();
-        meUsername = (await api.me()).username ?? "";
+        const me = await api.me();
+        meUsername = me.username ?? "";
+        meId = (users.find((u) => u.username === meUsername)?.id ?? 0);
+        await reloadInvites();
+        await loadStorageFigures();
       } catch (e) {
         toast.error(`Could not load users/teams: ${e instanceof Error ? e.message : e}`);
       }
@@ -394,6 +416,7 @@
   async function reloadUsersTeams() {
     users = await api.users();
     teams = await api.teams();
+    await reloadInvites();
   }
 
   async function createUser(e: Event) {
@@ -461,6 +484,183 @@
         toast.success("Two-factor authentication reset.");
       },
     };
+  }
+
+  function formatNum(n: number): string {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+    return String(n);
+  }
+  function relTime(iso: string): string {
+    const d = Date.now() - new Date(iso).getTime();
+    if (d < 60000) return "just now";
+    if (d < 3600000) return `${Math.round(d / 60000)}m ago`;
+    if (d < 86400000) return `${Math.round(d / 3600000)}h ago`;
+    return `${Math.round(d / 86400000)}d ago`;
+  }
+  function roleBadge(role: string): string {
+    return role === "admin" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground";
+  }
+  function isLocked(u: User): boolean {
+    return u.username === meUsername || u.isPrimary === true;
+  }
+
+  async function reloadInvites() {
+    try { invitations = await api.invitations(); } catch { invitations = []; }
+  }
+
+  async function createInvite(e: Event) {
+    e.preventDefault();
+    inviteBusy = true;
+    inviteLink = null;
+    try {
+      const inv = await api.createInvitation(inviteForm);
+      inviteForm = { email: "", username: "", role: "member" };
+      await reloadInvites();
+      const link = `${window.location.origin}/invite/${inv.token}`;
+      inviteLink = link;
+      try {
+        await navigator.clipboard.writeText(link);
+        toast.success("Invite created — link copied to clipboard.");
+      } catch {
+        toast.success("Invite created — copy the link below.");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not create invite.");
+    } finally {
+      inviteBusy = false;
+    }
+  }
+
+  async function copyInvite(token: string) {
+    const link = `${window.location.origin}/invite/${token}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success("Invite link copied.");
+    } catch {
+      inviteLink = link;
+      toast.info("Copy this link:", { description: link });
+    }
+  }
+
+  async function revokeInvite(token: string, email: string) {
+    confirmBox = {
+      title: `Revoke invite for “${email}”?`,
+      description: "The link stops working immediately.",
+      label: "Revoke",
+      run: async () => {
+        await api.revokeInvitation(token);
+        await reloadInvites();
+        toast.success("Invitation revoked.");
+      },
+    };
+  }
+
+  function confirmDeleteMember(u: User) { memberToDelete = u; }
+  async function runDeleteMember() {
+    if (!memberToDelete) return;
+    const m = memberToDelete;
+    try {
+      await api.deleteUser(m.id);
+      memberToDelete = null;
+      await reloadUsersTeams();
+      toast.success(`Removed ${m.username}.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not remove user.");
+    }
+  }
+
+  async function setRole(u: User, role: string) {
+    if (role === u.role) return;
+    try {
+      await api.setUserRole(u.id, role);
+      await reloadUsersTeams();
+      toast.success(`${u.username} is now ${role}.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not change role.");
+    }
+  }
+
+  async function loadStorageFigures() {
+    try {
+      const [sum, projs, age, ret, status] = await Promise.all([
+        api.storageSummary(), api.storageProjects(), api.storageAge(), api.storageRetention(), api.cleanupStatus(),
+      ]);
+      storageSummary = sum; storageProjects = projs; storageAge = age; retention = ret; cleanup = status;
+    } catch (e) {
+      toast.error(`Could not load storage: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
+  async function pollCleanup() {
+    try { cleanup = await api.cleanupStatus(); } catch { /* keep last */ }
+    if (cleanup?.state === "running") setTimeout(pollCleanup, 2000);
+    else if (retention) loadStorageFigures();
+  }
+
+  async function runRetentionNow() {
+    retentionBusy = true;
+    try {
+      cleanup = await api.runRetention();
+      toast.success("Cleanup started in the background.");
+      pollCleanup();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not start cleanup.");
+    } finally {
+      retentionBusy = false;
+    }
+  }
+
+  async function saveRetentionSettings() {
+    if (!retention) return;
+    retentionBusy = true;
+    try {
+      if (editingProject) {
+        const idx = retention.settings.overrides.findIndex((o) => o.project_id === editingProject!.id);
+        const row = {
+          project_id: editingProject.id,
+          events_days: projectRetention.events_days === undefined ? retention.settings.defaults.events_days : projectRetention.events_days,
+          transactions_days: projectRetention.transactions_days === undefined ? retention.settings.defaults.transactions_days : projectRetention.transactions_days,
+          logs_days: projectRetention.logs_days === undefined ? retention.settings.defaults.logs_days : projectRetention.logs_days,
+        };
+        if (idx >= 0) retention.settings.overrides[idx] = row;
+        else retention.settings.overrides.push(row);
+      }
+      retention = await api.saveRetention(retention.settings);
+      retentionPreview = await api.previewRetention(retention.settings);
+      showRetention = false; editingProject = null;
+      toast.success("Retention saved. Next cleanup applies it.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save retention.");
+    } finally {
+      retentionBusy = false;
+    }
+  }
+
+  async function previewRetention() {
+    if (!retention) return;
+    try { retentionPreview = await api.previewRetention(retention.settings); }
+    catch { retentionPreview = null; }
+  }
+
+  function openRetention(project?: { id: number; name: string }) {
+    editingProject = project ?? null;
+    if (project && retention) {
+      const o = retention.settings.overrides.find((x) => x.project_id === project.id);
+      projectRetention = {
+        events_days: o ? o.events_days : retention.settings.defaults.events_days,
+        transactions_days: o ? o.transactions_days : retention.settings.defaults.transactions_days,
+        logs_days: o ? o.logs_days : retention.settings.defaults.logs_days,
+      };
+    }
+    retentionPreview = null;
+    showRetention = true;
+    previewRetention();
+  }
+
+  function retentionLabel(days: number | null | undefined, fallback: number | null): string {
+    const v = days === undefined ? fallback : days;
+    return v === null || v === undefined ? "forever" : `${v}d`;
   }
 
   async function saveSecurity(e: Event) {
@@ -932,81 +1132,112 @@
         {:else if tab === "users"}
     <CardUI.Root class="gap-0">
       <CardUI.Header>
-        <CardUI.Title>Users</CardUI.Title>
-        <CardUI.Description>Admins bypass every check. Members only see projects granted to them directly or through a team.</CardUI.Description>
+        <CardUI.Title>Invite to the team</CardUI.Title>
+        <CardUI.Description>No email is sent by default — the invite link is copied to your clipboard, share it yourself. SMTP integrations also trigger an email when configured. Links expire after 48 hours.</CardUI.Description>
       </CardUI.Header>
       <CardUI.Content>
-      <div class="space-y-4">
-        {#if users.length}
-          <div class="divide-y divide-border rounded-md border border-border">
-            {#each users as u}
-              {@const isSelf = u.username === meUsername}
-              <div class="flex flex-wrap items-center justify-between gap-2 p-2 text-xs">
-                <span>
-                  <span class="font-medium">{u.username}</span>
-                  {#if isSelf}<span class="text-muted-foreground"> (you)</span>{/if}
-                  <span class="text-muted-foreground"> · {u.role}</span>
-                  {#if u.email}<span class="text-muted-foreground"> · {u.email}</span>{/if}
-                  {#if u.totpEnabled}
-                    <span class="ml-1 rounded-md bg-green-600/15 px-1.5 py-0.5 text-[11px] font-medium text-green-600" title="Two-factor authentication enabled">2FA</span>
-                  {/if}
-                  {#if u.sso}
-                    <span class="ml-1 rounded-md bg-blue-600/15 px-1.5 py-0.5 text-[11px] font-medium text-blue-600" title="Single sign-on linked">SSO</span>
-                  {/if}
-                </span>
-                <span class="flex items-center gap-2">
-                  {#if u.role === "admin"}
-                    <span class="text-xs text-muted-foreground" title="Admins cannot be demoted">admin</span>
-                  {:else}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={isSelf}
-                      title={isSelf ? "You cannot change your own role" : "Promote to admin"}
-                      on:click={() => changeRole(u.id, u.username, "admin")}
-                    >Promote</Button>
-                  {/if}
-                  <Button size="sm" variant="outline" on:click={() => (resetPw = { id: u.id, username: u.username, password: "" })}>Reset password</Button>
-                  {#if u.totpEnabled}
-                    <Button size="sm" variant="outline" on:click={() => resetUser2fa(u.id, u.username)}>Reset 2FA</Button>
-                  {/if}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={isSelf}
-                    title={isSelf ? "You cannot delete your own account" : "Delete user"}
-                    on:click={() => deleteUser(u.id, u.username)}
-                  >Delete</Button>
-                </span>
+      <form on:submit={createInvite} class="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div class="flex-1 space-y-1"><label class="text-xs font-bold uppercase tracking-widest text-muted-foreground">Email</label><Input type="email" required bind:value={inviteForm.email} placeholder="name@company.com" autocomplete="off" /></div>
+        <div class="flex-1 space-y-1"><label class="text-xs font-bold uppercase tracking-widest text-muted-foreground">Username</label><Input required bind:value={inviteForm.username} placeholder="jane" autocomplete="off" /></div>
+        <div class="space-y-1 sm:w-36"><label class="text-xs font-bold uppercase tracking-widest text-muted-foreground">Role</label>
+          <select class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={inviteForm.role}>
+            <option value="member">member</option>
+            <option value="admin">admin</option>
+          </select>
+        </div>
+        <Button type="submit" size="sm" disabled={inviteBusy}><UserPlus class="mr-1 size-4" /> {inviteBusy ? "Inviting…" : "Invite"}</Button>
+      </form>
+      {#if inviteLink}
+        <p class="mt-3 rounded-md bg-muted px-2 py-1.5 font-mono text-xs break-all">Share this link: {inviteLink}</p>
+      {/if}
+      </CardUI.Content>
+    </CardUI.Root>
+    <CardUI.Root class="gap-0">
+      <CardUI.Header>
+        <CardUI.Title>Team members</CardUI.Title>
+        <CardUI.Description>Admins bypass every check. Members only see projects granted to them directly or through a team. The first account (primary) cannot be demoted or removed.</CardUI.Description>
+      </CardUI.Header>
+      <CardUI.Content>
+      {#if users.length}
+        <div class="hidden overflow-x-auto rounded-md border border-border md:block">
+          <table class="w-full text-sm">
+            <thead><tr class="border-b border-border text-left text-xs text-muted-foreground">
+              <th class="px-2 py-2">User</th><th class="px-2 py-2">Role</th><th class="px-2 py-2">Status</th><th class="px-2 py-2">Last login</th><th class="px-2 py-2">Change role</th><th class="px-2 py-2 text-right">Actions</th>
+            </tr></thead>
+            <tbody class="divide-y divide-border">
+              {#each users as u}
+                <tr>
+                  <td class="px-2 py-2"><span class="font-medium">{u.username}</span>{#if u.username === meUsername}<span class="text-muted-foreground"> (you)</span>{/if}<br /><span class="font-mono text-xs text-muted-foreground">{u.email || "—"}</span>
+                    {#if u.totpEnabled}<span class="ml-1 rounded-md bg-green-600/15 px-1.5 py-0.5 text-[11px] font-medium text-green-600">2FA</span>{/if}
+                    {#if u.sso}<span class="ml-1 rounded-md bg-blue-600/15 px-1.5 py-0.5 text-[11px] font-medium text-blue-600">SSO</span>{/if}
+                  </td>
+                  <td class="px-2 py-2"><span class={`rounded-md px-2 py-0.5 text-xs font-medium ${roleBadge(u.role)}`}>{u.role}</span></td>
+                  <td class="px-2 py-2 text-xs text-muted-foreground">active</td>
+                  <td class="px-2 py-2 text-xs text-muted-foreground">{u.lastLogin ? relTime(u.lastLogin) : "never"}</td>
+                  <td class="px-2 py-2">
+                    <select class="h-8 rounded-md border border-input bg-background px-2 text-xs" value={u.role} disabled={isLocked(u)} on:change={(e) => setRole(u, (e.target as HTMLSelectElement).value)} aria-label={`Change role for ${u.username}`}>
+                      <option value="member">member</option>
+                      <option value="admin">admin</option>
+                    </select>
+                  </td>
+                  <td class="px-2 py-2 text-right">
+                    <span class="inline-flex gap-1">
+                      <Button size="sm" variant="outline" on:click={() => (resetPw = { id: u.id, username: u.username, password: "" })}>Reset password</Button>
+                      {#if u.totpEnabled}<Button size="sm" variant="outline" on:click={() => resetUser2fa(u.id, u.username)}>Reset 2FA</Button>{/if}
+                      {#if !isLocked(u)}<Button size="sm" variant="outline" on:click={() => confirmDeleteMember(u)}><Trash2 class="size-3.5" /></Button>{/if}
+                    </span>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+        <div class="space-y-3 md:hidden">
+          {#each users as u}
+            <div class="rounded-lg border p-3 space-y-2">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0"><p class="truncate text-sm font-medium">{u.username}{#if u.username === meUsername}<span class="text-muted-foreground"> (you)</span>{/if}</p>
+                <p class="truncate font-mono text-xs text-muted-foreground">{u.email || "—"}</p>
+                <p class="text-xs text-muted-foreground">{u.lastLogin ? `last login ${relTime(u.lastLogin)}` : "never logged in"}</p></div>
+                <span class={`shrink-0 rounded-md px-2 py-0.5 text-xs font-medium ${roleBadge(u.role)}`}>{u.role}</span>
               </div>
-            {/each}
-          </div>
-        {:else}
-          <p class="text-xs text-muted-foreground">No users yet.</p>
-        {/if}
-        <Button size="sm" variant="outline" on:click={() => (showNewUser = true)}>New user</Button>
-        {#if showNewUser}
-          <Dialog open={true} title="New user" onClose={() => (showNewUser = false)}>
-            <form on:submit={createUser} class="space-y-3">
-              <div class="grid grid-cols-2 gap-3">
-                <div class="space-y-1"><label class="text-xs">Username</label><Input bind:value={newUser.username} placeholder="jane" autocomplete="off" /></div>
-                <div class="space-y-1"><label class="text-xs">Password (min 8 chars)</label><Input type="password" bind:value={newUser.password} placeholder="••••••••" autocomplete="new-password" /></div>
-                <div class="space-y-1"><label class="text-xs">Email (optional, links SSO)</label><Input bind:value={newUser.email} placeholder="jane@example.com" autocomplete="off" /></div>
-                <div class="space-y-1"><label class="text-xs">Role</label>
-                  <select class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" bind:value={newUser.role}>
-                    <option value="member">member</option>
-                    <option value="admin">admin</option>
-                  </select>
-                </div>
+              <div class="flex items-center gap-2">
+                <select class="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs" value={u.role} disabled={isLocked(u)} on:change={(e) => setRole(u, (e.target as HTMLSelectElement).value)}>
+                  <option value="member">member</option>
+                  <option value="admin">admin</option>
+                </select>
+                {#if !isLocked(u)}<Button size="sm" variant="outline" on:click={() => confirmDeleteMember(u)}><Trash2 class="size-4" /></Button>{/if}
               </div>
-              <div class="flex gap-2">
-                <Button type="submit" size="sm">Create user</Button>
-                <Button size="sm" variant="outline" on:click={() => (showNewUser = false)}>Cancel</Button>
-              </div>
-            </form>
-          </Dialog>
-        {/if}
-      </div>
+            </div>
+          {/each}
+        </div>
+      {:else}
+        <p class="text-xs text-muted-foreground">No users yet.</p>
+      {/if}
+      </CardUI.Content>
+    </CardUI.Root>
+    <CardUI.Root class="gap-0">
+      <CardUI.Header>
+        <CardUI.Title>Pending invitations</CardUI.Title>
+        <CardUI.Description>Links expire after 48 hours and work once.</CardUI.Description>
+      </CardUI.Header>
+      <CardUI.Content>
+      {#if invitations.filter((i) => i.status === "pending").length === 0}
+        <div class="flex flex-col items-center justify-center py-8 text-center"><Mail class="mb-3 size-10 text-muted-foreground/50" /><p class="text-sm text-muted-foreground">No pending invites. New invites appear here for copy or revoke.</p></div>
+      {:else}
+        <ul class="space-y-2">
+          {#each invitations.filter((i) => i.status === "pending") as inv}
+            <li class="flex items-center justify-between gap-3 rounded-lg border p-3">
+              <div class="min-w-0"><p class="truncate text-sm font-medium">{inv.email} <span class="font-mono text-xs text-muted-foreground">({inv.username})</span></p>
+              <p class="text-xs text-muted-foreground">expires {relTime(inv.expiresAt)} · <span class={`rounded px-1.5 py-0.5 text-[11px] font-medium ${roleBadge(inv.role)}`}>{inv.role}</span></p></div>
+              <span class="flex shrink-0 gap-1">
+                <Button size="sm" variant="outline" on:click={() => copyInvite(inv.token)} aria-label={`Copy invite for ${inv.email}`}><Copy class="size-4" /></Button>
+                <Button size="sm" variant="outline" on:click={() => revokeInvite(inv.token, inv.email)} aria-label={`Revoke invite for ${inv.email}`}><X class="size-4" /></Button>
+              </span>
+            </li>
+          {/each}
+        </ul>
+      {/if}
       </CardUI.Content>
     </CardUI.Root>
     <CardUI.Root class="gap-0">
@@ -1099,7 +1330,10 @@
         </form>
       </Dialog>
     {/if}
-        {:else if tab === "audit"}
+    {#if memberToDelete}
+      <ConfirmDialog open={true} title={`Remove “${memberToDelete.username}”?`} description="Their sessions end immediately and their grants disappear." confirmLabel="Remove" busy={false} onConfirm={runDeleteMember} onCancel={() => (memberToDelete = null)} />
+    {/if}
+{:else if tab === "audit"}
     <CardUI.Root class="gap-0">
       <CardUI.Header>
         <CardUI.Title>Audit log</CardUI.Title>
@@ -1138,42 +1372,131 @@
       </CardUI.Content>
     </CardUI.Root>
         {:else if tab === "storage"}
-    <CardUI.Root class="gap-0">
-      <CardUI.Header>
-        <CardUI.Title>Storage</CardUI.Title>
-        <CardUI.Description>
-          {#if !storage}
-            Loading usage…
-          {:else}
-            Backend: <span class="font-mono">{storage.driver}</span>
-            · Database size: <span class="font-mono">{formatBytes(storage.sizeBytes)}</span>
-          {/if}
-        </CardUI.Description>
-      </CardUI.Header>
-      <CardUI.Content>
-      <div class="space-y-3">
-        {#if storage}
-          <div class="grid grid-cols-2 gap-1 text-xs sm:grid-cols-3">
-            {#each storage.tables as t}
-              <div class="flex justify-between gap-2 rounded bg-muted px-2 py-1">
-                <span class="font-mono text-muted-foreground">{t.name}</span>
-                <span class="font-mono tabular-nums">{t.rows.toLocaleString()}</span>
-              </div>
-            {/each}
-          </div>
-        {/if}
-        <p class="text-xs text-muted-foreground">The retention sweep deletes events older than each project's retention window (issue summaries are kept). Vacuum reclaims free space afterwards.</p>
-        <div class="flex gap-2">
-          <Button size="sm" variant="outline" disabled={storageBusy !== ""} on:click={runSweep}>
-            {storageBusy === "sweep" ? "Sweeping…" : "Run retention sweep now"}
-          </Button>
-          <Button size="sm" variant="outline" disabled={storageBusy !== ""} on:click={runVacuum}>
-            {storageBusy === "vacuum" ? "Vacuuming…" : "Vacuum database"}
-          </Button>
+    <div class="min-w-0 space-y-6">
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 class="text-xl font-extrabold tracking-tight">Storage</h2>
+          <p class="mt-1 text-sm text-muted-foreground">What is held, how old it is, and which project holds it.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" disabled={cleanup?.state === "running" || !storageSummary} on:click={() => (showDeleteData = true)}><Trash2 class="mr-1 size-4" /> Delete data</Button>
+          <Button size="sm" disabled={!retention} on:click={() => openRetention()}><Settings2 class="mr-1 size-4" /> Retention</Button>
         </div>
       </div>
-      </CardUI.Content>
-    </CardUI.Root>
+
+      {#if cleanup?.state === "running"}
+        <CardUI.Root><CardUI.Content class="flex items-center gap-2 pt-6 text-sm"><Loader2 class="size-4 animate-spin" /> Cleaning… {cleanup.removed ? Object.entries(cleanup.removed).map(([k, v]) => `${k}: ${v}`).join(", ") : "starting"}</CardUI.Content></CardUI.Root>
+      {/if}
+
+      {#if !storageSummary}
+        <CardUI.Root><CardUI.Content class="space-y-3 pt-6"><Skeleton class="h-3 w-16" /><Skeleton class="h-7 w-28" /><Skeleton class="h-2.5 w-full rounded-full" /></CardUI.Content></CardUI.Root>
+      {:else}
+        <CardUI.Root><CardUI.Content class="space-y-4 pt-6">
+          <div><p class="text-xs font-bold uppercase tracking-widest text-muted-foreground">Total</p>
+          <p class="mt-1 text-3xl font-bold">{formatBytes(storageSummary.bytes)}</p></div>
+          <div class="flex h-3 w-full gap-0.5 overflow-hidden rounded-full bg-muted" role="img" aria-label="storage breakdown">
+            {#each [{ k: "events", v: storageSummary.events_rows, c: "bg-chart-1" }, { k: "transactions", v: storageSummary.transactions_rows, c: "bg-chart-2" }, { k: "logs", v: storageSummary.logs_rows, c: "bg-chart-3" }, { k: "sourceMaps", v: storageSummary.source_maps.file_count, c: "bg-chart-4" }] as s}
+              {#if s.v > 0}<div class={s.c} style={`width: ${(s.v / Math.max(1, storageSummary.events_rows + storageSummary.transactions_rows + storageSummary.logs_rows + storageSummary.source_maps.file_count)) * 100}%`} />{/if}
+            {/each}
+          </div>
+          <dl class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div><dt class="text-sm text-muted-foreground">Events</dt><dd class="text-base font-semibold tabular-nums">{formatBytes(Math.round(storageSummary.bytes * (storageSummary.events_rows / Math.max(1, storageSummary.events_rows + storageSummary.transactions_rows + storageSummary.logs_rows))))}</dd><dd class="text-xs text-muted-foreground">{formatNum(storageSummary.events_rows)} rows</dd></div>
+            <div><dt class="text-sm text-muted-foreground">Transactions</dt><dd class="text-base font-semibold tabular-nums">{formatBytes(Math.round(storageSummary.bytes * (storageSummary.transactions_rows / Math.max(1, storageSummary.events_rows + storageSummary.transactions_rows + storageSummary.logs_rows))))}</dd><dd class="text-xs text-muted-foreground">{formatNum(storageSummary.transactions_rows)} rows</dd></div>
+            <div><dt class="text-sm text-muted-foreground">Logs</dt><dd class="text-base font-semibold tabular-nums">{formatBytes(Math.round(storageSummary.bytes * (storageSummary.logs_rows / Math.max(1, storageSummary.events_rows + storageSummary.transactions_rows + storageSummary.logs_rows))))}</dd><dd class="text-xs text-muted-foreground">{formatNum(storageSummary.logs_rows)} rows</dd></div>
+            <div><dt class="text-sm text-muted-foreground">Source maps</dt><dd class="text-base font-semibold tabular-nums">{formatBytes(storageSummary.source_maps.total_bytes)}</dd><dd class="text-xs text-muted-foreground">{storageSummary.source_maps.file_count} files</dd></div>
+          </dl>
+          <div class="border-t pt-3 text-sm">
+            {#if retention && retention.last_run?.status === "running"}<p class="flex items-center gap-2"><Loader2 class="size-3.5 animate-spin" /> Cleaning…</p>
+            {:else if retention && retention.next_run_at}<p>Next cleanup {relTime(retention.next_run_at)} · frees ~{formatBytes(storageSummary.frees_estimate)}</p>
+            {:else}<p class="text-muted-foreground">Retention keeps everything forever — nothing is ever cleaned.</p>{/if}
+          </div>
+        </CardUI.Content></CardUI.Root>
+      {/if}
+
+      <CardUI.Root><CardUI.Header><CardUI.Title class="text-xs font-bold uppercase tracking-widest text-muted-foreground">Age</CardUI.Title><CardUI.Description>Rows per age bucket, per kind. Retention deletes whole buckets past the window.</CardUI.Description></CardUI.Header>
+        <CardUI.Content>
+          {#if storageAge}
+            <div class="flex h-24 items-end gap-1">
+              {#each storageAge.buckets as b, i}
+                {@const total = b.events + b.transactions + b.logs}
+                <div class="flex-1 rounded-sm bg-primary/70" style={`height: ${total > 0 ? Math.max(4, (total / Math.max(1, ...storageAge.buckets.map((x) => x.events + x.transactions + x.logs)))) * 100 : 2}%`} title={`bucket ${i}: ${total} rows`} />
+              {/each}
+            </div>
+            <p class="mt-2 text-xs text-muted-foreground">Bounds (days): {storageAge.bounds.join(", ")}</p>
+          {:else}<Skeleton class="h-48 w-full" />{/if}
+        </CardUI.Content>
+      </CardUI.Root>
+
+      <section class="space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h3 class="text-xs font-bold uppercase tracking-widest text-muted-foreground">Projects ({storageProjects.length})</h3>
+          {#if storageProjects.length > 8}
+            <div class="relative w-64"><Search class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input bind:value={storageQuery} placeholder="Search projects…" class="pl-8" /></div>
+          {/if}
+        </div>
+        <div class="overflow-x-auto rounded-lg border">
+          <table class="w-full text-sm">
+            <thead><tr class="border-b text-left text-xs text-muted-foreground"><th class="px-3 py-2">Project</th><th class="px-3 py-2 sm:w-[28%]">Size</th><th class="px-3 py-2 text-right">Retention</th></tr></thead>
+            <tbody>
+              {#each storageProjects.filter((pr) => pr.name.toLowerCase().includes(storageQuery.trim().toLowerCase())) as pr}
+                <tr class="border-b last:border-0">
+                  <td class="max-w-36 truncate px-3 py-2 font-medium sm:max-w-56">{pr.name}</td>
+                  <td class="px-3 py-2"><div class="flex items-center gap-3">
+                    <div class="hidden h-1.5 flex-1 overflow-hidden rounded-full bg-muted sm:block"><div class="h-full rounded-full bg-primary" style={`width: ${pr.share * 100}%`} /></div>
+                    <span class="text-right font-medium tabular-nums sm:w-20">{formatBytes(pr.bytes)}</span>
+                    <span class="hidden text-xs text-muted-foreground lg:inline">{formatNum(pr.events_count)} ev · {formatNum(pr.transactions_count)} tx · {formatNum(pr.logs_count)} logs</span>
+                  </div></td>
+                  <td class="px-3 py-2 text-right">
+                    <Button size="sm" variant="ghost" on:click={() => openRetention({ id: pr.id, name: pr.name })}>
+                      {#if pr.custom}<span class="rounded bg-muted px-2 py-0.5 text-xs">own</span>{:else}<span class="text-muted-foreground">general</span>{/if}
+                      <Pencil class="size-3.5 text-muted-foreground" />
+                    </Button>
+                  </td>
+                </tr>
+              {:else}
+                <tr><td colspan="3" class="px-3 py-8 text-center text-sm text-muted-foreground">No projects yet.</td></tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <CardUI.Root><CardUI.Header><CardUI.Title>Legacy maintenance</CardUI.Title><CardUI.Description>Direct sweep + vacuum (blocking). Prefer retention cleanup above.</CardUI.Description></CardUI.Header>
+        <CardUI.Content><div class="flex gap-2">
+          <Button size="sm" variant="outline" disabled={storageBusy !== ""} on:click={runSweep}>{storageBusy === "sweep" ? "Sweeping…" : "Run retention sweep now"}</Button>
+          <Button size="sm" variant="outline" disabled={storageBusy !== ""} on:click={runVacuum}>{storageBusy === "vacuum" ? "Vacuuming…" : "Vacuum database"}</Button>
+        </div></CardUI.Content>
+      </CardUI.Root>
+
+      {#if showRetention}
+        <Dialog open={true} title={editingProject ? `Retention for ${editingProject.name}` : "Retention settings"} onClose={() => { showRetention = false; editingProject = null; }}>
+          <div class="space-y-3">
+            {#if retention}
+              {#if !editingProject}
+                {#each [{ k: "events_days", label: "Events" }, { k: "transactions_days", label: "Transactions" }, { k: "logs_days", label: "Logs" }] as row}
+                  <div class="space-y-1"><label class="text-xs">{row.label} keep (days, empty = forever)</label>
+                  <Input type="number" min="1" placeholder="forever" value={retention.settings.defaults[row.k] ?? ""} on:input={(e) => { const v = (e.target as HTMLInputElement).value; (retention.settings.defaults[row.k] as number | null) = v === "" ? null : Math.max(1, parseInt(v, 10)); previewRetention(); }} /></div>
+                {/each}
+              {:else}
+                {#each [{ k: "events_days", label: "Events" }, { k: "transactions_days", label: "Transactions" }, { k: "logs_days", label: "Logs" }] as row}
+                  <div class="space-y-1"><label class="text-xs">{row.label} keep (days, empty = forever)</label>
+                  <Input type="number" min="1" placeholder="inherit" value={projectRetention[row.k] ?? ""} on:input={(e) => { const v = (e.target as HTMLInputElement).value; (projectRetention[row.k] as number | null | undefined) = v === "" ? null : Math.max(1, parseInt(v, 10)); }} /></div>
+                {/each}
+              {/if}
+              {#if retentionPreview}<p class="text-xs text-muted-foreground">Saving would delete now: events {retentionPreview.events ?? 0}, transactions {retentionPreview.transactions ?? 0}, logs {retentionPreview.logs ?? 0} rows.</p>{/if}
+            {/if}
+            <div class="flex gap-2">
+              <Button size="sm" disabled={retentionBusy} on:click={saveRetentionSettings}>{retentionBusy ? "Saving…" : "Save"}</Button>
+              <Button size="sm" variant="outline" on:click={() => { showRetention = false; editingProject = null; }}>Cancel</Button>
+            </div>
+          </div>
+        </Dialog>
+      {/if}
+      {#if showDeleteData}
+        <ConfirmDialog open={true} title="Delete old data now?" description="Enforces the saved retention immediately in the background. This cannot be undone." confirmLabel="Delete now" busy={retentionBusy} onConfirm={async () => { showDeleteData = false; await runRetentionNow(); }} onCancel={() => (showDeleteData = false)} />
+      {/if}
+    </div>
         {/if}
       </div>
     </div>
