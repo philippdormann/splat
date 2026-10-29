@@ -249,6 +249,19 @@
     clearInterval(pollTimer);
   });
 
+  // ←/→ walk occurrences. Skipped while typing, while any dialog is up,
+  // and while an overlay (palette, help) owns the keyboard.
+  function onIssueKeydown(e: KeyboardEvent) {
+    if (!data || data.events.length < 2) return;
+    const tag = (e.target as HTMLElement | null)?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (pendingAction !== null || showFileIssue || confirmUnlink !== null) return;
+    if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+    if (e.key === "ArrowLeft" && data.prevEventId) showEvent(data.prevEventId);
+    else if (e.key === "ArrowRight" && data.nextEventId) showEvent(data.nextEventId);
+  }
+
   $: tracePath =
     data && data.traceId
       ? `/projects/${data.project.id}/traces/${encodeURIComponent(data.traceId)}`
@@ -391,6 +404,7 @@
         </Button>
       </div>
     {/if}
+    <svelte:window on:keydown={onIssueKeydown} />
 
     <ConfirmDialog
       open={pendingAction !== null}
