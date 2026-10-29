@@ -248,9 +248,11 @@ shown for these):
 - Profiling, session replay, client reports, metrics, monitor check-ins,
   feedback, minidumps. Transaction items *are* stored for the local
   per-trace view and log items *are* stored per project (see Logs and
-  traces above) - but there is no sampling, alerting, or APM-style
-  aggregation on them (transaction counts roll up per release, nothing
-  more). This is an error tracker, not an APM platform - see
+  traces above) - the project overview aggregates stored transactions
+  into latency percentiles (p50/p75/p95/p99, overall + per transaction
+  name), but there is no sampling control, alerting, histograms, or
+  cross-project queries on them (transaction counts also roll up per
+  release). This is an error tracker, not an APM platform - see
   Trace correlation above for the lightweight alternative. (Session
   envelopes *are* stored, but only for release-health aggregation.)
 - Attachments (binary item payloads are parsed per envelope framing but not
@@ -567,9 +569,11 @@ your provider's snapshots as usual.
 - No APM (custom product metrics, profiling, session replay, span search)
   - transactions and logs are ingested and viewable per project (recent
   transactions, per-trace-ID span waterfall, logs by level/text/trace),
-  and transaction counts roll up per release - but there is no sampling,
-  alerting, or APM-style aggregation (no duration histograms, p95s, or
-  cross-project queries). Operational Prometheus metrics at `GET
+  transaction counts roll up per release, and the project overview shows
+  latency percentiles (p50/p75/p95/p99, overall + per transaction name)
+  computed from the stored SDK-sampled transactions - but there is no
+  sampling control, alerting, duration histograms, or cross-project
+  queries. Operational Prometheus metrics at `GET
   /metrics` (`SPLAT_METRICS=1`) still exist. See Trace correlation
   above for linking out instead.
 - No per-project roles - membership is binary (access or not, see Users,

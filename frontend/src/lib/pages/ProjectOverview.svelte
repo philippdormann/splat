@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { AreaChart } from "layerchart";
   import { Activity, HeartPulse, Timer, Trophy, Zap, CircleDot, Gauge, TriangleAlert } from "lucide-svelte";
-  import { api, type ProjectOverview, type SessionSummary } from "$lib/api";
+  import { api, type ProjectOverview, type SessionSummary, type LatencySummary } from "$lib/api";
   import { loadPersisted, savePersisted, isStringIn } from "$lib/persisted";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as Tabs from "$lib/components/ui/tabs/index.js";
@@ -35,6 +35,7 @@
   $: savePersisted("splat.projectOverview.period", period);
   let data: ProjectOverview | null = null;
   let sessions: SessionSummary | null = null;
+  let latency: LatencySummary | null = null;
   let error = "";
 
   function tierColor(pct: number | null): string {
@@ -102,15 +103,24 @@
   async function load() {
     error = "";
     try {
-      const [ov, sess] = await Promise.all([
+      const [ov, sess, lat] = await Promise.all([
         api.projectOverview(projectId, period),
         api.projectSessionSummary(projectId, period),
+        api.projectLatency(projectId, period),
       ]);
       data = ov;
       sessions = sess;
+      latency = lat;
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load overview.";
     }
+  }
+
+  function fmtDuration(ms: number | null | undefined): string {
+    if (ms === null || ms === undefined) return "—";
+    if (ms < 1) return `${ms.toFixed(2)} ms`;
+    if (ms < 1000) return `${ms.toFixed(1)} ms`;
+    return `${(ms / 1000).toFixed(2)} s`;
   }
 
   onMount(load);
@@ -260,10 +270,40 @@
               <Timer class="text-muted-foreground size-4" />
               <Card.Title class="text-sm">Latency</Card.Title>
             </div>
-            <Card.Description>Percentiles need sampled APM data, which Splat does not collect. Stored transactions live under Traces.</Card.Description>
+            <Card.Description>Percentiles of stored sampled transactions in this window.</Card.Description>
           </Card.Header>
           <Card.Content>
-            <p class="py-10 text-center text-sm text-muted-foreground">No transaction data.</p>
+            {#if !latency}
+              <Skeleton class="h-14 w-full" />
+            {:else if latency.count === 0}
+              <p class="py-10 text-center text-sm text-muted-foreground">No transaction data — enable SDK tracing (<span class="font-mono">traces_sample_rate</span>) to see percentiles. Stored transactions live under Traces.</p>
+            {:else}
+              <div class="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                <div>
+                  <p class="text-3xl font-semibold tracking-tight tabular-nums">{fmtDuration(latency.p50)}</p>
+                  <p class="text-muted-foreground text-xs">p50</p>
+                </div>
+                <div>
+                  <p class="text-xl font-semibold tracking-tight tabular-nums">{fmtDuration(latency.p95)}</p>
+                  <p class="text-muted-foreground text-xs">p95</p>
+                </div>
+                <div>
+                  <p class="text-xl font-semibold tracking-tight tabular-nums">{fmtDuration(latency.p99)}</p>
+                  <p class="text-muted-foreground text-xs">p99</p>
+                </div>
+              </div>
+              <p class="mt-1 text-xs text-muted-foreground">{latency.count.toLocaleString()} sampled transactions{#if latency.sampled} · recent 10,000{/if}</p>
+              {#if latency.byName.length}
+                <div class="mt-3 divide-y divide-border border-t border-border">
+                  {#each latency.byName as row}
+                    <div class="flex items-center justify-between gap-3 py-1.5 text-xs">
+                      <span class="min-w-0 truncate font-medium">{row.name || "(unlabeled transaction)"}</span>
+                      <span class="shrink-0 tabular-nums text-muted-foreground">{row.count.toLocaleString()} · p50 {fmtDuration(row.p50)} · p95 {fmtDuration(row.p95)}</span>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            {/if}
           </Card.Content>
         </Card.Root>
       </div>

@@ -229,6 +229,9 @@ export const api = {
   projectTrace: (id: number | string, traceId: string) =>
     req<TraceDetail>(`/api/v1/projects/${id}/traces/${encodeURIComponent(traceId)}`),
 
+  projectLatency: (id: number | string, period: string) =>
+    req<LatencySummary>(`/api/v1/projects/${id}/latency?period=${encodeURIComponent(period)}`),
+
   projectRepo: (id: number | string) =>
     req<RepoConfig | null>(`/api/v1/projects/${id}/repo`),
   saveProjectRepo: (id: number | string, input: { provider: string; baseUrl?: string; owner: string; repo: string; token?: string }) =>
@@ -1055,6 +1058,18 @@ export interface TraceDetail {
   transactions: TraceTransaction[];
   spans: TraceSpan[];
   logs: LogEntry[];
+}
+
+export interface LatencySummary {
+  period: string;
+  count: number;
+  p50: number;
+  p75: number;
+  p95: number;
+  p99: number;
+  sampled: boolean;
+  byName: { name: string; count: number; p50: number; p95: number }[];
+  nameTruncated: boolean;
 }
 
 export interface RepoConfig {
