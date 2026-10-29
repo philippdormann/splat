@@ -13,7 +13,7 @@
     ChevronDown,
     Plus,
   } from "lucide-svelte";
-  import { api } from "$lib/api";
+  import { api, onUnauthorized } from "$lib/api";
   import logoUrl from "$lib/assets/splat-long.png";
   import { Toaster } from "svelte-sonner";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
@@ -67,6 +67,15 @@
 
   onMount(async () => {
     applyTheme();
+    // Any 401 outside the auth flows means the session died mid-use:
+    // drop auth state and bounce to login instead of error banners.
+    onUnauthorized(() => {
+      const p = window.location.pathname;
+      if (p === "/login" || p.startsWith("/invite/")) return;
+      authed = false;
+      isAdmin = false;
+      navigate("/login");
+    });
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = (e: MediaQueryListEvent) => applyTheme(e);
     mq.addEventListener("change", onChange);

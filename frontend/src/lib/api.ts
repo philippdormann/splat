@@ -1,5 +1,14 @@
 // Typed client for the Go JSON API (see internal/httpserver/api.go).
 // Same-origin, cookie session auth; every request sends credentials.
+let unauthorizedHandler: (() => void) | null = null;
+
+// onUnauthorized registers a global session-expiry hook (wired once in
+// App.svelte): any 401 bounces to the login page instead of surfacing
+// per-page "unauthorized" errors.
+export function onUnauthorized(fn: (() => void) | null) {
+  unauthorizedHandler = fn;
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     credentials: "include",
@@ -7,6 +16,11 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (res.status === 401) {
+    try {
+      unauthorizedHandler?.();
+    } catch {
+      // A failing hook must never mask the original error.
+    }
     throw new ApiError("unauthorized", 401);
   }
   let body: unknown = null;
