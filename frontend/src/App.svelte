@@ -34,6 +34,14 @@
   import CommandPalette from "$lib/components/CommandPalette.svelte";
   import ShortcutsHelp from "$lib/components/ShortcutsHelp.svelte";
 
+  // Project context for the palette (releases group): /projects/:id…,
+  // excluding /projects/new.
+  $: paletteProjectId = (() => {
+    if (!path.startsWith("/projects/")) return null;
+    const seg = path.slice("/projects/".length).split("/")[0];
+    return seg && seg !== "new" ? seg : null;
+  })();
+
   let authed: boolean | null = null;
   let isAdmin = false;
   // Trailing slashes produce phantom routes ("/issues/" ≠ "/issues"),
@@ -176,7 +184,7 @@
 {:else if !authed}
   <Login onLoggedIn={async () => { authed = true; try { isAdmin = (await api.me()).role === "admin"; } catch { isAdmin = false; } loadNavProjects(); navigate("/"); }} />
 {:else}
-  <CommandPalette bind:open={paletteOpen} {navigate} {logout} onShortcuts={() => (shortcutsOpen = true)} />
+  <CommandPalette bind:open={paletteOpen} {navigate} {logout} projectId={paletteProjectId} onShortcuts={() => (shortcutsOpen = true)} />
   <ShortcutsHelp bind:open={shortcutsOpen} />
   <div class="flex min-h-screen">
     {#if sidebarOpen}

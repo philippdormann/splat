@@ -5,6 +5,7 @@
     ListChecks,
     Folder,
     FolderPlus,
+    Rocket,
     Settings,
     LogOut,
     Keyboard,
@@ -18,16 +19,19 @@
     open = $bindable(false),
     navigate,
     logout,
+    projectId = null,
     onShortcuts,
   }: {
     open?: boolean;
     navigate: (to: string) => void;
     logout: () => void;
+    projectId?: string | null;
     onShortcuts?: () => void;
   } = $props();
 
   let query = $state("");
   let projects = $state<{ id: number; name: string }[]>([]);
+  let releases = $state<{ release: string; events: number; issues: number }[]>([]);
   let contextActions = $state<ContextAction[]>([]);
   let issueResults = $state<{ id: number; title: string; status: string; projectName: string }[]>([]);
   let panel = $state<HTMLElement | null>(null);
@@ -39,6 +43,14 @@
       projects = await api.projects();
     } catch {
       projects = [];
+    }
+  }
+
+  async function loadReleases(id: string) {
+    try {
+      releases = await api.projectReleases(id);
+    } catch {
+      releases = [];
     }
   }
 
@@ -62,6 +74,8 @@
       query = "";
       contextActions = getContextActions();
       loadProjects();
+      if (projectId) loadReleases(projectId);
+      else releases = [];
       // Focus the filter input once the panel is in the DOM.
       queueMicrotask(() => {
         panel?.querySelector("input")?.focus();
@@ -189,6 +203,22 @@
                   onSelect={() => go(`/projects/${p.id}`)}
                 >
                   <Folder /><span>{p.name}</span>
+                </Command.Item>
+              {/each}
+            </Command.Group>
+          {/if}
+          {#if projectId && releases.length}
+            <Command.Separator />
+            <Command.Group heading="Releases in this project">
+              {#each releases as r (r.release)}
+                <Command.Item
+                  value={`release ${r.release}`}
+                  keywords={[r.release]}
+                  onSelect={() => projectId && go(`/projects/${projectId}/releases/${encodeURIComponent(r.release)}`)}
+                >
+                  <Rocket />
+                  <span class="min-w-0 flex-1 truncate font-mono">{r.release}</span>
+                  <span class="text-muted-foreground shrink-0 text-xs">{r.events.toLocaleString()} events</span>
                 </Command.Item>
               {/each}
             </Command.Group>
