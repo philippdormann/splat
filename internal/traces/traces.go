@@ -253,3 +253,155 @@ func (s *Store) SweepBefore(projectID int64, cutoff time.Time) (int64, error) {
 	}
 	return res.RowsAffected()
 }
+
+// Latency caps bound the work of a percentile computation so one
+// slow project cannot exhaust memory: overall percentiles sample the
+// most recent rows, per-name breakdowns cover the busiest names with a
+// smaller per-name cap. Results are percentiles of the stored (SDK-
+// sampled) transactions, not of all requests.
+const (
+	LatencyMaxOverall = 10000
+	LatencyMaxPerName = 2000
+	LatencyMaxNames   = 10
+)
+
+// LatencyByName is the percentile rollup for one transaction name.
+type LatencyByName struct {
+	Name  string
+	Count int64
+	P50   float64
+	P95   float64
+}
+
+// LatencySummary is the overall percentile rollup for a project window.
+type LatencySummary struct {
+	Count     int64
+	P50       float64
+	P75       float64
+	P95       float64
+	P99       float64
+	Sampled   bool // true when Count exceeded LatencyMaxOverall
+	ByName    []LatencyByName
+	NameTrunc bool // true when more names exist than LatencyMaxNames
+}
+
+// percentileNearestRank returns the q-th percentile (q in [0,1]) of
+// sorted ascending values via the nearest-rank method. Empty input
+// yields 0.
+func percentileNearestRank(sorted []float64, q float64) float64 {
+	if len(sorted) == 0 {
+		return 0
+	}
+	if q <= 0 {
+		return sorted[0]
+	}
+	if q >= 1 {
+		return sorted[len(sorted)-1]
+	}
+	// ceil(q*n) - 1, 0-indexed.
+	rank := int(q * float64(len(sorted)))
+	if float64(rank) < q*float64(len(sorted)) {
+		rank++
+	}
+	idx := rank - 1
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(sorted) {
+		idx = len(sorted) - 1
+	}
+	return sorted[idx]
+}
+
+// Latency computes overall + per-name duration percentiles for one
+// project's transactions at or after since. It runs the same SQL on
+// SQLite and Postgres and does the ranking in Go.
+func (s *Store) Latency(projectID int64, since time.Time) (LatencySummary, error) {
+	var out LatencySummary
+	sinceStr := since.UTC().Format(time.RFC3339Nano)
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM transactions WHERE project_id = ? AND timestamp >= ?`,
+		projectID, sinceStr).Scan(&out.Count); err != nil {
+		return out, err
+	}
+	if out.Count == 0 {
+		return out, nil
+	}
+	out.Sampled = out.Count > LatencyMaxOverall
+
+	overall, err := s.sortedDurations(LatencyMaxOverall, `SELECT duration_ms FROM transactions
+		WHERE project_id = ? AND timestamp >= ? ORDER BY duration_ms`, projectID, sinceStr)
+	if err != nil {
+		return out, err
+	}
+	out.P50 = percentileNearestRank(overall, 0.50)
+	out.P75 = percentileNearestRank(overall, 0.75)
+	out.P95 = percentileNearestRank(overall, 0.95)
+	out.P99 = percentileNearestRank(overall, 0.99)
+
+	names, err := s.topNames(projectID, sinceStr, LatencyMaxNames+1)
+	if err != nil {
+		return out, err
+	}
+	if len(names) > LatencyMaxNames {
+		out.NameTrunc = true
+		names = names[:LatencyMaxNames]
+	}
+	for _, n := range names {
+		durations, err := s.sortedDurations(LatencyMaxPerName, `SELECT duration_ms FROM transactions
+			WHERE project_id = ? AND timestamp >= ? AND name = ? ORDER BY duration_ms`, projectID, sinceStr, n.Name)
+		if err != nil {
+			return out, err
+		}
+		if len(durations) == 0 {
+			continue
+		}
+		out.ByName = append(out.ByName, LatencyByName{
+			Name:  n.Name,
+			Count: n.Count,
+			P50:   percentileNearestRank(durations, 0.50),
+			P95:   percentileNearestRank(durations, 0.95),
+		})
+	}
+	return out, nil
+}
+
+type nameCount struct {
+	Name  string
+	Count int64
+}
+
+func (s *Store) topNames(projectID int64, sinceStr string, limit int) ([]nameCount, error) {
+	rows, err := s.db.Query(`SELECT name, COUNT(*) FROM transactions
+		WHERE project_id = ? AND timestamp >= ? GROUP BY name ORDER BY COUNT(*) DESC LIMIT ?`,
+		projectID, sinceStr, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []nameCount
+	for rows.Next() {
+		var n nameCount
+		if err := rows.Scan(&n.Name, &n.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) sortedDurations(limit int, query string, args ...any) ([]float64, error) {
+	rows, err := s.db.Query(query+` LIMIT ?`, append(args, limit)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []float64
+	for rows.Next() {
+		var d float64
+		if err := rows.Scan(&d); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
