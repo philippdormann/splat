@@ -22,11 +22,11 @@
 </script>
 
 {#if href}
-  <a {href} class={cn("inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors disabled:opacity-50", variants[variant], sizes[size], $$props.class)} on:click>
+  <a {href} class={cn("inline-flex cursor-pointer items-center justify-center gap-2 rounded-md font-medium transition-colors disabled:opacity-50", variants[variant], sizes[size], $$props.class)} on:click>
     <slot />
   </a>
 {:else}
-  <button {type} {disabled} class={cn("inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors disabled:opacity-50", variants[variant], sizes[size], $$props.class)} on:click>
+  <button {type} {disabled} class={cn("inline-flex cursor-pointer items-center justify-center gap-2 rounded-md font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50", variants[variant], sizes[size], $$props.class)} on:click>
     <slot />
   </button>
 {/if}
