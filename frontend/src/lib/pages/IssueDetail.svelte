@@ -51,9 +51,10 @@
   async function load() {
     try {
       data = await api.issue(id, selectedEvent ?? undefined);
-      // Keep the shown occurrence addressable: copy-pasting the URL
-      // reopens the same event, not just the issue.
-      replaceQuery({ event: data.currentEventId });
+      // Keep non-latest occurrences addressable, but leave the default
+      // (latest) view at a clean /issues/:id URL.
+      const shown = data.currentEventId;
+      replaceQuery({ event: shown && shown !== data.latestEventId ? shown : null });
       registerActions();
       links = data.links ?? [];
       localSpans = null;
