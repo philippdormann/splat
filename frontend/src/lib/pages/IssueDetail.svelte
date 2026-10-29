@@ -352,6 +352,8 @@
   }
 </script>
 
+<svelte:window on:keydown={onIssueKeydown} />
+
 {#if error}
   <Alert.Root variant="destructive">
     <TriangleAlert />
@@ -404,8 +406,6 @@
         </Button>
       </div>
     {/if}
-    <svelte:window on:keydown={onIssueKeydown} />
-
     <ConfirmDialog
       open={pendingAction !== null}
       title={pendingAction ? actionCopy[pendingAction].title : ""}
