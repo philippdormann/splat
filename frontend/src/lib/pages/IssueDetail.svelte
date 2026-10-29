@@ -270,13 +270,19 @@
     }
     const issueId = data.issue.id;
     const title = data.issue.title;
-    const acts = [
-      { label: `Resolve issue #${issueId}`, keywords: ["resolve", "fix", title], run: () => { pendingAction = "resolved"; } },
-      { label: `Ignore issue #${issueId}`, keywords: ["ignore", "hide", title], run: () => { pendingAction = "ignored"; } },
-      { label: `Mute issue #${issueId}`, keywords: ["mute", "silence", title], run: () => { pendingAction = "muted"; } },
+    const isResolved = data.issue.status === "resolved";
+    const acts = [];
+    if (!isResolved) {
+      acts.push(
+        { label: `Resolve issue #${issueId}`, keywords: ["resolve", "fix", title], run: () => { pendingAction = "resolved"; } },
+        { label: `Ignore issue #${issueId}`, keywords: ["ignore", "hide", title], run: () => { pendingAction = "ignored"; } },
+        { label: `Mute issue #${issueId}`, keywords: ["mute", "silence", title], run: () => { pendingAction = "muted"; } },
+      );
+    }
+    acts.push(
       { label: `Reopen issue #${issueId}`, keywords: ["reopen", "unresolve", title], run: () => { pendingAction = "unresolved"; } },
       { label: `Copy link to issue #${issueId}`, keywords: ["copy", "link", "share", title], run: copyLink },
-    ];
+    );
     if (nextQueueId !== null) {
       acts.splice(1, 0, { label: `Resolve issue #${issueId} and next`, keywords: ["resolve", "next", "queue", title], run: () => { void resolveAndNext(); } });
     }
@@ -315,6 +321,7 @@
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="outline" title="Copy link to this issue" on:click={copyLink}><Copy class="h-3.5 w-3.5" /> Copy link</Button>
+        {#if data.issue.status !== "resolved"}
         <Button size="sm" variant="outline" class="border-green-600/50 text-green-700 hover:bg-green-50 dark:border-green-500/40 dark:text-green-400 dark:hover:bg-green-950" on:click={() => (pendingAction = "resolved")}><Check class="h-3.5 w-3.5" /> Resolve</Button>
         {#if nextQueueId !== null}<Button size="sm" variant="outline" class="border-green-600/50 text-green-700 hover:bg-green-50 dark:border-green-500/40 dark:text-green-400 dark:hover:bg-green-950" disabled={actionBusy} title="Resolve and advance to the next issue in the list" on:click={resolveAndNext}><Check class="h-3.5 w-3.5" /> Resolve & next</Button>{/if}
         <Button size="sm" variant="outline" class="border-green-600/50 text-green-700 hover:bg-green-50 dark:border-green-500/40 dark:text-green-400 dark:hover:bg-green-950" title="Resolve, but reopen automatically if the bug appears in a different release" on:click={() => (pendingAction = "resolved-next")}><CalendarClock class="h-3.5 w-3.5" /> Resolve in next release</Button>
@@ -323,6 +330,7 @@
           <Button size="sm" variant="outline" class="border-amber-600/50 text-amber-700 hover:bg-amber-50 dark:border-amber-500/40 dark:text-amber-400 dark:hover:bg-amber-950" on:click={() => (pendingAction = "unresolved")}><Bell class="h-3.5 w-3.5" /> Unmute</Button>
         {:else}
           <Button size="sm" variant="outline" class="border-amber-600/50 text-amber-700 hover:bg-amber-50 dark:border-amber-500/40 dark:text-amber-400 dark:hover:bg-amber-950" on:click={() => (pendingAction = "muted")}><BellOff class="h-3.5 w-3.5" /> Mute</Button>
+        {/if}
         {/if}
         <Button size="sm" variant="outline" class="border-blue-600/50 text-blue-700 hover:bg-blue-50 dark:border-blue-500/40 dark:text-blue-400 dark:hover:bg-blue-950" on:click={() => (pendingAction = "unresolved")}><Undo2 class="h-3.5 w-3.5" /> Reopen</Button>
       </div>
