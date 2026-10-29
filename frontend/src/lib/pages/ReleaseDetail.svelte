@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Rocket, ArrowLeft, TriangleAlert, ChevronRight } from "lucide-svelte";
+  import { Rocket, TriangleAlert, ChevronRight } from "lucide-svelte";
   import { api, type ReleaseDetail } from "$lib/api";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
@@ -8,6 +8,7 @@
   import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
   import LevelBadge from "$lib/components/LevelBadge.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
+  import Breadcrumb from "$lib/components/Breadcrumb.svelte";
   import DateTime from "$lib/components/DateTime.svelte";
 
   export let id: string;
@@ -15,6 +16,7 @@
   export let navigate: (path: string) => void;
 
   let data: ReleaseDetail | null = null;
+  let projectName = "";
   let error = "";
 
   function tier(pct: number): string {
@@ -25,7 +27,9 @@
 
   onMount(async () => {
     try {
-      data = await api.projectRelease(id, release);
+      const [p, d] = await Promise.all([api.project(id), api.projectRelease(id, release)]);
+      projectName = p.project.name;
+      data = d;
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load release.";
     }
@@ -33,9 +37,15 @@
 </script>
 
 <div class="mx-auto w-full max-w-6xl space-y-6">
-  <button class="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground" on:click={() => navigate(`/projects/${id}/releases`)}>
-    <ArrowLeft class="h-4 w-4" /> Back to releases
-  </button>
+  <Breadcrumb
+    {navigate}
+    items={[
+      { label: "Projects", href: "/projects" },
+      { label: projectName || "…", href: `/projects/${id}` },
+      { label: "Releases", href: `/projects/${id}/releases` },
+      { label: release },
+    ]}
+  />
   <div class="flex items-center gap-3">
     <span class="bg-muted flex size-9 items-center justify-center rounded-lg">
       <Rocket class="text-muted-foreground size-5" />

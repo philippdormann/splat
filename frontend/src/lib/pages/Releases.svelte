@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Rocket, ArrowLeft, TriangleAlert, Tag } from "lucide-svelte";
+  import { Rocket, TriangleAlert, Tag } from "lucide-svelte";
   import { api, type ReleaseHealth } from "$lib/api";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
@@ -8,6 +8,7 @@
   import * as Table from "$lib/components/ui/table/index.js";
   import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
   import Button from "$lib/components/button.svelte";
+  import Breadcrumb from "$lib/components/Breadcrumb.svelte";
   import DateTime from "$lib/components/DateTime.svelte";
   import PlatformIcon from "$lib/components/PlatformIcon.svelte";
 
@@ -38,9 +39,14 @@
 </script>
 
 <div class="mx-auto w-full max-w-6xl space-y-6">
-  <button class="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground" on:click={() => navigate(`/projects/${id}`)}>
-    <ArrowLeft class="h-4 w-4" /> Back to project
-  </button>
+  <Breadcrumb
+    {navigate}
+    items={[
+      { label: "Projects", href: "/projects" },
+      { label: projectName || "…", href: `/projects/${id}` },
+      { label: "Releases" },
+    ]}
+  />
   <div class="flex items-center gap-3">
     <PlatformIcon {platform} size={28} />
     <div>

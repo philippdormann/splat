@@ -13,6 +13,7 @@
   import { Copy, Check, CalendarClock, EyeOff, BellOff, Bell, Undo2, ExternalLink, TriangleAlert } from "lucide-svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import DateTime from "$lib/components/DateTime.svelte";
+  import Breadcrumb from "$lib/components/Breadcrumb.svelte";
   import { queryParam, replaceQuery } from "$lib/urlquery";
   import { dropFromQueue, readQueue } from "$lib/queue";
   import { clearContextActions, setContextActions } from "$lib/commandactions";
@@ -369,6 +370,7 @@
   </div>
 {:else}
   <div class="space-y-6">
+    <Breadcrumb {navigate} items={[{ label: "Issues", href: "/issues" }, { label: `#${data.issue.id}` }]} />
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
         <div class="flex flex-wrap items-center gap-2">

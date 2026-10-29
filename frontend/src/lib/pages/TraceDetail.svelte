@@ -5,18 +5,22 @@
   import * as Alert from "$lib/components/ui/alert/index.js";
   import { Root as Skeleton } from "$lib/components/ui/skeleton/index.js";
   import DateTime from "$lib/components/DateTime.svelte";
-  import { ArrowLeft, TriangleAlert } from "lucide-svelte";
+  import Breadcrumb from "$lib/components/Breadcrumb.svelte";
+  import { TriangleAlert } from "lucide-svelte";
 
   export let id: string;
   export let traceId: string;
   export let navigate: (path: string) => void;
 
   let data: TraceDetail | null = null;
+  let projectName = "";
   let error = "";
 
   onMount(async () => {
     try {
-      data = await api.projectTrace(id, traceId);
+      const [p, t] = await Promise.all([api.project(id), api.projectTrace(id, traceId)]);
+      projectName = p.project.name;
+      data = t;
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load trace.";
     }
@@ -76,9 +80,15 @@
 </script>
 
 <div class="mx-auto w-full max-w-6xl space-y-4">
-  <button class="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground" on:click={() => navigate(`/projects/${id}`)}>
-    <ArrowLeft class="h-4 w-4" /> Back to project
-  </button>
+  <Breadcrumb
+    {navigate}
+    items={[
+      { label: "Projects", href: "/projects" },
+      { label: projectName || "…", href: `/projects/${id}` },
+      { label: "Traces", href: `/projects/${id}/traces` },
+      { label: traceId.slice(0, 12) },
+    ]}
+  />
   <div>
     <h1 class="text-2xl font-semibold tracking-tight">Trace</h1>
     <p class="mt-1 font-mono text-xs text-muted-foreground">{traceId}</p>

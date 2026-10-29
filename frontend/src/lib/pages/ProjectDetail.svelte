@@ -8,6 +8,7 @@
   import Button from "$lib/components/button.svelte";
   import { toast } from "svelte-sonner";
   import Badge from "$lib/components/badge.svelte";
+  import Breadcrumb from "$lib/components/Breadcrumb.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import Dialog from "$lib/components/Dialog.svelte";
   import PlatformIcon from "$lib/components/PlatformIcon.svelte";
@@ -16,7 +17,7 @@
   import ProjectOverview from "$lib/pages/ProjectOverview.svelte";
   import ProjectLogs from "$lib/pages/ProjectLogs.svelte";
   import ProjectTraces from "$lib/pages/ProjectTraces.svelte";
-  import { ArrowLeft, Copy, RefreshCw, Trash2, Upload, Check, Rocket, FlaskConical, LayoutDashboard, Terminal, SlidersHorizontal, Users, ScrollText, Activity, GitBranch, TriangleAlert, Bell } from "lucide-svelte";
+  import { Copy, RefreshCw, Trash2, Upload, Check, Rocket, FlaskConical, LayoutDashboard, Terminal, SlidersHorizontal, Users, ScrollText, Activity, GitBranch, TriangleAlert, Bell } from "lucide-svelte";
 
   export let id: string;
   export let navigate: (path: string) => void;
@@ -404,9 +405,10 @@
   </div>
 {:else}
   <div class="mx-auto w-full max-w-6xl space-y-4">
-    <button class="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground" on:click={() => navigate("/projects")}>
-      <ArrowLeft class="h-4 w-4" /> Back to projects
-    </button>
+    <Breadcrumb
+      {navigate}
+      items={[{ label: "Projects", href: "/projects" }, { label: data.project.name }]}
+    />
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="flex min-w-0 items-center gap-3">
         <PlatformIcon platform={data.project.platform} size={32} />
