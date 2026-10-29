@@ -43,6 +43,11 @@
   let fileBody = "";
   let fileBusy = false;
   let confirmUnlink: IssueLink | null = null;
+  // Freshness baseline: load() snapshots the counts; the background poll
+  // only ever offers a pill, never yanks the viewed occurrence.
+  let baselineCount = 0;
+  let freshEvents = 0;
+  let pollTimer: ReturnType<typeof setInterval>;
   // Filing needs a linked repo; unknown until checked (null = loading).
   let hasRepo: boolean | null = null;
   let showStacktrace = true;
@@ -53,6 +58,8 @@
   async function load() {
     try {
       data = await api.issue(id, selectedEvent ?? undefined);
+      baselineCount = data.issue.eventCount;
+      freshEvents = 0;
       // Keep non-latest occurrences addressable, but leave the default
       // (latest) view at a clean /issues/:id URL.
       const shown = data.currentEventId;
@@ -125,6 +132,17 @@
     showRaw = false;
     load();
     window.scrollTo(0, 0);
+  }
+
+  async function checkFresh() {
+    if (document.hidden || !data) return;
+    try {
+      const cur = await api.issue(id, selectedEvent ?? undefined);
+      const delta = cur.issue.eventCount - baselineCount;
+      freshEvents = delta > 0 ? delta : 0;
+    } catch {
+      // Background poll stays silent — the next tick retries.
+    }
   }
 
   function copyRaw() {
@@ -222,7 +240,14 @@
     return `muted until ${d.toLocaleString()}`;
   }
 
-  onMount(load);
+  onMount(() => {
+    load();
+    pollTimer = setInterval(checkFresh, 20_000);
+  });
+  onDestroy(() => {
+    clearContextActions();
+    clearInterval(pollTimer);
+  });
 
   $: tracePath =
     data && data.traceId
@@ -312,8 +337,7 @@
     }
     setContextActions(acts);
   }
-
-  onDestroy(clearContextActions);</script>
+</script>
 
 {#if error}
   <Alert.Root variant="destructive">
@@ -359,6 +383,14 @@
         <Button size="sm" variant="outline" class="border-blue-600/50 text-blue-700 hover:bg-blue-50 dark:border-blue-500/40 dark:text-blue-400 dark:hover:bg-blue-950" on:click={() => (pendingAction = "unresolved")}><Undo2 class="h-3.5 w-3.5" /> Reopen</Button>
       </div>
     </div>
+
+    {#if freshEvents > 0}
+      <div class="flex">
+        <Button size="sm" variant="outline" on:click={() => load()}>
+          {freshEvents} new event{freshEvents === 1 ? "" : "s"} — reload
+        </Button>
+      </div>
+    {/if}
 
     <ConfirmDialog
       open={pendingAction !== null}
