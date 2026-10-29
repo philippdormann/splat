@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from "svelte";
+  import { onDestroy, onMount, tick } from "svelte";
   import { api, type IssueDetail, type IssueLink } from "$lib/api";
   import { loadPersisted, savePersisted, isString } from "$lib/persisted";
   import * as CardUI from "$lib/components/ui/card/index.js";
@@ -262,6 +262,12 @@
     toast.success("Link copied to clipboard.");
   }
 
+  async function focusNoteInput() {
+    showNotes = true;
+    await tick();
+    document.querySelector<HTMLElement>("#section-notes input")?.focus();
+  }
+
   // Command-palette actions for this issue. The palette snapshots them
   // when it opens; cleared when leaving the page.
   function registerActions() {
@@ -282,6 +288,8 @@
     }
     acts.push(
       { label: `Reopen issue #${issueId}`, keywords: ["reopen", "unresolve", title], run: () => { pendingAction = "unresolved"; } },
+      { label: `Add note to issue #${issueId}`, keywords: ["note", "comment", "memo", title], run: focusNoteInput },
+      { label: `File issue #${issueId} as external issue`, keywords: ["file", "github", "gitlab", "external", "forge", title], run: openFileDialog },
       { label: `Copy link to issue #${issueId}`, keywords: ["copy", "link", "share", title], run: copyLink },
     );
     if (nextQueueId !== null) {
