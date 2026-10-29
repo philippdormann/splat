@@ -464,6 +464,7 @@
                       </span>
                     </span>
                   </button>
+                  {#if i.status !== "resolved"}
                   <span class="hidden shrink-0 items-center gap-1 group-hover:flex focus-within:flex">
                     <button
                       class="rounded-md p-1.5 text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-950"
@@ -478,6 +479,7 @@
                       on:click={() => (pendingQuick = { id: i.id, status: "ignored", title: i.title })}
                     ><EyeOff class="size-4" /></button>
                   </span>
+                  {/if}
                 </span>
               </Table.Cell>
               <Table.Cell class="hidden lg:table-cell">
