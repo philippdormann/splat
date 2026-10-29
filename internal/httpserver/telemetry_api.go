@@ -121,6 +121,49 @@ func (s *Server) apiProjectTraces(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// apiProjectLatency serves percentile rollups of stored transaction
+// durations for the overview Latency card: overall p50/p75/p95/p99 plus
+// per-name p50/p95. These are percentiles of the SDK-sampled
+// transactions Splat stored, not of all requests - hence the count and
+// sampled flag so the UI can qualify small samples.
+func (s *Server) apiProjectLatency(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if _, err := s.Projects.Get(id); err != nil {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if !s.canAccessProject(r, id) {
+		writeAPIError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if s.Traces == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "traces not configured")
+		return
+	}
+	period, since := overviewPeriod(r)
+	sum, err := s.Traces.Latency(id, since)
+	if err != nil {
+		s.Logger.Error("project latency", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	byName := make([]map[string]any, 0, len(sum.ByName))
+	for _, n := range sum.ByName {
+		byName = append(byName, map[string]any{
+			"name": n.Name, "count": n.Count, "p50": n.P50, "p95": n.P95,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"period": period, "count": sum.Count,
+		"p50": sum.P50, "p75": sum.P75, "p95": sum.P95, "p99": sum.P99,
+		"sampled": sum.Sampled, "byName": byName, "nameTruncated": sum.NameTrunc,
+	})
+}
+
 func (s *Server) apiProjectTraceDetail(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {

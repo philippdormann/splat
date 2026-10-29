@@ -815,6 +815,55 @@
           }
         }
       },
+      "LatencySummary": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "p50": {
+            "type": "number"
+          },
+          "p75": {
+            "type": "number"
+          },
+          "p95": {
+            "type": "number"
+          },
+          "p99": {
+            "type": "number"
+          },
+          "sampled": {
+            "type": "boolean"
+          },
+          "byName": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                },
+                "p50": {
+                  "type": "number"
+                },
+                "p95": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "nameTruncated": {
+            "type": "boolean"
+          }
+        }
+      },
       "ReleaseHealth": {
         "type": "object",
         "properties": {
@@ -2818,6 +2867,46 @@
         "responses": {
           "200": {
             "description": "Trace detail."
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/latency": {
+      "get": {
+        "summary": "Latency percentiles from stored transactions (project access required)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "24h",
+                "7d",
+                "30d"
+              ],
+              "default": "24h"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latency percentiles of SDK-sampled transactions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatencySummary"
+                }
+              }
+            }
           }
         }
       }

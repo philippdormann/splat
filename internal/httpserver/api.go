@@ -1440,8 +1440,8 @@ func (s *Server) apiProjectSessionSummary(w http.ResponseWriter, r *http.Request
 
 // apiProjectOverview serves the per-project bento dashboard: counters,
 // severity-stacked volume and top issues for a 24h/7d/30d window.
-// Latency is deliberately absent: Splat is an error tracker and does
-// not collect transactions - the UI renders an honest empty state for it.
+// Latency percentiles live on GET .../latency (backed by stored
+// transactions) so the overview payload stays small.
 // Session health has its own endpoint below.
 func (s *Server) apiProjectOverview(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)

@@ -201,6 +201,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/projects/{id}/logs", s.requireScope(s.apiProjectLogs))
 	s.mux.HandleFunc("GET /api/v1/projects/{id}/traces", s.requireScope(s.apiProjectTraces))
 	s.mux.HandleFunc("GET /api/v1/projects/{id}/traces/{traceId}", s.requireScope(s.apiProjectTraceDetail))
+	s.mux.HandleFunc("GET /api/v1/projects/{id}/latency", s.requireScope(s.apiProjectLatency))
 	s.mux.HandleFunc("GET /api/v1/projects/{id}/sessions/summary", s.requireScope(s.apiProjectSessionSummary))
 	s.mux.HandleFunc("POST /api/v1/projects/{id}/test-event", s.requireScope(s.apiProjectTestEvent))
 
