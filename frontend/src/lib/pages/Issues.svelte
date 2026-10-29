@@ -153,6 +153,11 @@
     bulkBusy = true;
     const count = selected.size;
     const label = pendingBulk ? bulkCopy[pendingBulk].label : "Updated";
+    // Snapshot for Undo (exact for non-mute transitions; mutes lose
+    // their expiry, so they don't offer Undo).
+    const undoable = pendingBulk !== "muted"
+      ? selectedRows.map((i) => ({ id: i.id, status: i.status, title: i.title }))
+      : [];
     try {
       let opts: { mutedUntil?: string; mutedCount?: number } | undefined;
       if (pendingBulk === "muted") {
@@ -172,13 +177,32 @@
       await api.bulkIssueStatus([...selected], pendingBulk, opts);
       selected = new Set();
       pendingBulk = null;
-      toast.success(`${label}d ${count} issue${count === 1 ? "" : "s"}.`);
+      if (undoable.length > 0) {
+        toast.success(`${label}d ${count} issue${count === 1 ? "" : "s"}.`, {
+          action: { label: "Undo", onClick: () => { void undoBulk(undoable); } },
+        });
+      } else {
+        toast.success(`${label}d ${count} issue${count === 1 ? "" : "s"}.`);
+      }
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Bulk update failed.");
       pendingBulk = null;
     } finally {
       bulkBusy = false;
+    }
+  }
+
+  async function undoBulk(prev: { id: number; status: string; title: string }[]) {
+    try {
+      for (const p of prev) {
+        await api.setIssueStatus(p.id, p.status);
+      }
+      toast.success(`Restored ${prev.length} issue${prev.length === 1 ? "" : "s"}.`);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Undo failed — some issues may not be restored.");
+      await load();
     }
   }
 
