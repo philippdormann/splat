@@ -43,6 +43,8 @@
   let fileBody = "";
   let fileBusy = false;
   let confirmUnlink: IssueLink | null = null;
+  // Filing needs a linked repo; unknown until checked (null = loading).
+  let hasRepo: boolean | null = null;
   let showStacktrace = true;
   let showEvents = true;
   let showNotes = true;
@@ -55,6 +57,13 @@
       // (latest) view at a clean /issues/:id URL.
       const shown = data.currentEventId;
       replaceQuery({ event: shown && shown !== data.latestEventId ? shown : null });
+      if (hasRepo === null) {
+        try {
+          hasRepo = (await api.projectRepo(data.project.id)) !== null;
+        } catch {
+          hasRepo = false;
+        }
+      }
       registerActions();
       links = data.links ?? [];
       localSpans = null;
@@ -73,6 +82,10 @@
 
   function openFileDialog() {
     if (!data) return;
+    if (hasRepo === false) {
+      toast.error("Link a repository on the project page first.");
+      return;
+    }
     fileTitle = data.issue.title;
     fileBody = "";
     showFileIssue = true;
@@ -289,7 +302,9 @@
     acts.push(
       { label: `Reopen issue #${issueId}`, keywords: ["reopen", "unresolve", title], run: () => { pendingAction = "unresolved"; } },
       { label: `Add note to issue #${issueId}`, keywords: ["note", "comment", "memo", title], run: focusNoteInput },
-      { label: `File issue #${issueId} as external issue`, keywords: ["file", "github", "gitlab", "external", "forge", title], run: openFileDialog },
+      ...(hasRepo
+        ? [{ label: `File issue #${issueId} as external issue`, keywords: ["file", "github", "gitlab", "external", "forge", title], run: openFileDialog }]
+        : []),
       { label: `Copy link to issue #${issueId}`, keywords: ["copy", "link", "share", title], run: copyLink },
     );
     if (nextQueueId !== null) {
@@ -558,7 +573,9 @@
     <CardUI.Root class="gap-0">
       <CardUI.Header class="flex-row items-center justify-between">
         <button class="text-sm font-medium hover:underline" on:click={() => (showLinks = !showLinks)}>{showLinks ? "▾" : "▸"} External issues ({links.length})</button>
-        <Button size="sm" variant="outline" on:click={openFileDialog}><ExternalLink class="h-3.5 w-3.5" /> File issue</Button>
+        <span title={hasRepo === false ? "Link a repository on the project page first" : ""}>
+          <Button size="sm" variant="outline" disabled={hasRepo !== true} on:click={openFileDialog}><ExternalLink class="h-3.5 w-3.5" /> File issue</Button>
+        </span>
       </CardUI.Header>
       {#if showLinks}
       <CardUI.Content>
