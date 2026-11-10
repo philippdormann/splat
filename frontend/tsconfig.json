@@ -13,7 +13,6 @@
     "module": "ESNext",
     "moduleDetection": "force",
     "isolatedModules": true,
-    "baseUrl": ".",
     "types": ["svelte", "vite/client"],
     "paths": {
       "$lib": ["./src/lib"],
