@@ -15,7 +15,7 @@ RUN cd frontend && bun run build
 # --- backend: Go binary with the Svelte build embedded ---
 # Cross-compiled on the build host (GOARCH=$TARGETARCH), so the multi-arch
 # build needs no QEMU emulation at all.
-FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine3.24 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.4-alpine3.24 AS build
 ARG VERSION=dev
 ARG TARGETARCH
 # ca-certificates is copied into the scratch final image below: without it
