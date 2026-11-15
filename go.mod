@@ -3,7 +3,7 @@ module github.com/philippdormann/splat
 go 1.27.4
 
 require (
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/pquerna/otp v1.5.0
 	golang.org/x/crypto v0.58.0
 	golang.org/x/time v0.16.0
