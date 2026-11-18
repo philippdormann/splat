@@ -34,7 +34,11 @@ jobs:
       - run: go test -race ./...
       - run: go vet ./...
       - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
-      - run: cd frontend && bun audit
+      # GHSA-fc5q-39xc-vjpf (CVE-2026-112366, picomatch ReDoS) was revoked as
+      # "not a vulnerability" and "doesn't affect any version of package
+      # picomatch" (https://security.snyk.io/vuln/SNYK-JS-PICOMATCH-21248802).
+      # No fixed release exists, so ignore only this disputed advisory.
+      - run: cd frontend && bun audit --ignore GHSA-fc5q-39xc-vjpf
 
   trivy-fs:
     # Dependency/license gate on the repo itself: fails the run on any
